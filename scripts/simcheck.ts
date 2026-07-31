@@ -202,7 +202,7 @@ console.log(results.join('\n'));
 
 // --------------------------------------------------------- save migration
 import { deserialize } from '../src/sim/save';
-import { loadFromSaveData } from '../src/sim/gameState';
+import { createGameState, loadFromSaveData } from '../src/sim/gameState';
 
 const legacy = JSON.stringify({
   version: 4,
@@ -259,5 +259,13 @@ if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
   const g = deserialize(JSON.stringify(v4));
   const label = g && g.toolbarSlot === 1 ? 'PASS' : 'FAIL';
   console.log(`${label}  v4 toolbar slot re-points at the fist — got ${g?.toolbarSlot}`);
+  if (label === 'FAIL') process.exitCode = 1;
+}
+
+// A brand-new game starts on the fist, not the rock.
+{
+  const fresh = createGameState(7);
+  const label = fresh.toolbarSlot === 1 && !fresh.toolSlotActive ? 'PASS' : 'FAIL';
+  console.log(`${label}  a new game starts on the fist — slot ${fresh.toolbarSlot}`);
   if (label === 'FAIL') process.exitCode = 1;
 }
