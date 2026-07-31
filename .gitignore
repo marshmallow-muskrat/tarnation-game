@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+
+# raw art/audio sources live in shared cloud storage, not git
+assets-src/
+
+.DS_Store
+.env
+.env.local
+*.log
