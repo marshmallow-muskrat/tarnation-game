@@ -56,23 +56,25 @@ export const BLUNDER_COOLDOWN = 1.1;
 export const BLUNDER_SPREAD = 0.28;
 export const BLUNDER_PELLETS = 5;
 
-// Woods
-export const WOODS_W = 48;
-export const WOODS_H = 48;
-export const LANTERN_FUEL = 120;
-export const LANTERN_DISTANCE_MAX = 7.4;
-export const LANTERN_DISTANCE_MIN = 2.5;
-export const TREE_CHOPS = 3;
-export const TREE_WOOD = 1;
-export const TREE_COUNT = 36;
-
-// Overworld (farm) trees — choppable, respawning
-/** Share of world tiles that carry a tree. */
-export const FARM_TREE_FRACTION = 0.25;
-/** Chops to fell an overworld tree. */
-export const FARM_TREE_CHOPS = 3;
-/** Wood added to the inventory per felled overworld tree. */
+// Overworld trees — choppable, respawning, clustered into groves
+/** Share of world tiles that carry a tree, averaged over the whole map. */
+export const FARM_TREE_FRACTION = 0.15;
+/**
+ * Trees clump: a low-frequency grove field decides where woodland is, and the
+ * per-tile roll is biased by it. Same average coverage, far more open ground.
+ */
+export const GROVE_CELL = 34;
+/** Inside a copse / out on open ground. Both derive from the map-wide average. */
+export const GROVE_DENSE = FARM_TREE_FRACTION * 2.8;
+export const GROVE_SPARSE = FARM_TREE_FRACTION * 0.13;
+/** Axe swings to fell a tree. */
+export const FARM_TREE_CHOPS = 5;
+/** Wood added to the inventory per felled tree. */
 export const FARM_TREE_WOOD = 2;
+/** Stumps clear in one swing and give nothing. */
+export const STUMP_CHOPS = 1;
+/** Share of tiles carrying a boulder. Boulders can't be tilled through. */
+export const ROCK_TILE_FRACTION = 0.035;
 /** Days before a chopped tile grows a tree back. */
 export const TREE_RESPAWN_DAYS = 2;
 /**
@@ -81,33 +83,8 @@ export const TREE_RESPAWN_DAYS = 2;
  * call count adds up fast. Two chunks still covers well past the camera.
  */
 export const TREE_CHUNK_RADIUS = 2;
-export const BAG_SIZE_BASE = 6;
-export const BAG_SIZE_UPGRADED = 12;
-export const BAG_SIZE_CABIN = 16;
-export const STALKER_SPAWN_FUEL = 40;
-/** World-unit speeds (faster than player when bag full). */
-export const STALKER_SPEED_EMPTY = 4.2; // ~150 in old px terms relative
-export const STALKER_SPEED_FULL = 6.2; // ~210
-export const STALKER_DESPAWN_ON_EXIT = true;
-
-// Homestead tiers: 0 Lean-To, 1 Market Stall, 2 Cabin
-export const SHACK_COST = 40; // wood
-/** The tier-1 build is the market stall — same cost, clearer name. */
-export const STALL_COST = SHACK_COST;
-export const CABIN_COST_WOOD = 20;
-export const CABIN_COST_DARKWOOD = 30;
-/** @deprecated use SHACK_COST — kept for old win check path */
-export const SHED_COST = SHACK_COST;
-
-// Attention
-export const ATTENTION_MAX = 100;
-export const ATTENTION_IDLE_DECAY = 2.5; // per sec when still
-export const ATTENTION_CHOP = 8;
-export const ATTENTION_GUN = 18;
-export const ATTENTION_BOW = 3;
-export const ATTENTION_TIME_FRINGE = 0.4;
-export const ATTENTION_TIME_THICKET = 1.0;
-export const ATTENTION_TIME_DEEP = 1.8;
+// Market stall — the only structure on the map for now.
+export const STALL_COST = 0;
 
 // Lake / world dressing (visual)
 export const WORLD_HALF = WORLD_SIZE / 2;
@@ -124,8 +101,6 @@ export const CHUNK_COUNT = 15;
 export const CHUNK_LOAD_RADIUS = 4;
 export const WATER_COLLECT_RANGE = 1.5;
 export const WATER_FLOW_SPEED = 0.35;
-/** North edge of world for woods entry strip */
-export const TREELINE_Z = 2.5;
 
 export const FIXED_DT = 1 / 60;
 export const SAVE_KEY = 'tarnation.save';
@@ -134,6 +109,28 @@ export const BUCKET_CAPACITY = 10;
 // Inventory / toolbar
 export const INVENTORY_SLOTS = 24;
 export const TOOLBAR_SLOTS = 5;
+
+// Ultimate — its own slot to the left of the toolbar
+export const BOULDER_COOLDOWN = 12;
+export const BOULDER_DAMAGE = 5;
+export const BOULDER_SPEED = 9;
+export const BOULDER_RADIUS = 1.15;
+export const BOULDER_RANGE = 16;
+
+// Melee
+export const MELEE_RANGE = 1.9;
+export const MELEE_COOLDOWN = 0.35;
+export const FIST_DAMAGE = 1;
+export const AXE_DAMAGE = 2;
+
+// Loot
+/** Base chance a creature drops its trophy when killed. */
+export const TROPHY_DROP_CHANCE = 0.01;
+/** Added to the chance for every kill of that creature since the last drop. */
+export const TROPHY_PITY_STEP = 0.01;
+
+/** Tilled ground left unplanted is reclaimed by grass after this many days. */
+export const TILL_DECAY_DAYS = 1;
 
 // Market stall
 /** Distance from the stall at which the sell counter opens. */
@@ -158,19 +155,6 @@ export const FARM_COLORS = {
   reed: 0x5a7a3a,
   stone: 0x6a6a58,
   trench: 0x3a5a8a,
-};
-
-export const WOODS_COLORS = {
-  fog: 0x07110f,
-  floorA: 0x18231f,
-  floorB: 0x26322d,
-  stone: 0x29322f,
-  stoneDark: 0x151d1b,
-  teal: 0x8dd8c7,
-  tealDeep: 0x2f746a,
-  amber: 0xf0a24c,
-  moon: 0xd8f6ee,
-  crimson: 0xd85d4c,
 };
 
 /** Base crop catalogue. Every plant grows in exactly two days. */

@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import {
   FARM_COLORS,
+  GRID_H,
+  GRID_W,
   HOMESTEAD_MAX_X,
   HOMESTEAD_MAX_Z,
   HOMESTEAD_MIN_X,
@@ -12,6 +14,7 @@ import {
 } from '../content';
 import { standardMaterial } from './materials';
 import { fbm2D, hash2, lerp, smoothstep, valueNoise2D } from './noise';
+import { buildStreamSpecs, StreamField } from './streams';
 import { buildShoreFoam, createWaterAsset } from './water';
 
 export const TERRAIN_SEED = 0x7a24_0104;
@@ -21,98 +24,38 @@ const GREEN_B = new THREE.Color(FARM_COLORS.floorB);
 const GREEN_C = new THREE.Color(FARM_COLORS.floorC);
 const GREEN_D = new THREE.Color(FARM_COLORS.floorD);
 
+/** Per-tile soil state the terrain paints into its own vertex colours. */
+export const SOIL_NONE = 0;
+export const SOIL_TILLED = 1;
+export const SOIL_WATERED = 2;
+
 export type TerrainSystem = {
   mesh: THREE.Mesh;
-  /** River + lake surfaces, their shimmer overlays and shoreline foam. */
+  /** River, creeks, lake, their shimmer overlays and shoreline foam. */
   water: THREE.Group;
-  riverMesh: THREE.Mesh;
-  lakeMesh: THREE.Mesh;
   bankScatter: THREE.Group;
-  riverCurve: THREE.CatmullRomCurve3;
+  streams: StreamField;
   /** Sample final height at world xz */
   heightAt: (x: number, z: number) => number;
-  /** Distance to nearest water surface (river or lake) */
+  /** Distance to nearest water surface (streams or lake) */
   distToWater: (x: number, z: number) => number;
   /** Animate water (call each frame) */
   updateWater: (t: number, dt: number) => void;
+  /**
+   * Repaint worked ground straight into the terrain's vertex colours.
+   * `mask` is GRID_W × GRID_H of SOIL_* values, row-major.
+   */
+  applySoilMask: (mask: Uint8Array) => void;
 };
 
-function buildRiverCurve(): THREE.CatmullRomCurve3 {
-  // Start west edge, meander across, end at lake
-  const raw: THREE.Vector3[] = [
-    new THREE.Vector3(-4, 0, 70),
-    new THREE.Vector3(30, 0, 78),
-    new THREE.Vector3(55, 0, 92),
-    new THREE.Vector3(80, 0, 88),
-    new THREE.Vector3(105, 0, 75),
-    new THREE.Vector3(125, 0, 82),
-    new THREE.Vector3(145, 0, 95),
-    new THREE.Vector3(155, 0, 100),
-    new THREE.Vector3(LAKE_CX - 8, 0, LAKE_CZ + 2),
-    new THREE.Vector3(LAKE_CX, 0, LAKE_CZ),
-  ];
+const LAKE_WIDEN = 1.14;
+const RIVER_WIDEN = 1.16;
+const LAKE_FLOOR = -3.4;
 
-  // Perpendicular meander offsets
-  const pts: THREE.Vector3[] = [];
-  for (let i = 0; i < raw.length; i++) {
-    const p = raw[i]!.clone();
-    if (i > 0 && i < raw.length - 1) {
-      const prev = raw[i - 1]!;
-      const next = raw[i + 1]!;
-      const dx = next.x - prev.x;
-      const dz = next.z - prev.z;
-      const len = Math.hypot(dx, dz) || 1;
-      const px = -dz / len;
-      const pz = dx / len;
-      const n = (valueNoise2D(p.x, p.z, 18, TERRAIN_SEED ^ 0x51) - 0.5) * 2;
-      const n2 = (valueNoise2D(p.x + 40, p.z - 20, 9, TERRAIN_SEED ^ 0x99) - 0.5) * 2;
-      const amp = 10 + n2 * 4;
-      p.x += px * n * amp;
-      p.z += pz * n * amp;
-    }
-    pts.push(p);
-  }
-  return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.35);
-}
-
-function riverWidthAt(t: number): number {
-  // 3–7 units along length
-  return 3 + 4 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2.3));
-}
-
-function distToCurve(
-  curve: THREE.CatmullRomCurve3,
-  x: number,
-  z: number,
-  samples = 80,
-): { dist: number; t: number; width: number } {
-  let best = Infinity;
-  let bestT = 0;
-  for (let i = 0; i <= samples; i++) {
-    const t = i / samples;
-    const p = curve.getPoint(t);
-    const d = Math.hypot(p.x - x, p.z - z);
-    if (d < best) {
-      best = d;
-      bestT = t;
-    }
-  }
-  // refine
-  const step = 1 / samples;
-  for (let k = 0; k < 6; k++) {
-    const t0 = Math.max(0, bestT - step);
-    const t1 = Math.min(1, bestT + step);
-    for (let j = 0; j <= 8; j++) {
-      const t = t0 + ((t1 - t0) * j) / 8;
-      const p = curve.getPoint(t);
-      const d = Math.hypot(p.x - x, p.z - z);
-      if (d < best) {
-        best = d;
-        bestT = t;
-      }
-    }
-  }
-  return { dist: best, t: bestT, width: riverWidthAt(bestT) };
+/** Noise-perturbed lake rim radius at angle a — shared by surface and foam. */
+function lakeRimRadius(a: number): number {
+  const n = 0.9 + 0.12 * valueNoise2D(Math.cos(a) * 8, Math.sin(a) * 8, 1, TERRAIN_SEED ^ 0x77);
+  return LAKE_RADIUS * n;
 }
 
 function baseHeight(x: number, z: number): number {
@@ -137,17 +80,10 @@ function baseHeight(x: number, z: number): number {
 }
 
 /**
- * Water bodies are *flattened into* the terrain, not just subtracted from it.
- *
- * Subtracting a fixed depth left the bed as noisy as the ground around it — with
- * ±1.2 of noise and a 2.4 carve, a flat water surface ended up under the bed in
- * half the lake. Blending the height toward a flat floor gives a real basin that
- * water can actually sit in.
+ * Water bodies are flattened *into* the terrain, not just subtracted from it —
+ * with ±1.2 of ground noise, a fixed carve leaves a bed too rough for a flat
+ * surface to sit in, and the water ends up buried.
  */
-const LAKE_FLOOR = -3.4;
-const RIVER_DEPTH = 1.5;
-
-/** 0 outside the basin → 1 on the flat floor. */
 function lakeBasin(x: number, z: number): number {
   const dx = x - LAKE_CX;
   const dz = z - LAKE_CZ;
@@ -160,18 +96,9 @@ function lakeBasin(x: number, z: number): number {
   return smoothstep(rim * 1.3, rim * 0.65, d);
 }
 
-/** Channel blend factor plus the un-carved height at the centreline. */
-function riverChannel(
-  curve: THREE.CatmullRomCurve3,
-  x: number,
-  z: number,
-): { k: number; centre: number } | null {
-  const { dist, t, width } = distToCurve(curve, x, z);
-  const bank = width * 1.6;
-  if (dist > bank) return null;
-  const k = smoothstep(bank, width * 0.35, dist);
-  const p = curve.getPoint(t);
-  return { k, centre: baseHeight(p.x, p.z) };
+/** Channel depth scales with width, so creeks are shallow and the river is not. */
+function channelDepth(width: number): number {
+  return 0.45 + width * 0.15;
 }
 
 const GREEN_DARK = new THREE.Color(0x3f6428);
@@ -186,18 +113,14 @@ function vertexColor(x: number, z: number, h: number, out: THREE.Color): void {
 
   // fbm bottoms out around 21-unit cells, and the four base greens sit within ~15%
   // lightness of each other — across one screen that reads as a single flat colour.
-  // Two finer, wider-contrast layers give the ground visible patchiness at the scale
-  // the player actually sees.
   const patch = valueNoise2D(x, z, 6.5, TERRAIN_SEED ^ 0x5c1);
   out.lerp(GREEN_DARK, smoothstep(0.62, 1.0, patch) * 0.5);
   out.lerp(GREEN_PALE, smoothstep(0.38, 0.0, patch) * 0.38);
   const grain = valueNoise2D(x, z, 2.2, TERRAIN_SEED ^ 0xa71);
   out.offsetHSL(0, 0, (grain - 0.5) * 0.055);
-  // slightly browner near water (lower)
   if (h < -0.35) {
     out.lerp(new THREE.Color(0x5a6a40), smoothstep(-0.35, -1.2, h));
   }
-  // homestead lawn slightly greener
   if (
     x >= HOMESTEAD_MIN_X &&
     x <= HOMESTEAD_MAX_X &&
@@ -208,35 +131,27 @@ function vertexColor(x: number, z: number, h: number, out: THREE.Color): void {
   }
 }
 
-/**
- * The ribbon runs slightly wider than the carved channel (WIDEN) so its edges land
- * on the banks. The surface can then sit just under the bank height and still cover
- * the whole channel — the old ribbon matched the channel exactly and was pinned to
- * the bed, which put the water underneath the ground.
- */
-const RIVER_WIDEN = 1.16;
-
-function buildRiverRibbon(
-  curve: THREE.CatmullRomCurve3,
-  segs = 120,
-  halfWidthSamples = 5,
+function buildRibbon(
+  streams: StreamField,
+  index: number,
+  segs: number,
 ): { geometry: THREE.BufferGeometry; basePositions: Float32Array } {
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
+  const spec = streams.specs[index]!;
 
   for (let i = 0; i <= segs; i++) {
     const t = i / segs;
-    const p = curve.getPoint(t);
-    const tan = curve.getTangent(t).normalize();
+    const p = streams.point(index, t);
+    const tan = streams.tangent(index, t);
     const nx = -tan.z;
     const nz = tan.x;
-    const w = riverWidthAt(t) * 0.5 * RIVER_WIDEN;
-    // left and right
+    const w = spec.widthAt(t) * 0.5 * RIVER_WIDEN;
     positions.push(p.x + nx * w, -0.15, p.z + nz * w);
     positions.push(p.x - nx * w, -0.15, p.z - nz * w);
-    uvs.push(t * 8, 0);
-    uvs.push(t * 8, 1);
+    uvs.push(t * spec.uvScale, 0);
+    uvs.push(t * spec.uvScale, 1);
     if (i < segs) {
       const a = i * 2;
       indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
@@ -249,22 +164,12 @@ function buildRiverRibbon(
   geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
   geometry.setIndex(indices);
   geometry.computeVertexNormals();
-  void halfWidthSamples;
   return { geometry, basePositions: posArr.slice() };
-}
-
-/** Lake surface reaches past the rim so its edge is buried in the bank. */
-const LAKE_WIDEN = 1.14;
-
-/** Noise-perturbed lake rim radius at angle a — shared by the surface and the foam. */
-function lakeRimRadius(a: number): number {
-  const n = 0.9 + 0.12 * valueNoise2D(Math.cos(a) * 8, Math.sin(a) * 8, 1, TERRAIN_SEED ^ 0x77);
-  return LAKE_RADIUS * n;
 }
 
 function buildLakeGeometry(): THREE.BufferGeometry {
   const segs = 48;
-  const positions: number[] = [0, -0.12, 0]; // center later offset
+  const positions: number[] = [0, -0.12, 0];
   const uvs: number[] = [0.5, 0.5];
   const indices: number[] = [];
   for (let i = 0; i <= segs; i++) {
@@ -273,8 +178,7 @@ function buildLakeGeometry(): THREE.BufferGeometry {
     positions.push(Math.cos(a) * r, -0.12, Math.sin(a) * r);
     uvs.push(0.5 + Math.cos(a) * 0.5, 0.5 + Math.sin(a) * 0.5);
     if (i < segs) {
-      // Wound so the fan's normal points up (+Y) — reversed, the surface lights
-      // from underneath and reads black.
+      // Wound so the fan's normal points up (+Y).
       indices.push(0, i + 2, i + 1);
     }
   }
@@ -287,7 +191,7 @@ function buildLakeGeometry(): THREE.BufferGeometry {
 }
 
 function dressBanks(
-  curve: THREE.CatmullRomCurve3,
+  streams: StreamField,
   heightAt: (x: number, z: number) => number,
 ): THREE.Group {
   const group = new THREE.Group();
@@ -297,16 +201,13 @@ function dressBanks(
   const stoneGeo = new THREE.OctahedronGeometry(0.14, 0);
   const reedGeo = new THREE.ConeGeometry(0.06, 0.55, 4);
 
-  // Pre-count
-  const maxStones = 400;
-  const maxReeds = 500;
+  const maxStones = 700;
+  const maxReeds = 900;
   const stones = new THREE.InstancedMesh(stoneGeo, stoneMat, maxStones);
   const reeds = new THREE.InstancedMesh(reedGeo, reedMat, maxReeds);
   stones.castShadow = true;
   stones.receiveShadow = true;
   reeds.castShadow = true;
-  stones.count = 0;
-  reeds.count = 0;
 
   const m = new THREE.Matrix4();
   const q = new THREE.Quaternion();
@@ -316,69 +217,54 @@ function dressBanks(
 
   let si = 0;
   let ri = 0;
-  for (let i = 0; i < 220; i++) {
-    const t = i / 220;
-    const base = curve.getPoint(t);
-    const tan = curve.getTangent(t).normalize();
-    const nx = -tan.z;
-    const nz = tan.x;
-    const w = riverWidthAt(t);
 
-    for (const side of [-1, 1]) {
-      for (let k = 0; k < 2; k++) {
-        if (si >= maxStones) break;
-        const along = (hash2(i, k + side * 3, 11) - 0.5) * 0.8;
-        const out = w * 0.55 + 0.4 + hash2(i, k, 22) * 1.4;
-        const x = base.x + nx * side * out + tan.x * along;
-        const z = base.z + nz * side * out + tan.z * along;
-        if (x < 2 || z < 2 || x > WORLD_SIZE - 2 || z > WORLD_SIZE - 2) continue;
-        // skip dense homestead core
-        if (
-          x > HOMESTEAD_MIN_X + 10 &&
-          x < HOMESTEAD_MAX_X - 10 &&
-          z > HOMESTEAD_MIN_Z + 12 &&
-          z < HOMESTEAD_MAX_Z - 8
-        )
-          continue;
-        const y = heightAt(x, z);
-        const sc = 0.7 + hash2(i, k, 33) * 0.9;
-        p.set(x, y + 0.05 * sc, z);
-        e.set(0, hash2(i, k, 44) * Math.PI * 2, 0);
-        q.setFromEuler(e);
-        s.set(sc, sc * (0.7 + hash2(i, k, 55) * 0.5), sc);
-        m.compose(p, q, s);
-        stones.setMatrixAt(si++, m);
-      }
-      for (let k = 0; k < 2; k++) {
-        if (ri >= maxReeds) break;
-        const out = w * 0.5 + 0.2 + hash2(i, k + 9, 66) * 1.1;
-        const x = base.x + nx * side * out;
-        const z = base.z + nz * side * out;
-        if (x < 2 || z < 2 || x > WORLD_SIZE - 2 || z > WORLD_SIZE - 2) continue;
-        if (
-          x > HOMESTEAD_MIN_X + 10 &&
-          x < HOMESTEAD_MAX_X - 10 &&
-          z > HOMESTEAD_MIN_Z + 12 &&
-          z < HOMESTEAD_MAX_Z - 8
-        )
-          continue;
-        const y = heightAt(x, z);
-        const sc = 0.8 + hash2(i, k, 77) * 0.6;
-        p.set(x, y + 0.25 * sc, z);
-        e.set(0, hash2(i, k, 88) * Math.PI * 2, 0);
-        q.setFromEuler(e);
-        s.set(sc, sc, sc);
-        m.compose(p, q, s);
-        reeds.setMatrixAt(ri++, m);
+  streams.specs.forEach((spec, index) => {
+    const samples = index === 0 ? 200 : 110;
+    for (let i = 0; i < samples; i++) {
+      const t = i / samples;
+      const base = streams.point(index, t);
+      const tan = streams.tangent(index, t);
+      const nx = -tan.z;
+      const nz = tan.x;
+      const w = spec.widthAt(t);
+
+      for (const side of [-1, 1]) {
+        if (si < maxStones && hash2(i, index * 3 + side, 11) > 0.45) {
+          const out = w * 0.6 + 0.35 + hash2(i, index, 22) * 1.1;
+          const x = base.x + nx * side * out + tan.x * (hash2(i, side, 12) - 0.5);
+          const z = base.z + nz * side * out + tan.z * (hash2(i, side, 12) - 0.5);
+          if (x > 2 && z > 2 && x < WORLD_SIZE - 2 && z < WORLD_SIZE - 2) {
+            const sc = 0.6 + hash2(i, index, 33) * 0.8;
+            p.set(x, heightAt(x, z) + 0.05 * sc, z);
+            e.set(0, hash2(i, index, 44) * Math.PI * 2, 0);
+            q.setFromEuler(e);
+            s.set(sc, sc * (0.7 + hash2(i, index, 55) * 0.5), sc);
+            m.compose(p, q, s);
+            stones.setMatrixAt(si++, m);
+          }
+        }
+        if (ri < maxReeds) {
+          const out = w * 0.5 + 0.15 + hash2(i, index + 9, 66) * 0.9;
+          const x = base.x + nx * side * out;
+          const z = base.z + nz * side * out;
+          if (x > 2 && z > 2 && x < WORLD_SIZE - 2 && z < WORLD_SIZE - 2) {
+            const sc = 0.75 + hash2(i, index, 77) * 0.6;
+            p.set(x, heightAt(x, z) + 0.25 * sc, z);
+            e.set(0, hash2(i, index, 88) * Math.PI * 2, 0);
+            q.setFromEuler(e);
+            s.set(sc, sc, sc);
+            m.compose(p, q, s);
+            reeds.setMatrixAt(ri++, m);
+          }
+        }
       }
     }
-  }
+  });
 
-  // Lake shore denser
+  // Lake shore
   for (let i = 0; i < 160; i++) {
     const a = (i / 160) * Math.PI * 2;
-    const n = 0.95 + 0.1 * hash2(i, 1, 99);
-    const r = LAKE_RADIUS * n + 0.8 + hash2(i, 2, 100) * 2.5;
+    const r = lakeRimRadius(a) + 0.8 + hash2(i, 2, 100) * 2.5;
     const x = LAKE_CX + Math.cos(a) * r;
     const z = LAKE_CZ + Math.sin(a) * r;
     if (x < 2 || z < 2 || x > WORLD_SIZE - 2 || z > WORLD_SIZE - 2) continue;
@@ -392,7 +278,7 @@ function dressBanks(
       m.compose(p, q, s);
       stones.setMatrixAt(si++, m);
     }
-    if (ri < maxReeds && i % 1 === 0) {
+    if (ri < maxReeds) {
       const sc = 0.9 + hash2(i, 5, 103) * 0.5;
       p.set(x + (hash2(i, 6, 104) - 0.5), y + 0.28, z + (hash2(i, 7, 105) - 0.5));
       e.set(0, hash2(i, 8, 106) * 6, 0);
@@ -407,245 +293,24 @@ function dressBanks(
   reeds.count = ri;
   stones.instanceMatrix.needsUpdate = true;
   reeds.instanceMatrix.needsUpdate = true;
+  stones.computeBoundingSphere();
+  reeds.computeBoundingSphere();
   group.add(stones, reeds);
   return group;
 }
 
-/**
- * Build 240×240 terrain with river/lake carving, water meshes, bank dressing.
- */
-export function buildTerrain(): TerrainSystem {
-  const curve = buildRiverCurve();
-  const segs = 240;
-  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, segs, segs);
-  geo.rotateX(-Math.PI / 2);
-
-  const pos = geo.attributes.position as THREE.BufferAttribute;
-  const colors = new Float32Array(pos.count * 3);
-  const col = new THREE.Color();
-
-  // Shift plane from centered to [0, WORLD_SIZE]
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i) + WORLD_SIZE / 2;
-    const z = pos.getZ(i) + WORLD_SIZE / 2;
-    pos.setX(i, x);
-    pos.setZ(i, z);
-
-    let h = baseHeight(x, z);
-    const channel = riverChannel(curve, x, z);
-    if (channel) h = lerp(h, channel.centre - RIVER_DEPTH, channel.k);
-    const basin = lakeBasin(x, z);
-    if (basin > 0) h = lerp(h, LAKE_FLOOR, basin);
-    // Flatten homestead building pad
-    if (
-      x >= HOMESTEAD_MIN_X + 14 &&
-      x <= HOMESTEAD_MAX_X - 14 &&
-      z >= HOMESTEAD_MIN_Z + 16 &&
-      z <= HOMESTEAD_MAX_Z - 10
-    ) {
-      h = lerp(h, 0, 0.9);
-    }
-    pos.setY(i, h);
-    vertexColor(x, z, h, col);
-    colors[i * 3] = col.r;
-    colors[i * 3 + 1] = col.g;
-    colors[i * 3 + 2] = col.b;
-  }
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-
-  const mat = standardMaterial(0xffffff, {
-    roughness: 0.92,
-    metalness: 0.02,
-    flatShading: true,
-    vertexColors: true,
-  });
-  const mesh = new THREE.Mesh(geo, mat);
-  mesh.receiveShadow = true;
-  mesh.castShadow = false;
-
-  // Height field lookup via bilinear sample of grid
-  const grid = segs + 1;
-  const heights = new Float32Array(grid * grid);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const ix = Math.round((x / WORLD_SIZE) * segs);
-    const iz = Math.round((z / WORLD_SIZE) * segs);
-    heights[iz * grid + ix] = pos.getY(i);
-  }
-
-  const heightAt = (x: number, z: number): number => {
-    const u = (x / WORLD_SIZE) * segs;
-    const v = (z / WORLD_SIZE) * segs;
-    const x0 = Math.floor(u);
-    const z0 = Math.floor(v);
-    if (x0 < 0 || z0 < 0 || x0 >= segs || z0 >= segs) return 0;
-    const fx = u - x0;
-    const fz = v - z0;
-    const h00 = heights[z0 * grid + x0] ?? 0;
-    const h10 = heights[z0 * grid + x0 + 1] ?? h00;
-    const h01 = heights[(z0 + 1) * grid + x0] ?? h00;
-    const h11 = heights[(z0 + 1) * grid + x0 + 1] ?? h00;
-    return lerp(lerp(h00, h10, fx), lerp(h01, h11, fx), fz);
-  };
-
-  const distToWater = (x: number, z: number): number => {
-    const lake = Math.hypot(x - LAKE_CX, z - LAKE_CZ) - LAKE_RADIUS * 0.95;
-    const { dist, width } = distToCurve(curve, x, z, 100);
-    const river = dist - width * 0.45;
-    return Math.min(lake, river);
-  };
-
-  // River ribbon
-  const { geometry: riverGeo, basePositions } = buildRiverRibbon(curve);
-  // Set Y from terrain slightly below bank
-  {
-    const rp = riverGeo.attributes.position as THREE.BufferAttribute;
-    // Vertices come in left/right pairs — one water level per cross-section, taken
-    // just below the lower of the two banks so the surface is flat across the
-    // channel and still tucked under the ground at both edges.
-    for (let i = 0; i < rp.count; i += 2) {
-      const yL = heightAt(rp.getX(i), rp.getZ(i));
-      const yR = heightAt(rp.getX(i + 1), rp.getZ(i + 1));
-      const y = Math.min(yL, yR) - 0.06;
-      for (const v of [i, i + 1]) {
-        rp.setY(v, y);
-        basePositions[v * 3 + 1] = y;
-      }
-    }
-    riverGeo.computeVertexNormals();
-  }
-  // Two assets: the river ribbon is long and thin, the lake is a broad disc, and
-  // one texture density can't serve both without smearing.
-  const waterAsset = createWaterAsset([6, 2]);
-  const lakeAsset = createWaterAsset([9, 9]);
-  const water = new THREE.Group();
-
-  const riverMesh = new THREE.Mesh(riverGeo, waterAsset.material);
-  riverMesh.receiveShadow = true;
-  // Shimmer layer: same geometry (so it ripples with the surface), lifted a hair.
-  const riverShimmer = new THREE.Mesh(riverGeo, waterAsset.overlayMaterial);
-  riverShimmer.position.y = 0.02;
-  riverShimmer.renderOrder = 1;
-
-  // One flat level for the whole lake: the lowest point of the surrounding bank,
-  // minus a hair. Anything higher would spill over the rim; anything that follows
-  // the bed (as this used to) ends up buried under it.
-  const lakeLevel = (() => {
-    let low = Infinity;
-    for (let i = 0; i < 96; i++) {
-      const a = (i / 96) * Math.PI * 2;
-      const r = lakeRimRadius(a) * LAKE_WIDEN;
-      low = Math.min(low, heightAt(LAKE_CX + Math.cos(a) * r, LAKE_CZ + Math.sin(a) * r));
-    }
-    // Below the lowest bank so it never spills, but never so low that the basin
-    // reads as a dry pit.
-    return Math.min(low - 0.08, LAKE_FLOOR + 2.4);
-  })();
-
-  const lakeGeo = buildLakeGeometry();
-  {
-    const lp = lakeGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < lp.count; i++) lp.setY(i, lakeLevel);
-    lakeGeo.translate(LAKE_CX, 0, LAKE_CZ);
-    lakeGeo.computeVertexNormals();
-  }
-  const lakeMesh = new THREE.Mesh(lakeGeo, lakeAsset.material);
-  lakeMesh.receiveShadow = true;
-  const lakeShimmer = new THREE.Mesh(lakeGeo, lakeAsset.overlayMaterial);
-  lakeShimmer.position.y = 0.02;
-  lakeShimmer.renderOrder = 1;
-
-  water.add(riverMesh, riverShimmer, lakeMesh, lakeShimmer);
-
-  // Shoreline foam — lake rim, then both banks of the river.
-  {
-    const segs = 96;
-    const rim: { x: number; z: number; y: number }[] = [];
-    for (let i = 0; i <= segs; i++) {
-      const a = (i / segs) * Math.PI * 2;
-      const r = lakeRimRadius(a) * (LAKE_WIDEN - 0.06);
-      rim.push({
-        x: LAKE_CX + Math.cos(a) * r,
-        z: LAKE_CZ + Math.sin(a) * r,
-        y: lakeLevel,
-      });
-    }
-    const foam = buildShoreFoam(rim, 1.1, LAKE_CX, LAKE_CZ);
-    if (foam) water.add(foam);
-
-    const rp = riverGeo.attributes.position as THREE.BufferAttribute;
-    for (const side of [-1, 1] as const) {
-      const edge: { x: number; z: number; y: number }[] = [];
-      for (let i = 0; i <= 120; i++) {
-        const t = i / 120;
-        const p = curve.getPoint(t);
-        const tan = curve.getTangent(t).normalize();
-        const w = riverWidthAt(t) * 0.5 * (RIVER_WIDEN - 0.06);
-        const x = p.x + -tan.z * side * w;
-        const z = p.z + tan.x * side * w;
-        // Match the ribbon's own level for this cross-section.
-        edge.push({ x, z, y: rp.getY(Math.min(i, 120) * 2) });
-      }
-      // Push foam outward from the channel centre rather than a point centre.
-      const foamStrip = buildRiverFoam(edge, curve, side);
-      if (foamStrip) water.add(foamStrip);
-    }
-  }
-
-  const bankScatter = dressBanks(curve, heightAt);
-
-  const updateWater = (t: number, _dt: number): void => {
-    waterAsset.update(t);
-    lakeAsset.update(t * 0.55);
-    // Subtle sine displacement along river
-    const rp = riverGeo.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < rp.count; i++) {
-      const baseY = basePositions[i * 3 + 1] ?? -0.1;
-      const u = (riverGeo.attributes.uv as THREE.BufferAttribute).getX(i);
-      rp.setY(i, baseY + Math.sin(t * 2.2 + u * 14) * 0.025);
-    }
-    rp.needsUpdate = true;
-  };
-
-  return {
-    mesh,
-    water,
-    riverMesh,
-    lakeMesh,
-    bankScatter,
-    riverCurve: curve,
-    heightAt,
-    distToWater,
-    updateWater,
-  };
-}
-
-/** Foam ribbon hugging one bank of the river, pushed away from the channel. */
-function buildRiverFoam(
+/** Foam ribbon hugging one bank, pushed away from the channel. */
+function buildStreamFoam(
   edge: { x: number; z: number; y: number }[],
-  curve: THREE.CatmullRomCurve3,
-  side: -1 | 1,
-): THREE.Mesh | null {
-  const shifted = edge.map((p, i) => {
-    const t = i / (edge.length - 1);
-    const tan = curve.getTangent(t).normalize();
-    return {
-      x: p.x + -tan.z * side * 0.9,
-      z: p.z + tan.x * side * 0.9,
-      y: p.y,
-    };
-  });
-  // buildShoreFoam extrudes away from a centre point; feed it the inner edge and a
-  // centre far enough along the normal that the strip lands on the outer edge.
+  shifted: { x: number; z: number }[],
+): THREE.Mesh {
   const positions: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
   for (let i = 0; i < edge.length; i++) {
     const a = edge[i]!;
     const b = shifted[i]!;
-    positions.push(a.x, a.y + 0.014, a.z, b.x, b.y + 0.014, b.z);
+    positions.push(a.x, a.y + 0.014, a.z, b.x, a.y + 0.014, b.z);
     uvs.push(0, 0, 1, 0);
     if (i < edge.length - 1) {
       const k = i * 2;
@@ -667,4 +332,298 @@ function buildRiverFoam(
   const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 2;
   return mesh;
+}
+
+/**
+ * Build the 240×240 terrain: river + creeks + lake carved in, water surfaces,
+ * bank dressing, and the vertex-colour soil painting the farm draws through.
+ */
+export function buildTerrain(): TerrainSystem {
+  const meander = (x: number, z: number, salt: number): number =>
+    (valueNoise2D(x, z, 18, TERRAIN_SEED ^ salt) - 0.5) * 2;
+  const streams = new StreamField(buildStreamSpecs(LAKE_CX, LAKE_CZ, meander));
+
+  // Centreline heights per stream, sampled once — the carve needs the un-carved
+  // height at the channel centre and can't afford a spline evaluation per vertex.
+  const CENTRE_SAMPLES = 220;
+  const centreH: Float32Array[] = streams.specs.map((_, index) => {
+    const arr = new Float32Array(CENTRE_SAMPLES + 1);
+    for (let i = 0; i <= CENTRE_SAMPLES; i++) {
+      const p = streams.point(index, i / CENTRE_SAMPLES);
+      arr[i] = baseHeight(p.x, p.z);
+    }
+    return arr;
+  });
+  const centreHeight = (stream: number, t: number): number =>
+    centreH[stream]![Math.max(0, Math.min(CENTRE_SAMPLES, Math.round(t * CENTRE_SAMPLES)))]!;
+
+  const segs = 240;
+  const geo = new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE, segs, segs);
+  geo.rotateX(-Math.PI / 2);
+
+  const pos = geo.attributes.position as THREE.BufferAttribute;
+  const colors = new Float32Array(pos.count * 3);
+  const col = new THREE.Color();
+
+  const grid = segs + 1;
+  const heights = new Float32Array(grid * grid);
+  // (ix,iz) → vertex index, so soil painting can find a tile's four corners.
+  const vertexAt = new Int32Array(grid * grid).fill(-1);
+
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i) + WORLD_SIZE / 2;
+    const z = pos.getZ(i) + WORLD_SIZE / 2;
+    pos.setX(i, x);
+    pos.setZ(i, z);
+
+    let h = baseHeight(x, z);
+    const hit = streams.nearest(x, z);
+    if (hit && hit.dist <= hit.width * 1.6) {
+      const k = smoothstep(hit.width * 1.6, hit.width * 0.35, hit.dist);
+      h = lerp(h, centreHeight(hit.stream, hit.t) - channelDepth(hit.width), k);
+    }
+    const basin = lakeBasin(x, z);
+    if (basin > 0) h = lerp(h, LAKE_FLOOR, basin);
+
+    if (
+      x >= HOMESTEAD_MIN_X + 14 &&
+      x <= HOMESTEAD_MAX_X - 14 &&
+      z >= HOMESTEAD_MIN_Z + 16 &&
+      z <= HOMESTEAD_MAX_Z - 10
+    ) {
+      h = lerp(h, 0, 0.9);
+    }
+    pos.setY(i, h);
+    vertexColor(x, z, h, col);
+    colors[i * 3] = col.r;
+    colors[i * 3 + 1] = col.g;
+    colors[i * 3 + 2] = col.b;
+
+    const ix = Math.round((x / WORLD_SIZE) * segs);
+    const iz = Math.round((z / WORLD_SIZE) * segs);
+    heights[iz * grid + ix] = h;
+    vertexAt[iz * grid + ix] = i;
+  }
+
+  const colorAttr = new THREE.BufferAttribute(colors, 3);
+  geo.setAttribute('color', colorAttr);
+  geo.computeVertexNormals();
+  /** Pristine greens, so soil can be painted on and wiped off again. */
+  const baseColors = colors.slice();
+
+  const mat = standardMaterial(0xffffff, {
+    roughness: 0.92,
+    metalness: 0.02,
+    flatShading: true,
+    vertexColors: true,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+
+  const heightAt = (x: number, z: number): number => {
+    const u = (x / WORLD_SIZE) * segs;
+    const v = (z / WORLD_SIZE) * segs;
+    const x0 = Math.floor(u);
+    const z0 = Math.floor(v);
+    if (x0 < 0 || z0 < 0 || x0 >= segs || z0 >= segs) return 0;
+    const fx = u - x0;
+    const fz = v - z0;
+    const h00 = heights[z0 * grid + x0] ?? 0;
+    const h10 = heights[z0 * grid + x0 + 1] ?? h00;
+    const h01 = heights[(z0 + 1) * grid + x0] ?? h00;
+    const h11 = heights[(z0 + 1) * grid + x0 + 1] ?? h00;
+    return lerp(lerp(h00, h10, fx), lerp(h01, h11, fx), fz);
+  };
+
+  const distToWater = (x: number, z: number): number => {
+    const lake = Math.hypot(x - LAKE_CX, z - LAKE_CZ) - LAKE_RADIUS * 0.95;
+    return Math.min(lake, streams.distToWater(x, z));
+  };
+
+  // ------------------------------------------------------------------ water
+  const waterAsset = createWaterAsset([6, 2]);
+  const creekAsset = createWaterAsset([10, 1.4]);
+  const lakeAsset = createWaterAsset([9, 9]);
+  const water = new THREE.Group();
+  const ripples: { geo: THREE.BufferGeometry; base: Float32Array }[] = [];
+
+  streams.specs.forEach((_, index) => {
+    const isRiver = index === 0;
+    const { geometry, basePositions } = buildRibbon(streams, index, isRiver ? 120 : 90);
+    const rp = geometry.attributes.position as THREE.BufferAttribute;
+    // One level per cross-section, just under the lower bank, so the surface is
+    // flat across the channel and tucked under the ground at both edges.
+    for (let i = 0; i < rp.count; i += 2) {
+      const yL = heightAt(rp.getX(i), rp.getZ(i));
+      const yR = heightAt(rp.getX(i + 1), rp.getZ(i + 1));
+      const y = Math.min(yL, yR) - 0.06;
+      for (const v of [i, i + 1]) {
+        rp.setY(v, y);
+        basePositions[v * 3 + 1] = y;
+      }
+    }
+    geometry.computeVertexNormals();
+
+    const asset = isRiver ? waterAsset : creekAsset;
+    const surface = new THREE.Mesh(geometry, asset.material);
+    surface.receiveShadow = true;
+    const shimmer = new THREE.Mesh(geometry, asset.overlayMaterial);
+    shimmer.position.y = 0.02;
+    shimmer.renderOrder = 1;
+    water.add(surface, shimmer);
+    ripples.push({ geo: geometry, base: basePositions });
+
+    // Foam along both banks of the main river only — creeks are too narrow for it
+    // to read as anything but noise.
+    if (!isRiver) return;
+    for (const side of [-1, 1] as const) {
+      const edge: { x: number; z: number; y: number }[] = [];
+      const outer: { x: number; z: number }[] = [];
+      for (let i = 0; i <= 120; i++) {
+        const t = i / 120;
+        const p = streams.point(index, t);
+        const tan = streams.tangent(index, t);
+        const halfWidth = streams.specs[index]!.widthAt(t) * 0.5;
+        const inner = halfWidth * (RIVER_WIDEN - 0.06);
+        edge.push({
+          x: p.x + -tan.z * side * inner,
+          z: p.z + tan.x * side * inner,
+          y: rp.getY(i * 2),
+        });
+        outer.push({
+          x: p.x + -tan.z * side * (inner + 0.9),
+          z: p.z + tan.x * side * (inner + 0.9),
+        });
+      }
+      water.add(buildStreamFoam(edge, outer));
+    }
+  });
+
+  // One flat level for the whole lake: below the lowest bank, never so low that
+  // the basin reads as a dry pit.
+  const lakeLevel = (() => {
+    let low = Infinity;
+    for (let i = 0; i < 96; i++) {
+      const a = (i / 96) * Math.PI * 2;
+      const r = lakeRimRadius(a) * LAKE_WIDEN;
+      low = Math.min(low, heightAt(LAKE_CX + Math.cos(a) * r, LAKE_CZ + Math.sin(a) * r));
+    }
+    return Math.min(low - 0.08, LAKE_FLOOR + 2.4);
+  })();
+
+  const lakeGeo = buildLakeGeometry();
+  {
+    const lp = lakeGeo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < lp.count; i++) lp.setY(i, lakeLevel);
+    lakeGeo.translate(LAKE_CX, 0, LAKE_CZ);
+    lakeGeo.computeVertexNormals();
+  }
+  const lakeMesh = new THREE.Mesh(lakeGeo, lakeAsset.material);
+  lakeMesh.receiveShadow = true;
+  const lakeShimmer = new THREE.Mesh(lakeGeo, lakeAsset.overlayMaterial);
+  lakeShimmer.position.y = 0.02;
+  lakeShimmer.renderOrder = 1;
+  water.add(lakeMesh, lakeShimmer);
+
+  {
+    const segsFoam = 96;
+    const rim: { x: number; z: number; y: number }[] = [];
+    for (let i = 0; i <= segsFoam; i++) {
+      const a = (i / segsFoam) * Math.PI * 2;
+      const r = lakeRimRadius(a) * (LAKE_WIDEN - 0.06);
+      rim.push({ x: LAKE_CX + Math.cos(a) * r, z: LAKE_CZ + Math.sin(a) * r, y: lakeLevel });
+    }
+    const foam = buildShoreFoam(rim, 1.1, LAKE_CX, LAKE_CZ);
+    if (foam) water.add(foam);
+  }
+
+  const bankScatter = dressBanks(streams, heightAt);
+
+  const updateWater = (t: number, _dt: number): void => {
+    waterAsset.update(t);
+    creekAsset.update(t * 1.35);
+    lakeAsset.update(t * 0.55);
+    for (const { geo: g, base } of ripples) {
+      const rp = g.attributes.position as THREE.BufferAttribute;
+      const uv = g.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < rp.count; i++) {
+        rp.setY(i, (base[i * 3 + 1] ?? -0.1) + Math.sin(t * 2.2 + uv.getX(i) * 14) * 0.025);
+      }
+      rp.needsUpdate = true;
+    }
+  };
+
+  // ------------------------------------------------------------- soil painting
+  const DRY_A = new THREE.Color(FARM_COLORS.tilled);
+  const DRY_B = new THREE.Color(FARM_COLORS.tilledLight);
+  const WET = new THREE.Color(FARM_COLORS.watered);
+  /** Per-vertex soil level, so a repaint only touches what changed. */
+  const vertexSoil = new Uint8Array(grid * grid);
+  const prevSoil = new Uint8Array(grid * grid);
+  const soilCol = new THREE.Color();
+
+  const applySoilMask = (mask: Uint8Array): void => {
+    vertexSoil.fill(0);
+    // A vertex is a corner of up to four tiles; the strongest wins, which is what
+    // fills the gaps between neighbouring worked tiles into one uniform field.
+    for (let ty = 0; ty < GRID_H; ty++) {
+      for (let tx = 0; tx < GRID_W; tx++) {
+        const soil = mask[ty * GRID_W + tx]!;
+        if (soil === SOIL_NONE) continue;
+        for (const [dx, dz] of [
+          [0, 0],
+          [1, 0],
+          [0, 1],
+          [1, 1],
+        ] as const) {
+          const ix = tx + dx;
+          const iz = ty + dz;
+          if (ix >= grid || iz >= grid) continue;
+          const k = iz * grid + ix;
+          if (soil > vertexSoil[k]!) vertexSoil[k] = soil;
+        }
+      }
+    }
+
+    let dirty = false;
+    for (let k = 0; k < vertexSoil.length; k++) {
+      const soil = vertexSoil[k]!;
+      if (soil === prevSoil[k]) continue;
+      prevSoil[k] = soil;
+      const v = vertexAt[k]!;
+      if (v < 0) continue;
+      dirty = true;
+      if (soil === SOIL_NONE) {
+        colors[v * 3] = baseColors[v * 3]!;
+        colors[v * 3 + 1] = baseColors[v * 3 + 1]!;
+        colors[v * 3 + 2] = baseColors[v * 3 + 2]!;
+        continue;
+      }
+      const ix = k % grid;
+      const iz = (k / grid) | 0;
+      if (soil === SOIL_WATERED) {
+        soilCol.copy(WET);
+        soilCol.offsetHSL(0, 0, (hash2(ix, iz, 0x5171) - 0.5) * 0.05);
+      } else {
+        soilCol.copy(DRY_A).lerp(DRY_B, hash2(ix, iz, 0x6d17));
+        soilCol.offsetHSL(0, 0, (hash2(ix, iz, 0x9a3f) - 0.5) * 0.07);
+      }
+      colors[v * 3] = soilCol.r;
+      colors[v * 3 + 1] = soilCol.g;
+      colors[v * 3 + 2] = soilCol.b;
+    }
+    if (dirty) colorAttr.needsUpdate = true;
+  };
+
+  return {
+    mesh,
+    water,
+    bankScatter,
+    streams,
+    heightAt,
+    distToWater,
+    updateWater,
+    applySoilMask,
+  };
 }

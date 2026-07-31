@@ -8,23 +8,23 @@ import {
   type Inventory,
 } from './inventory';
 import { cropItem, ITEM_DARKWOOD, ITEM_WOOD, trophyItem } from './items';
+import type { PityState } from './luck';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 export interface GameStats {
   cropsHarvested: number;
   woodGathered: number;
   darkwoodGathered: number;
-  stalkerCaught: number;
   daysSurvived: number;
   trophies: number;
   hybridsDiscovered: number;
+  weaselsFelled: number;
 }
 
-export type WeaponId = 'rock' | 'slingshot' | 'bow' | 'blunderbuss';
-export type HomesteadTier = 0 | 1 | 2;
+export type WeaponId = 'rock' | 'bow' | 'blunderbuss';
 
-/** Chopped overworld trees: "tx,ty" → day it was felled. */
+/** Chopped trees: "tx,ty" → day it was felled. */
 export type ChoppedTrees = Record<string, number>;
 
 export interface SaveData {
@@ -34,27 +34,21 @@ export interface SaveData {
   phase: Phase;
   elapsed: number;
   tiles: Tile[][];
-  /** @deprecated wood lives in the inventory since v4 — kept so v3 saves migrate */
-  wood: number;
-  /** @deprecated see wood */
-  darkwood: number;
-  bagSize: number;
-  /** @deprecated use homesteadTier >= 1 */
-  shedBuilt: boolean;
-  homesteadTier: HomesteadTier;
   weapon: WeaponId;
   unlockedWeapons: WeaponId[];
-  irrigationTier: number; // 1-3
+  irrigationTier: number;
   bucketFill: number;
   selectedCrop: string;
   inventory: Inventory;
-  ducketts: number;
+  inventoryOpen: boolean;
+  duckettes: number;
   choppedTrees: ChoppedTrees;
+  clearedStumps: Record<string, boolean>;
+  dropPity: PityState;
   toolbarSlot: number;
   toolSlotActive: boolean;
   seedInventory: Seed[];
   codex: CodexEntry[];
-  attentionFloor: number;
   stats: GameStats;
   simTime: number;
   winShown: boolean;
@@ -66,10 +60,10 @@ export function defaultStats(): GameStats {
     cropsHarvested: 0,
     woodGathered: 0,
     darkwoodGathered: 0,
-    stalkerCaught: 0,
     daysSurvived: 1,
     trophies: 0,
     hybridsDiscovered: 0,
+    weaselsFelled: 0,
   };
 }
 
@@ -79,7 +73,7 @@ export function serialize(data: SaveData): string {
 
 /**
  * v3 kept wood/darkwood as bare counters and the inventory as a name→count map.
- * v4 puts all of it in 24 slots, so fold the old shape in on load.
+ * v4 moved all of it into 24 slots. Fold either shape in on load.
  */
 function migrateInventory(data: Record<string, unknown>): Inventory {
   const raw = data.inventory;
@@ -127,12 +121,27 @@ export function deserialize(raw: string): SaveData | null {
     data.inventory = migrateInventory(parsed);
     data.weapon = migrateWeapon(parsed.weapon);
     data.unlockedWeapons = Array.from(new Set(['rock' as WeaponId, ...unlocked]));
-    data.ducketts = typeof parsed.ducketts === 'number' ? parsed.ducketts : 0;
+    // "Ducketts" was a typo — v5 spells it duckettes.
+    data.duckettes =
+      typeof parsed.duckettes === 'number'
+        ? parsed.duckettes
+        : typeof parsed.ducketts === 'number'
+          ? (parsed.ducketts as number)
+          : 0;
+    data.inventoryOpen = parsed.inventoryOpen !== false;
     data.choppedTrees =
       parsed.choppedTrees && typeof parsed.choppedTrees === 'object'
         ? (parsed.choppedTrees as ChoppedTrees)
         : {};
-    data.toolbarSlot = typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : 0;
+    data.clearedStumps =
+      parsed.clearedStumps && typeof parsed.clearedStumps === 'object'
+        ? (parsed.clearedStumps as Record<string, boolean>)
+        : {};
+    data.dropPity =
+      parsed.dropPity && typeof parsed.dropPity === 'object'
+        ? (parsed.dropPity as PityState)
+        : {};
+    data.toolbarSlot = typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : 1;
     data.toolSlotActive = parsed.toolSlotActive === true;
     return data;
   } catch {
@@ -140,7 +149,7 @@ export function deserialize(raw: string): SaveData | null {
   }
 }
 
-export function createNewSave(seed: number, bagSize: number): SaveData {
+export function createNewSave(seed: number): SaveData {
   return {
     version: SAVE_VERSION,
     seed,
@@ -148,24 +157,21 @@ export function createNewSave(seed: number, bagSize: number): SaveData {
     phase: 'day',
     elapsed: 0,
     tiles: [],
-    wood: 0,
-    darkwood: 0,
-    bagSize,
-    shedBuilt: false,
-    homesteadTier: 0,
     weapon: 'rock',
     unlockedWeapons: ['rock'],
-    irrigationTier: 1,
+    irrigationTier: 2,
     bucketFill: 0,
     selectedCrop: 'turnip',
     inventory: createInventory(),
-    ducketts: 0,
+    inventoryOpen: true,
+    duckettes: 0,
     choppedTrees: {},
-    toolbarSlot: 0,
+    clearedStumps: {},
+    dropPity: {},
+    toolbarSlot: 1,
     toolSlotActive: false,
     seedInventory: [],
     codex: [],
-    attentionFloor: 0,
     stats: defaultStats(),
     simTime: 0,
     winShown: false,

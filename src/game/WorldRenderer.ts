@@ -6,38 +6,24 @@ import {
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
-  LANTERN_DISTANCE_MAX,
-  LANTERN_DISTANCE_MIN,
   WORLD_SIZE,
-  WOODS_COLORS,
-  WOODS_H,
-  WOODS_W,
 } from '../content';
 import type { Tile } from '../sim/farm';
 import { cloneModel, type ModelKey } from './Assets';
-import { buildDirtGeometries, DIRT_VARIANTS, dirtVariant, dirtYaw } from './dirt';
 import { FarmTrees } from './FarmTrees';
 import { standardMaterial } from './materials';
 import { hash2 } from './noise';
 import { ScatterChunks } from './ScatterChunks';
-import { buildTerrain, type TerrainSystem } from './terrain';
-
-export type Zone = 'farm' | 'woods';
+import { buildTerrain, SOIL_NONE, SOIL_TILLED, SOIL_WATERED, type TerrainSystem } from './terrain';
 
 const _matrix = new THREE.Matrix4();
 const _color = new THREE.Color();
 const _pos = new THREE.Vector3();
 
-function seeded(i: number): number {
-  let a = (i * 374761393 + 668265263) >>> 0;
-  a = Math.imul(a ^ (a >>> 15), a | 1);
-  a ^= a + Math.imul(a ^ (a >>> 7), a | 61);
-  return ((a ^ (a >>> 14)) >>> 0) / 4294967296;
-}
-
 /**
- * Three.js scene — Gloamreach look recipe constants unchanged.
- * Pass 1 expands what is IN the world (terrain, sky, scatter, water).
+ * Three.js scene — one world, no zones. Worked soil is painted into the terrain's
+ * own vertex colours rather than laid on top of it, so neighbouring tilled tiles
+ * merge into a single continuous field instead of a grid of separate slabs.
  */
 export class WorldRenderer {
   readonly renderer: THREE.WebGLRenderer;
@@ -56,13 +42,8 @@ export class WorldRenderer {
   heroLight!: THREE.PointLight;
 
   private overworldRoot = new THREE.Group();
-  private woodsRoot = new THREE.Group();
-  /** One instanced mesh per dirt patch shape, plus a box for trench/breed/trap. */
-  private dirtMeshes: THREE.InstancedMesh[] = [];
-  private specialTiles!: THREE.InstancedMesh;
-  private furrowMesh!: THREE.InstancedMesh;
-  private woodsTiles!: THREE.InstancedMesh;
-  /** Contextual tool hover: center + 8 neighbours */
+  /** Trenches, breeding beds and traps — dug structures, still built geometry. */
+  private structureTiles!: THREE.InstancedMesh;
   private hoverGroup = new THREE.Group();
   private hoverOutline!: THREE.LineSegments;
   private hoverTargetAlpha = 0;
@@ -72,12 +53,12 @@ export class WorldRenderer {
   private terrain!: TerrainSystem;
   private scatter!: ScatterChunks;
   private farmTrees: FarmTrees | null = null;
+  private soilMask = new Uint8Array(GRID_W * GRID_H);
   private sky!: THREE.Mesh;
   private horizonGroup = new THREE.Group();
   private motePoints!: THREE.Points;
   private moteVel: Float32Array | null = null;
 
-  private zone: Zone = 'farm';
   private fogTarget = new THREE.Color(FARM_COLORS.fog);
   private shakeTime = 0;
   private shakeAmp = 0;
@@ -85,7 +66,6 @@ export class WorldRenderer {
 
   private actors = new THREE.Group();
   private farmActors = new THREE.Group();
-  private woodsActors = new THREE.Group();
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -103,7 +83,6 @@ export class WorldRenderer {
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
 
-    // Daytime density ~0.012 so distant geometry fades into sky
     this.scene.fog = new THREE.FogExp2(FARM_COLORS.fog, 0.012);
     this.scene.background = new THREE.Color(FARM_COLORS.skyZenith);
 
@@ -119,17 +98,12 @@ export class WorldRenderer {
     this.scatter = new ScatterChunks(this.terrain.heightAt, this.terrain.distToWater);
     this.overworldRoot.add(this.scatter.getRoot());
 
-    this.buildFarmPlotTiles();
+    this.buildStructureTiles();
     this.buildHoverAffordances();
     this.buildAmbientMotes();
-    this.buildWoodsFloor();
 
     this.overworldRoot.add(this.farmActors);
-    this.woodsRoot.add(this.woodsActors);
-    this.woodsRoot.visible = false;
-
     this.scene.add(this.overworldRoot);
-    this.scene.add(this.woodsRoot);
     this.scene.add(this.actors);
     this.scene.add(this.horizonGroup);
 
@@ -139,7 +113,6 @@ export class WorldRenderer {
     this.camera.position.copy(this.cameraTarget).add(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
 
-    // Initial scatter around spawn
     this.scatter.update(startX, startZ);
     this.renderer.shadowMap.needsUpdate = true;
   }
@@ -173,7 +146,6 @@ export class WorldRenderer {
   }
 
   private buildSky(): void {
-    // Large inverted sphere, vertex gradient, unlit BackSide
     const geo = new THREE.SphereGeometry(380, 32, 16);
     const colors = new Float32Array(geo.attributes.position!.count * 3);
     const pos = geo.attributes.position as THREE.BufferAttribute;
@@ -182,7 +154,6 @@ export class WorldRenderer {
     const c = new THREE.Color();
     for (let i = 0; i < pos.count; i++) {
       const y = pos.getY(i);
-      // y from -r to r → 0 at horizon band
       const t = Math.min(1, Math.max(0, (y / 380) * 0.5 + 0.35));
       c.copy(horizon).lerp(zenith, t * t);
       colors[i * 3] = c.r;
@@ -202,13 +173,11 @@ export class WorldRenderer {
   }
 
   private buildHorizon(): void {
-    // Distant treeline ring r=150–200
     const treeCount = 180;
     const trunkGeo = new THREE.CylinderGeometry(0.8, 1.2, 6, 5);
     const coneGeo = new THREE.ConeGeometry(3.5, 10, 6);
     const trunkMat = standardMaterial(0x2a3a28, { flatShading: true, roughness: 0.95 });
     const coneMat = standardMaterial(0x3a4a38, { flatShading: true, roughness: 0.95 });
-    // Tint toward fog
     trunkMat.color.lerp(new THREE.Color(FARM_COLORS.fog), 0.45);
     coneMat.color.lerp(new THREE.Color(FARM_COLORS.fog), 0.5);
 
@@ -241,7 +210,6 @@ export class WorldRenderer {
     }
     this.horizonGroup.add(trunks, cones);
 
-    // 8–14 big hills at r=200–280
     const hillCount = 12;
     for (let i = 0; i < hillCount; i++) {
       const a = (i / hillCount) * Math.PI * 2 + hash2(i, 10, 11) * 0.3;
@@ -263,53 +231,17 @@ export class WorldRenderer {
     }
   }
 
-  /**
- * Farm tiles are flush — sparse InstancedMesh for non-grass only.
- * Entire 240×240 world is tillable; grass = terrain (no overlay).
- */
-  private buildFarmPlotTiles(): void {
-    const maxTiles = 16000;
-    // 0.18 thick, not 0.06: terrain carries ±1.2 noise across 1-unit quads, so a
-    // thin tile sitting ~0.01 proud of the sampled centre height gets swallowed by
-    // the ground and the player cannot tell tilled from grass.
-    const dirtGeos = buildDirtGeometries();
-    for (const geo of dirtGeos) {
-      const mesh = new THREE.InstancedMesh(
-        geo,
-        standardMaterial(0xffffff, { roughness: 0.92, flatShading: true }),
-        maxTiles,
-      );
-      mesh.receiveShadow = true;
-      mesh.castShadow = true;
-      mesh.count = 0;
-      this.dirtMeshes.push(mesh);
-      this.overworldRoot.add(mesh);
-    }
-
-    // Trenches, breeding beds and traps stay square — they are dug structures,
-    // not turned soil, and the straight edge is how the player reads them.
+  private buildStructureTiles(): void {
     const geo = new THREE.BoxGeometry(1.0, 0.18, 1.0);
     const mat = standardMaterial(0xffffff, { roughness: 0.92, flatShading: true });
-    this.specialTiles = new THREE.InstancedMesh(geo, mat, maxTiles);
-    this.specialTiles.receiveShadow = true;
-    this.specialTiles.castShadow = true;
-    this.specialTiles.count = 0;
-
-    const furrowGeo = new THREE.BoxGeometry(0.92, 0.02, 0.06);
-    const furrowMat = standardMaterial(FARM_COLORS.tilledLight, {
-      roughness: 0.9,
-      flatShading: true,
-    });
-    this.furrowMesh = new THREE.InstancedMesh(furrowGeo, furrowMat, maxTiles * 3);
-    this.furrowMesh.castShadow = true;
-    this.furrowMesh.receiveShadow = true;
-    this.furrowMesh.count = 0;
-
-    this.overworldRoot.add(this.specialTiles);
-    this.overworldRoot.add(this.furrowMesh);
+    this.structureTiles = new THREE.InstancedMesh(geo, mat, 4000);
+    this.structureTiles.receiveShadow = true;
+    this.structureTiles.castShadow = true;
+    this.structureTiles.count = 0;
+    this.overworldRoot.add(this.structureTiles);
   }
 
-  /** Overworld trees are owned here but need sim state — GameRuntime supplies it. */
+  /** Overworld trees are drawn here but their state lives in the sim. */
   initFarmTrees(hooks: ConstructorParameters<typeof FarmTrees>[0]): void {
     this.farmTrees = new FarmTrees(hooks);
     this.overworldRoot.add(this.farmTrees.getRoot());
@@ -319,12 +251,9 @@ export class WorldRenderer {
     return this.farmTrees;
   }
 
-  /** Soft emissive outlines for hover tile + 8 neighbours — faded, never persistent. */
   /**
-   * A single thin outline on the hovered tile — not a filled quad, and not the 8
-   * neighbours. Filled quads wash out the tile's own colour (which is the only way
-   * the player can tell tilled from watered from trench), and the neighbour ring
-   * reads as exactly the persistent grid we removed.
+   * A single thin outline on the hovered tile — not a filled quad, which would
+   * wash out the tile's own colour.
    */
   private buildHoverAffordances(): void {
     const plane = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
@@ -345,7 +274,6 @@ export class WorldRenderer {
     this.overworldRoot.add(this.hoverGroup);
   }
 
-  /** Sparse slow floating motes on the farm — catch the light. */
   private buildAmbientMotes(): void {
     const count = 140;
     const positions = new Float32Array(count * 3);
@@ -376,201 +304,57 @@ export class WorldRenderer {
     this.overworldRoot.add(this.motePoints);
   }
 
-  private buildWoodsFloor(): void {
-    const undercroft = new THREE.Mesh(
-      new THREE.PlaneGeometry(WOODS_W + 8, WOODS_H + 8),
-      standardMaterial(0x0c1412, { roughness: 1 }),
-    );
-    undercroft.rotation.x = -Math.PI / 2;
-    undercroft.position.set(WOODS_W / 2, -0.1, WOODS_H / 2);
-    undercroft.receiveShadow = true;
-    this.woodsRoot.add(undercroft);
-
-    const cols = Math.floor(WOODS_W);
-    const rows = Math.floor(WOODS_H);
-    const geo = new THREE.BoxGeometry(0.94, 0.08, 0.94);
-    const mat = standardMaterial(0xffffff, { roughness: 0.94 });
-    this.woodsTiles = new THREE.InstancedMesh(geo, mat, cols * rows);
-    this.woodsTiles.receiveShadow = true;
-
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const index = row * cols + col;
-        const variation = seeded(index + 900);
-        _matrix.makeRotationY((variation - 0.5) * 0.02);
-        _pos.set(col + 0.5, -0.04 + variation * 0.01, row + 0.5);
-        _matrix.setPosition(_pos);
-        this.woodsTiles.setMatrixAt(index, _matrix);
-        _color
-          .set(WOODS_COLORS.floorA)
-          .lerp(new THREE.Color(WOODS_COLORS.floorB), variation);
-        this.woodsTiles.setColorAt(index, _color);
-      }
-    }
-    this.woodsTiles.instanceMatrix.needsUpdate = true;
-    if (this.woodsTiles.instanceColor) this.woodsTiles.instanceColor.needsUpdate = true;
-    this.woodsRoot.add(this.woodsTiles);
-  }
-
+  /**
+   * Push farm state to the renderer: soil colours straight into the terrain, dug
+   * structures as instanced slabs.
+   */
   syncFarmTiles(tiles: Tile[][]): void {
+    this.soilMask.fill(SOIL_NONE);
     let si = 0;
-    let fi = 0;
-    const dirtCounts = new Array<number>(DIRT_VARIANTS).fill(0);
-    const _q = new THREE.Quaternion();
-    const _s = new THREE.Vector3(1, 1, 1);
-    const maxT = this.specialTiles.instanceMatrix.count;
+    const maxT = this.structureTiles.instanceMatrix.count;
 
     for (let row = 0; row < GRID_H; row++) {
       for (let col = 0; col < GRID_W; col++) {
         const t = tiles[row]![col]!;
         if (t.state === 'grass' && !t.trap) continue;
-        if (si >= maxT) break;
 
-        const variation = seeded(row * GRID_W + col + 17);
         const wx = col + 0.5;
         const wz = row + 0.5;
-        const groundY = this.terrain.heightAt(wx, wz);
 
-        // Every worked tile must sit clearly proud of the terrain. TILE_LIFT is the
-        // floor; anything below it disappears into the ground noise.
-        const TILE_LIFT = 0.1;
-        let yOff = TILE_LIFT;
-        // Turned soil gets one of five irregular dirt patches; dug structures keep
-        // the square slab.
-        let soil = false;
+        if (t.state === 'tilled' || t.state === 'planted' || t.state === 'mature') {
+          this.soilMask[row * GRID_W + col] =
+            t.watered || t.state === 'mature' ? SOIL_WATERED : SOIL_TILLED;
+          continue;
+        }
+
+        if (si >= maxT) continue;
         if (t.state === 'trench') {
-          // Wet channel: dark earth lerped toward water so it reads as dug and full.
           _color.set(FARM_COLORS.trench).lerp(new THREE.Color(FARM_COLORS.water), 0.45);
-          yOff = TILE_LIFT + 0.02;
         } else if (t.state === 'breeding') {
           _color.set(0x8a5ab0);
-          yOff = TILE_LIFT + 0.06;
-        } else if (t.state === 'tilled' || (t.state === 'planted' && !t.watered)) {
-          _color
-            .set(FARM_COLORS.tilled)
-            .lerp(new THREE.Color(FARM_COLORS.tilledLight), 0.55);
-          yOff = TILE_LIFT;
-          soil = true;
-        } else if (t.watered || t.state === 'mature') {
-          _color.set(FARM_COLORS.watered);
-          yOff = TILE_LIFT;
-          soil = true;
         } else if (t.trap) {
           _color.set(0x9a5ac0);
-          yOff = TILE_LIFT + 0.05;
         } else {
-          _color
-            .set(FARM_COLORS.floorA)
-            .lerp(new THREE.Color(FARM_COLORS.floorB), variation * 0.55);
+          continue;
         }
-
-        _pos.set(wx, groundY + yOff, wz);
-        if (soil) {
-          const v = dirtVariant(col, row);
-          const mesh = this.dirtMeshes[v]!;
-          const idx = dirtCounts[v]!;
-          if (idx < mesh.instanceMatrix.count) {
-            // Slight per-tile scale jitter on top of the shape + quarter-turn, so
-            // even two neighbours on the same variant don't line up.
-            const jitter = 0.94 + variation * 0.16;
-            _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), dirtYaw(col, row));
-            _s.set(jitter, 1, jitter);
-            _matrix.compose(_pos, _q, _s);
-            mesh.setMatrixAt(idx, _matrix);
-            mesh.setColorAt(idx, _color);
-            dirtCounts[v] = idx + 1;
-          }
-        } else {
-          this.specialTiles.setColorAt(si, _color);
-          _matrix.identity();
-          _matrix.setPosition(_pos);
-          this.specialTiles.setMatrixAt(si, _matrix);
-          si++;
-        }
-
-        if (t.state === 'tilled' || (t.state === 'planted' && !t.watered)) {
-          for (let r = 0; r < 3; r++) {
-            if (fi >= this.furrowMesh.instanceMatrix.count) break;
-            const zOff = -0.28 + r * 0.28;
-            _pos.set(wx, groundY + yOff + 0.1, wz + zOff);
-            _s.set(1, 1, 1);
-            _q.identity();
-            _matrix.compose(_pos, _q, _s);
-            this.furrowMesh.setMatrixAt(fi++, _matrix);
-          }
-        }
+        this.structureTiles.setColorAt(si, _color);
+        _pos.set(wx, this.terrain.heightAt(wx, wz) + 0.12, wz);
+        _matrix.identity();
+        _matrix.setPosition(_pos);
+        this.structureTiles.setMatrixAt(si, _matrix);
+        si++;
       }
     }
 
-    for (let v = 0; v < this.dirtMeshes.length; v++) {
-      const mesh = this.dirtMeshes[v]!;
-      mesh.count = dirtCounts[v]!;
-      mesh.instanceMatrix.needsUpdate = true;
-      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      // An InstancedMesh caches its bounding sphere from the instances it had when
-      // it was first culled — which was none. Without this the whole field is
-      // invisible: the stale sphere sits at the origin, 120 units from the farm.
-      mesh.computeBoundingSphere();
-    }
-    this.specialTiles.count = si;
-    this.furrowMesh.count = fi;
-    this.specialTiles.instanceMatrix.needsUpdate = true;
-    this.furrowMesh.instanceMatrix.needsUpdate = true;
-    if (this.specialTiles.instanceColor) this.specialTiles.instanceColor.needsUpdate = true;
-    this.specialTiles.computeBoundingSphere();
-    this.furrowMesh.computeBoundingSphere();
+    this.terrain.applySoilMask(this.soilMask);
+    this.structureTiles.count = si;
+    this.structureTiles.instanceMatrix.needsUpdate = true;
+    if (this.structureTiles.instanceColor) this.structureTiles.instanceColor.needsUpdate = true;
+    this.structureTiles.computeBoundingSphere();
     this.renderer.shadowMap.needsUpdate = true;
-  }
-
-  setZone(zone: Zone): void {
-    if (this.zone === zone) return;
-    this.zone = zone;
-    this.overworldRoot.visible = zone === 'farm';
-    this.woodsRoot.visible = zone === 'woods';
-    this.horizonGroup.visible = zone === 'farm';
-    this.sky.visible = true;
-
-    if (zone === 'woods') {
-      this.fogTarget.set(WOODS_COLORS.fog);
-      if (this.scene.fog instanceof THREE.FogExp2) {
-        this.scene.fog.density = 0.036;
-      }
-      this.hemisphere.color.set(0x8fb9b0);
-      this.hemisphere.groundColor.set(0x0b1211);
-      this.hemisphere.intensity = 1.2;
-      this.keyLight.color.set(0xbcd6d4);
-      this.keyLight.intensity = 1.95;
-      this.rim.color.set(0x5d86bd);
-      this.rim.intensity = 0.8;
-      this.heroLight.intensity = 8.4;
-      this.heroLight.distance = LANTERN_DISTANCE_MAX;
-      this.targetZoom = 1.05;
-      (this.scene.background as THREE.Color).set(WOODS_COLORS.fog);
-    } else {
-      this.fogTarget.set(FARM_COLORS.fog);
-      if (this.scene.fog instanceof THREE.FogExp2) {
-        this.scene.fog.density = 0.012;
-      }
-      this.hemisphere.color.set(0xbfe0ff);
-      this.hemisphere.groundColor.set(0x4a6b33);
-      this.hemisphere.intensity = 1.1;
-      this.keyLight.color.set(0xfff2d0);
-      this.keyLight.intensity = 2.2;
-      this.rim.color.set(0x8fb0d8);
-      this.rim.intensity = 0.5;
-      this.heroLight.intensity = 3.0;
-      this.heroLight.distance = 6.0;
-      this.targetZoom = 1;
-    }
-    this.renderer.shadowMap.needsUpdate = true;
-  }
-
-  getZone(): Zone {
-    return this.zone;
   }
 
   applyDayNight(phase: 'day' | 'night', t: number): void {
-    if (this.zone !== 'farm') return;
     let night = 0;
     if (phase === 'night') {
       night = t < 0.1 ? t / 0.1 : t > 0.9 ? (1 - t) / 0.1 : 1;
@@ -588,17 +372,7 @@ export class WorldRenderer {
     }
   }
 
-  setLanternFuel(fuel01: number): void {
-    if (this.zone !== 'woods') return;
-    const d = THREE.MathUtils.lerp(LANTERN_DISTANCE_MIN, LANTERN_DISTANCE_MAX, fuel01);
-    this.heroLight.distance = d;
-    this.heroLight.intensity = THREE.MathUtils.lerp(3.5, 8.4, fuel01);
-  }
-
-  /**
- * Tool affordance only: soft outline on hovered tile + gentle glow on 8 neighbours.
- * Pass null to fade out. Never a persistent grid overlay.
- */
+  /** Tool affordance: a soft outline on the hovered tile. Pass null to fade out. */
   setHover(tileX: number | null, tileZ: number | null, inRange: boolean): void {
     if (tileX === null || tileZ === null) {
       this.toolHoverActive = false;
@@ -624,23 +398,19 @@ export class WorldRenderer {
   }
 
   heightAt(x: number, z: number): number {
-    if (this.zone === 'woods') return 0;
     return this.terrain.heightAt(x, z);
   }
 
   distToWater(x: number, z: number): number {
-    if (this.zone === 'woods') return 999;
     return this.terrain.distToWater(x, z);
   }
 
   followPlayer(x: number, z: number, leadX: number, leadZ: number, dt: number): void {
     const targetX = x + leadX;
     const targetZ = z + leadZ;
-    const hy = this.zone === 'farm' ? this.terrain.heightAt(x, z) : 0;
+    const hy = this.terrain.heightAt(x, z);
 
-    // The shadow camera is only ±40 wide. Pinned at the origin it covers one corner
-    // of a 240×240 world, so nothing near the player ever casts a shadow. Move the
-    // light and its target with the player so the frustum always contains them.
+    // The shadow camera is only ±40 wide, so it travels with the player.
     this.keyLight.position.set(x - 6, hy + 13, z + 4);
     this.keyLight.target.position.set(x, hy, z);
     this.keyLight.target.updateMatrixWorld();
@@ -649,11 +419,7 @@ export class WorldRenderer {
     this.cameraTarget.z = THREE.MathUtils.damp(this.cameraTarget.z, targetZ, 4.5, dt);
     this.cameraTarget.y = THREE.MathUtils.damp(this.cameraTarget.y, hy, 4.5, dt);
 
-    this.zoom = THREE.MathUtils.lerp(
-      this.zoom,
-      this.targetZoom,
-      1 - Math.exp(-dt * 4.2),
-    );
+    this.zoom = THREE.MathUtils.lerp(this.zoom, this.targetZoom, 1 - Math.exp(-dt * 4.2));
     this.camera.zoom = this.zoom;
     this.camera.updateProjectionMatrix();
 
@@ -669,32 +435,24 @@ export class WorldRenderer {
       this.shakeOffset.set(0, 0, 0);
     }
 
-    this.camera.position
-      .copy(this.cameraTarget)
-      .add(this.cameraOffset)
-      .add(this.shakeOffset);
+    this.camera.position.copy(this.cameraTarget).add(this.cameraOffset).add(this.shakeOffset);
     this.camera.lookAt(this.cameraTarget);
 
     this.heroLight.position.set(x, hy + 3.1, z);
-    // Sky follows camera so horizon never ends
     this.sky.position.copy(this.cameraTarget);
 
-    if (this.zone === 'farm') {
-      this.scatter.update(x, z);
-      this.farmTrees?.update(x, z);
-    }
+    this.scatter.update(x, z);
+    this.farmTrees?.update(x, z);
   }
 
   snapCamera(x: number, z: number): void {
-    const hy = this.zone === 'farm' ? this.terrain.heightAt(x, z) : 0;
+    const hy = this.terrain.heightAt(x, z);
     this.cameraTarget.set(x, hy, z);
     this.camera.position.copy(this.cameraTarget).add(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
     this.sky.position.copy(this.cameraTarget);
-    if (this.zone === 'farm') {
-      this.scatter.update(x, z);
-      this.farmTrees?.update(x, z);
-    }
+    this.scatter.update(x, z);
+    this.farmTrees?.update(x, z);
   }
 
   shake(duration: number, amplitude: number): void {
@@ -706,6 +464,15 @@ export class WorldRenderer {
     const forward = new THREE.Vector3(-1, 0, -1).normalize();
     const right = new THREE.Vector3(1, 0, -1).normalize();
     return { forward, right };
+  }
+
+  /** Screen-space direction from one world point to another, in radians. */
+  screenAngleTo(fromX: number, fromZ: number, toX: number, toZ: number): number {
+    const a = new THREE.Vector3(fromX, this.terrain.heightAt(fromX, fromZ), fromZ).project(
+      this.camera,
+    );
+    const b = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ), toZ).project(this.camera);
+    return Math.atan2(b.x - a.x, b.y - a.y);
   }
 
   resize(w: number, h: number): void {
@@ -724,22 +491,14 @@ export class WorldRenderer {
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.lerp(this.fogTarget, 1 - Math.exp(-dt * 2.2));
     }
-    if (this.zone === 'farm') {
-      this.terrain.updateWater(this.time, dt);
-      this.updateMotes(dt);
-    }
+    this.terrain.updateWater(this.time, dt);
+    this.updateMotes(dt);
 
-    // Fade tool hover affordance in/out
     const target = this.toolHoverActive ? this.hoverTargetAlpha : 0;
     this.hoverAlpha = THREE.MathUtils.damp(this.hoverAlpha, target, 12, dt);
     const hoverMat = this.hoverOutline.material as THREE.LineBasicMaterial;
     hoverMat.opacity = this.hoverAlpha * 0.85;
     if (this.hoverAlpha < 0.02) this.hoverOutline.visible = false;
-
-    // Motes / hover only on farm overworld
-    if (this.motePoints) {
-      this.motePoints.visible = this.zone === 'farm';
-    }
   }
 
   private updateMotes(dt: number): void {
@@ -751,10 +510,8 @@ export class WorldRenderer {
       let x = pos.getX(i) + this.moteVel[i * 3]! * dt;
       let y = pos.getY(i) + this.moteVel[i * 3 + 1]! * dt;
       let z = pos.getZ(i) + this.moteVel[i * 3 + 2]! * dt;
-      // gentle bob
       y += Math.sin(this.time * 0.7 + i) * 0.002;
       if (y > 5.5) y = 0.5;
-      // keep near camera
       if (Math.hypot(x - cx, z - cz) > 55) {
         x = cx + (Math.random() - 0.5) * 80;
         z = cz + (Math.random() - 0.5) * 80;
@@ -773,18 +530,13 @@ export class WorldRenderer {
     return this.farmActors;
   }
 
-  getWoodsActors(): THREE.Group {
-    return this.woodsActors;
-  }
-
   getSharedActors(): THREE.Group {
     return this.actors;
   }
 
   spawnProp(key: ModelKey, x: number, z: number, parent: THREE.Group, scale = 1): THREE.Object3D {
     const { root } = cloneModel(key);
-    const y = parent === this.farmActors || parent === this.actors ? this.terrain.heightAt(x, z) : 0;
-    root.position.set(x, y, z);
+    root.position.set(x, this.terrain.heightAt(x, z), z);
     root.scale.multiplyScalar(scale);
     parent.add(root);
     this.renderer.shadowMap.needsUpdate = true;
@@ -794,11 +546,9 @@ export class WorldRenderer {
   raycastGround(ndcX: number, ndcY: number): { x: number; z: number } | null {
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
-    if (this.zone === 'farm') {
-      const hits = raycaster.intersectObject(this.terrain.mesh, false);
-      if (hits.length > 0 && hits[0]) {
-        return { x: hits[0].point.x, z: hits[0].point.z };
-      }
+    const hits = raycaster.intersectObject(this.terrain.mesh, false);
+    if (hits.length > 0 && hits[0]) {
+      return { x: hits[0].point.x, z: hits[0].point.z };
     }
     const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const hit = new THREE.Vector3();
@@ -812,7 +562,6 @@ export class WorldRenderer {
     this.renderer.shadowMap.needsUpdate = true;
   }
 
-  /** World bounds for overworld walking */
   getWorldBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } {
     return { minX: 2, maxX: WORLD_SIZE - 2, minZ: 2, maxZ: WORLD_SIZE - 2 };
   }

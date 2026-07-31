@@ -55,6 +55,8 @@ export function App() {
         onDismissWin={() => runtimeRef.current?.dismissWin()}
         onSelectSlot={(i) => runtimeRef.current?.selectSlot(i)}
         onSelectToolSlot={() => runtimeRef.current?.selectToolSlot()}
+        onUltimate={() => runtimeRef.current?.useUltimate()}
+        onToggleInventory={() => runtimeRef.current?.toggleInventory()}
         onSellOne={(id) => runtimeRef.current?.sellOne(id)}
         onSellStack={(id) => runtimeRef.current?.sellStack(id)}
         onSellAll={() => runtimeRef.current?.sellAll()}

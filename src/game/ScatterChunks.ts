@@ -38,14 +38,12 @@ export class ScatterChunks {
   // Shared geometries / materials
   private readonly geoBlade = new THREE.BoxGeometry(0.04, 0.35, 0.04);
   private readonly geoPebble = new THREE.OctahedronGeometry(0.12, 0);
-  private readonly geoBoulder = new THREE.DodecahedronGeometry(0.55, 0);
   private readonly geoBush = new THREE.IcosahedronGeometry(0.32, 0);
   private readonly geoStem = new THREE.CylinderGeometry(0.02, 0.025, 0.28, 4);
   private readonly geoPetal = new THREE.OctahedronGeometry(0.07, 0);
 
   private readonly matGrass = standardMaterial(0x4a7a30, { flatShading: true, roughness: 0.95 });
   private readonly matPebble = standardMaterial(0x7a7a68, { flatShading: true, roughness: 0.94 });
-  private readonly matBoulder = standardMaterial(0x5a5a4e, { flatShading: true, roughness: 0.9 });
   private readonly matBush = standardMaterial(0x3d6b32, { flatShading: true, roughness: 0.9 });
   private readonly matStem = standardMaterial(0x3a5a28, { flatShading: true });
   private readonly matFlowerA = standardMaterial(0xe87a9a, { flatShading: true });
@@ -117,7 +115,6 @@ export class ScatterChunks {
     // Density — err high
     const nGrass = 55 + Math.floor(hash2(cx, cz, seed) * 16); // 55-70
     const nPebble = 14 + Math.floor(hash2(cx, cz, seed + 1) * 7); // 14-20
-    const nBoulder = 1 + Math.floor(hash2(cx, cz, seed + 2) * 3); // 1-3
     const nBush = 5 + Math.floor(hash2(cx, cz, seed + 3) * 4); // 5-8
     const nFlower = 10 + Math.floor(hash2(cx, cz, seed + 4) * 6); // 10-15
 
@@ -131,11 +128,6 @@ export class ScatterChunks {
     pebbles.castShadow = true;
     pebbles.receiveShadow = true;
     let pi = 0;
-
-    const boulders = new THREE.InstancedMesh(this.geoBoulder, this.matBoulder, nBoulder);
-    boulders.castShadow = true;
-    boulders.receiveShadow = true;
-    let bi = 0;
 
     const bushes = new THREE.InstancedMesh(this.geoBush, this.matBush, nBush * 3);
     bushes.castShadow = true;
@@ -214,28 +206,8 @@ export class ScatterChunks {
     }
     pebbles.count = pi;
 
-    // Boulders
-    for (let i = 0; i < nBoulder; i++) {
-      const x = originX + 2 + hash2(i, 30, seed) * (CHUNK_SIZE - 4);
-      const z = originZ + 2 + hash2(i, 31, seed) * (CHUNK_SIZE - 4);
-      if (!placeOk(x, z)) continue;
-      if (
-        x >= HOMESTEAD_MIN_X - 1 &&
-        x <= HOMESTEAD_MAX_X + 1 &&
-        z >= HOMESTEAD_MIN_Z - 1 &&
-        z <= HOMESTEAD_MAX_Z + 1
-      )
-        continue;
-      const y = this.heightAt(x, z);
-      const sc = 0.55 + hash2(i, 32, seed) * 0.7;
-      this._p.set(x, y + 0.25 * sc, z);
-      this._e.set(0, hash2(i, 33, seed) * 6, 0);
-      this._q.setFromEuler(this._e);
-      this._s.set(sc, sc * 0.75, sc);
-      this._m.compose(this._p, this._q, this._s);
-      boulders.setMatrixAt(bi++, this._m);
-    }
-    boulders.count = bi;
+    // Boulders are owned by FarmTrees now — they sit on whole tiles and block
+    // tilling, so their placement has to be something the sim can query.
 
     // Bushes (2-3 clusters)
     for (let i = 0; i < nBush; i++) {
@@ -317,13 +289,12 @@ export class ScatterChunks {
 
     grass.instanceMatrix.needsUpdate = true;
     pebbles.instanceMatrix.needsUpdate = true;
-    boulders.instanceMatrix.needsUpdate = true;
     bushes.instanceMatrix.needsUpdate = true;
     stems.instanceMatrix.needsUpdate = true;
     petals.instanceMatrix.needsUpdate = true;
     petalsB.instanceMatrix.needsUpdate = true;
 
-    group.add(grass, pebbles, boulders, bushes, stems, petals, petalsB);
+    group.add(grass, pebbles, bushes, stems, petals, petalsB);
 
     return { key, cx, cz, group };
   }

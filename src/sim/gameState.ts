@@ -1,24 +1,12 @@
 /**
  * Shared mutable game state — pure, no renderer/DOM.
  */
-import {
-  BAG_SIZE_BASE,
-  BAG_SIZE_CABIN,
-  BAG_SIZE_UPGRADED,
-  BUCKET_CAPACITY,
-  CABIN_COST_DARKWOOD,
-  CABIN_COST_WOOD,
-  GRID_H,
-  GRID_W,
-  STALL_COST,
-  TOOLBAR_SLOTS,
-  TREE_RESPAWN_DAYS,
-  WIN_DAY,
-} from '../content';
+import { BUCKET_CAPACITY, GRID_H, GRID_W, TOOLBAR_SLOTS, TREE_RESPAWN_DAYS, WIN_DAY } from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
 import {
   cloneGrid,
   createEmptyGrid,
+  decayUnplantedTilth,
   stepCrops,
   type Tile,
 } from './farm';
@@ -35,13 +23,13 @@ import {
   type Inventory,
 } from './inventory';
 import { itemInfo, ITEM_DARKWOOD, ITEM_WOOD, type ItemId } from './items';
+import type { PityState } from './luck';
 import { mulberry32, type Rng } from './rng';
 import {
   createNewSave,
   defaultStats,
   type ChoppedTrees,
   type GameStats,
-  type HomesteadTier,
   type SaveData,
   type WeaponId,
   serialize,
@@ -53,11 +41,6 @@ export interface GameState {
   rng: Rng;
   clock: ClockState;
   tiles: Tile[][];
-  bagWood: number;
-  bagDarkwood: number;
-  bagSize: number;
-  shedBuilt: boolean;
-  homesteadTier: HomesteadTier;
   weapon: WeaponId;
   unlockedWeapons: WeaponId[];
   irrigationTier: number;
@@ -65,25 +48,30 @@ export interface GameState {
   selectedCrop: string;
   /** 24 slots, unlimited stack size */
   inventory: Inventory;
+  /** Inventory panel visibility — toggled with I */
+  inventoryOpen: boolean;
   /** Currency earned at the market stall */
-  ducketts: number;
-  /** "tx,ty" → day the overworld tree was felled */
+  duckettes: number;
+  /** "tx,ty" → day the tree was felled (a stump stands until it respawns) */
   choppedTrees: ChoppedTrees;
+  /** Stumps the player has cleared: "tx,ty" → true */
+  clearedStumps: Record<string, boolean>;
+  /** Bad-luck protection counters, keyed by loot table entry */
+  dropPity: PityState;
   /** Selected toolbar slot 0..TOOLBAR_SLOTS-1 */
   toolbarSlot: number;
   /** Dedicated water tool (bucket) selected instead of a numbered slot */
   toolSlotActive: boolean;
+  /** Seconds until Boulder Roll is ready again */
+  boulderCooldown: number;
   /** Plantable seeds (including hybrids) */
   seedInventory: Seed[];
   codex: CodexEntry[];
-  attention: number;
-  attentionFloor: number;
   stats: GameStats;
   simTime: number;
   winShown: boolean;
   toast: string;
   toastTimer: number;
-  stalkerHintShown: boolean;
   trophies: string[];
   selectedSeedIndex: number;
 }
@@ -102,31 +90,27 @@ export function createGameState(seed?: number): GameState {
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
-    bagWood: 0,
-    bagDarkwood: 0,
-    bagSize: BAG_SIZE_BASE,
-    shedBuilt: false,
-    homesteadTier: 0,
     weapon: 'rock',
     unlockedWeapons: ['rock'],
-    irrigationTier: 1,
+    irrigationTier: 2,
     bucketFill: 0,
     selectedCrop: 'turnip',
     inventory: createInventory(),
-    ducketts: 0,
+    inventoryOpen: true,
+    duckettes: 0,
     choppedTrees: {},
-    toolbarSlot: 0,
+    clearedStumps: {},
+    dropPity: {},
+    toolbarSlot: 1, // start on the fist — the tool you build with
     toolSlotActive: false,
+    boulderCooldown: 0,
     seedInventory: starter,
     codex: [],
-    attention: 0,
-    attentionFloor: 0,
     stats: defaultStats(),
     simTime: 0,
     winShown: false,
     toast: '',
     toastTimer: 0,
-    stalkerHintShown: false,
     trophies: [],
     selectedSeedIndex: 2, // turnip
   };
@@ -144,22 +128,21 @@ export function loadFromSaveData(data: SaveData): GameState {
     ...base,
     clock: createClock(data.day, data.phase, data.elapsed),
     tiles,
-    bagSize: data.bagSize,
-    shedBuilt: data.shedBuilt || (data.homesteadTier ?? 0) >= 1,
-    homesteadTier: data.homesteadTier ?? (data.shedBuilt ? 1 : 0),
     weapon: data.weapon ?? 'rock',
     unlockedWeapons: data.unlockedWeapons ?? ['rock'],
-    irrigationTier: data.irrigationTier ?? 1,
+    irrigationTier: Math.max(data.irrigationTier ?? 2, 2),
     bucketFill: Math.min(data.bucketFill ?? 0, BUCKET_CAPACITY),
     selectedCrop: data.selectedCrop ?? 'turnip',
     inventory: normalizeInventory(data.inventory),
-    ducketts: data.ducketts ?? 0,
+    inventoryOpen: data.inventoryOpen ?? true,
+    duckettes: data.duckettes ?? 0,
     choppedTrees: { ...(data.choppedTrees ?? {}) },
-    toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 0, 0), TOOLBAR_SLOTS - 1),
+    clearedStumps: { ...(data.clearedStumps ?? {}) },
+    dropPity: { ...(data.dropPity ?? {}) },
+    toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 1, 0), TOOLBAR_SLOTS - 1),
     toolSlotActive: data.toolSlotActive ?? false,
     seedInventory: data.seedInventory?.length ? data.seedInventory : base.seedInventory,
     codex: data.codex ?? [],
-    attentionFloor: data.attentionFloor ?? 0,
     stats: { ...defaultStats(), ...data.stats },
     simTime: data.simTime ?? 0,
     winShown: data.winShown ?? false,
@@ -169,25 +152,23 @@ export function loadFromSaveData(data: SaveData): GameState {
 
 export function toSaveData(gs: GameState): SaveData {
   return {
-    version: 4,
+    version: 5,
     seed: gs.seed,
     day: gs.clock.day,
     phase: gs.clock.phase,
     elapsed: gs.clock.elapsed,
     tiles: cloneGrid(gs.tiles),
-    wood: woodCount(gs),
-    darkwood: darkwoodCount(gs),
-    bagSize: gs.bagSize,
-    shedBuilt: gs.homesteadTier >= 1,
-    homesteadTier: gs.homesteadTier,
     weapon: gs.weapon,
     unlockedWeapons: [...gs.unlockedWeapons],
     irrigationTier: gs.irrigationTier,
     bucketFill: gs.bucketFill,
     selectedCrop: gs.selectedCrop,
     inventory: cloneInventory(gs.inventory),
-    ducketts: gs.ducketts,
+    inventoryOpen: gs.inventoryOpen,
+    duckettes: gs.duckettes,
     choppedTrees: { ...gs.choppedTrees },
+    clearedStumps: { ...gs.clearedStumps },
+    dropPity: { ...gs.dropPity },
     toolbarSlot: gs.toolbarSlot,
     toolSlotActive: gs.toolSlotActive,
     seedInventory: gs.seedInventory.map((s) => ({
@@ -199,7 +180,6 @@ export function toSaveData(gs: GameState): SaveData {
       ...c,
       seed: { ...c.seed, traits: { ...c.seed.traits } },
     })),
-    attentionFloor: gs.attentionFloor,
     stats: { ...gs.stats },
     simTime: gs.simTime,
     winShown: gs.winShown,
@@ -233,12 +213,24 @@ export function stepGameClock(gs: GameState, dt: number): GameStepResult {
     gs.toastTimer -= dt;
     if (gs.toastTimer <= 0) gs.toast = '';
   }
+  if (gs.boulderCooldown > 0) gs.boulderCooldown = Math.max(0, gs.boulderCooldown - dt);
   return { ...result, matured };
 }
 
 export function setToast(gs: GameState, msg: string, duration = 3): void {
   gs.toast = msg;
   gs.toastTimer = duration;
+}
+
+/** Dawn housekeeping: bare soil goes back to grass, felled trees come back. */
+export function onNewDay(gs: GameState): {
+  lostTilth: { x: number; y: number }[];
+  regrown: { tx: number; ty: number }[];
+} {
+  return {
+    lostTilth: decayUnplantedTilth(gs.tiles, gs.clock.day),
+    regrown: respawnTrees(gs),
+  };
 }
 
 // ---------------------------------------------------------------- inventory
@@ -261,14 +253,14 @@ export function darkwoodCount(gs: GameState): number {
   return countItem(gs.inventory, ITEM_DARKWOOD);
 }
 
-/** Sell one item stack (or a single unit) for ducketts. Returns ducketts earned. */
+/** Sell one item stack (or a single unit) for duckettes. Returns what was earned. */
 export function sellItem(gs: GameState, id: ItemId, all: boolean): number {
   const have = countItem(gs.inventory, id);
   if (have <= 0) return 0;
   const n = all ? have : 1;
   if (!removeItem(gs.inventory, id, n)) return 0;
   const earned = itemInfo(id).price * n;
-  gs.ducketts += earned;
+  gs.duckettes += earned;
   return earned;
 }
 
@@ -279,58 +271,8 @@ export function sellEverything(gs: GameState): number {
     const n = removeAll(gs.inventory, slot.id);
     earned += itemInfo(slot.id).price * n;
   }
-  gs.ducketts += earned;
+  gs.duckettes += earned;
   return earned;
-}
-
-// ------------------------------------------------------------------ hauling
-
-export function bankBag(gs: GameState): number {
-  const n = gs.bagWood;
-  const d = gs.bagDarkwood;
-  if (n > 0) addToInventory(gs, ITEM_WOOD, n);
-  if (d > 0) addToInventory(gs, ITEM_DARKWOOD, d);
-  gs.stats.woodGathered += n;
-  gs.stats.darkwoodGathered += d;
-  gs.bagWood = 0;
-  gs.bagDarkwood = 0;
-  return n + d;
-}
-
-export function dumpBag(gs: GameState): number {
-  const n = gs.bagWood + gs.bagDarkwood;
-  gs.bagWood = 0;
-  gs.bagDarkwood = 0;
-  return n;
-}
-
-export function tryUpgradeHomestead(gs: GameState): boolean {
-  if (gs.homesteadTier === 0) {
-    if (woodCount(gs) < STALL_COST) return false;
-    removeItem(gs.inventory, ITEM_WOOD, STALL_COST);
-    gs.homesteadTier = 1;
-    gs.shedBuilt = true;
-    gs.bagSize = BAG_SIZE_UPGRADED;
-    if (!gs.unlockedWeapons.includes('bow')) gs.unlockedWeapons.push('bow');
-    return true;
-  }
-  if (gs.homesteadTier === 1) {
-    if (woodCount(gs) < CABIN_COST_WOOD || darkwoodCount(gs) < CABIN_COST_DARKWOOD) return false;
-    removeItem(gs.inventory, ITEM_WOOD, CABIN_COST_WOOD);
-    removeItem(gs.inventory, ITEM_DARKWOOD, CABIN_COST_DARKWOOD);
-    gs.homesteadTier = 2;
-    gs.bagSize = BAG_SIZE_CABIN;
-    if (!gs.unlockedWeapons.includes('blunderbuss')) gs.unlockedWeapons.push('blunderbuss');
-    gs.irrigationTier = Math.max(gs.irrigationTier, 2);
-    return true;
-  }
-  return false;
-}
-
-/** @deprecated */
-export function tryBuildShed(gs: GameState): boolean {
-  if (gs.homesteadTier >= 1) return false;
-  return tryUpgradeHomestead(gs);
 }
 
 // --------------------------------------------------------------------- trees
@@ -343,8 +285,17 @@ export function isTreeChopped(gs: GameState, tx: number, ty: number): boolean {
   return treeKey(tx, ty) in gs.choppedTrees;
 }
 
+export function isStumpCleared(gs: GameState, tx: number, ty: number): boolean {
+  return gs.clearedStumps[treeKey(tx, ty)] === true;
+}
+
 export function markTreeChopped(gs: GameState, tx: number, ty: number): void {
   gs.choppedTrees[treeKey(tx, ty)] = gs.clock.day;
+  delete gs.clearedStumps[treeKey(tx, ty)];
+}
+
+export function clearStump(gs: GameState, tx: number, ty: number): void {
+  gs.clearedStumps[treeKey(tx, ty)] = true;
 }
 
 /**
@@ -359,13 +310,14 @@ export function respawnTrees(gs: GameState): { tx: number; ty: number }[] {
     const tile = gs.tiles[ty]?.[tx];
     if (!tile || tile.state !== 'grass') continue;
     delete gs.choppedTrees[key];
+    delete gs.clearedStumps[key];
     back.push({ tx, ty });
   }
   return back;
 }
 
 export function checkWin(gs: GameState): boolean {
-  return gs.clock.day >= WIN_DAY && gs.homesteadTier >= 1 && !gs.winShown;
+  return gs.clock.day >= WIN_DAY && !gs.winShown;
 }
 
 export function markWinShown(gs: GameState): void {
@@ -379,19 +331,6 @@ export function forceDawn(gs: GameState): void {
     gs.clock = createClock(gs.clock.day, 'day', 0);
   }
   gs.stats.daysSurvived = gs.clock.day;
-  gs.bagWood = 0;
-  gs.bagDarkwood = 0;
-  gs.attention = gs.attentionFloor;
-}
-
-export function forceDawnAfterStalker(gs: GameState): void {
-  gs.stats.stalkerCaught += 1;
-  forceDawn(gs);
-  setToast(gs, 'You dropped everything.', 4);
-}
-
-export function canEnterWoods(gs: GameState): boolean {
-  return gs.clock.phase === 'day';
 }
 
 export function discoverSeed(gs: GameState, seed: Seed): boolean {
@@ -438,7 +377,7 @@ export function cycleWeapon(gs: GameState): void {
 }
 
 export function newGameFromSeed(seed: number): GameState {
-  const save = createNewSave(seed, BAG_SIZE_BASE);
+  const save = createNewSave(seed);
   save.tiles = createEmptyGrid();
   return loadFromSaveData(save);
 }

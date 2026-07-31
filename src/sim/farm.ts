@@ -1,4 +1,11 @@
-import { CROP_DEFS, CROP_STAGES, GRID_H, GRID_W, type BaseCropId } from '../content';
+import {
+  CROP_DEFS,
+  CROP_STAGES,
+  GRID_H,
+  GRID_W,
+  TILL_DECAY_DAYS,
+  type BaseCropId,
+} from '../content';
 import type { HybridMech, Seed } from './genetics';
 import { growTimeForSeed, makeSeed } from './genetics';
 
@@ -19,6 +26,8 @@ export interface Tile {
   structureHp: number;
   /** Mushroom trap present */
   trap: boolean;
+  /** Day the tile was turned over. Unplanted soil goes back to grass. */
+  tilledDay: number;
 }
 
 export function emptyTile(): Tile {
@@ -33,6 +42,7 @@ export function emptyTile(): Tile {
     breedB: null,
     structureHp: 0,
     trap: false,
+    tilledDay: -1,
   };
 }
 
@@ -64,7 +74,7 @@ export function getTile(tiles: Tile[][], tx: number, ty: number): Tile | null {
   return tiles[ty]![tx]!;
 }
 
-export function tillTile(tiles: Tile[][], tx: number, ty: number): boolean {
+export function tillTile(tiles: Tile[][], tx: number, ty: number, day = 1): boolean {
   const t = getTile(tiles, tx, ty);
   if (!t || (t.state !== 'grass' && t.state !== 'trench')) return false;
   if (t.state === 'trench') return false;
@@ -74,7 +84,32 @@ export function tillTile(tiles: Tile[][], tx: number, ty: number): boolean {
   t.growth = 0;
   t.plantedAt = -1;
   t.seed = null;
+  t.tilledDay = day;
   return true;
+}
+
+/**
+ * Bare soil left unplanted goes back to grass. Called at dawn, so a tile tilled
+ * on day N is gone on the morning of day N+1+TILL_DECAY_DAYS at the latest —
+ * turn the ground over on the day you mean to sow it.
+ */
+export function decayUnplantedTilth(tiles: Tile[][], day: number): { x: number; y: number }[] {
+  const lost: { x: number; y: number }[] = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const t = tiles[y]![x]!;
+      if (t.state !== 'tilled') continue;
+      if (t.tilledDay < 0) {
+        // Pre-existing soil from an older save — start its clock now.
+        t.tilledDay = day;
+        continue;
+      }
+      if (day - t.tilledDay < TILL_DECAY_DAYS + 1) continue;
+      tiles[y]![x] = emptyTile();
+      lost.push({ x, y });
+    }
+  }
+  return lost;
 }
 
 export function digTrench(tiles: Tile[][], tx: number, ty: number): boolean {
