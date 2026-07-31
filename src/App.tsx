@@ -53,6 +53,11 @@ export function App() {
       <Hud
         hud={hud}
         onDismissWin={() => runtimeRef.current?.dismissWin()}
+        onSelectSlot={(i) => runtimeRef.current?.selectSlot(i)}
+        onSelectToolSlot={() => runtimeRef.current?.selectToolSlot()}
+        onSellOne={(id) => runtimeRef.current?.sellOne(id)}
+        onSellStack={(id) => runtimeRef.current?.sellStack(id)}
+        onSellAll={() => runtimeRef.current?.sellAll()}
       />
     </div>
   );

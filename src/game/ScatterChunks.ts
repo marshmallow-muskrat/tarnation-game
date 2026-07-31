@@ -7,13 +7,10 @@ import {
   HOMESTEAD_MAX_Z,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
-  LAKE_CX,
-  LAKE_CZ,
-  LAKE_RADIUS,
   WORLD_SIZE,
 } from '../content';
 import { standardMaterial } from './materials';
-import { hash2, treeGroveNoise } from './noise';
+import { hash2 } from './noise';
 import { TERRAIN_SEED } from './terrain';
 
 type ChunkKey = string;
@@ -45,8 +42,6 @@ export class ScatterChunks {
   private readonly geoBush = new THREE.IcosahedronGeometry(0.32, 0);
   private readonly geoStem = new THREE.CylinderGeometry(0.02, 0.025, 0.28, 4);
   private readonly geoPetal = new THREE.OctahedronGeometry(0.07, 0);
-  private readonly geoTrunk = new THREE.CylinderGeometry(0.12, 0.18, 1.1, 6);
-  private readonly geoCanopy = new THREE.ConeGeometry(0.65, 1.2, 7);
 
   private readonly matGrass = standardMaterial(0x4a7a30, { flatShading: true, roughness: 0.95 });
   private readonly matPebble = standardMaterial(0x7a7a68, { flatShading: true, roughness: 0.94 });
@@ -55,8 +50,6 @@ export class ScatterChunks {
   private readonly matStem = standardMaterial(0x3a5a28, { flatShading: true });
   private readonly matFlowerA = standardMaterial(0xe87a9a, { flatShading: true });
   private readonly matFlowerB = standardMaterial(0xe8d060, { flatShading: true });
-  private readonly matTrunk = standardMaterial(0x5a3a22, { flatShading: true, roughness: 0.92 });
-  private readonly matCanopy = standardMaterial(0x3d6b35, { flatShading: true, roughness: 0.88 });
 
   private readonly _m = new THREE.Matrix4();
   private readonly _p = new THREE.Vector3();
@@ -127,8 +120,6 @@ export class ScatterChunks {
     const nBoulder = 1 + Math.floor(hash2(cx, cz, seed + 2) * 3); // 1-3
     const nBush = 5 + Math.floor(hash2(cx, cz, seed + 3) * 4); // 5-8
     const nFlower = 10 + Math.floor(hash2(cx, cz, seed + 4) * 6); // 10-15
-    // trees via grove noise — up to 6 candidates
-    const treeCandidates = 8;
 
     // Grass: 3 blades per tuft → nGrass * 3
     const grass = new THREE.InstancedMesh(this.geoBlade, this.matGrass, nGrass * 3);
@@ -156,15 +147,6 @@ export class ScatterChunks {
     stems.castShadow = true;
     petals.castShadow = true;
     let fi = 0;
-
-    const trunks = new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, treeCandidates);
-    const canopy = new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, treeCandidates * 2);
-    trunks.castShadow = true;
-    trunks.receiveShadow = true;
-    canopy.castShadow = true;
-    canopy.receiveShadow = true;
-    let ti = 0;
-    let ci = 0;
 
     const placeOk = (x: number, z: number, allowNearWater = false): boolean => {
       if (x < 1 || z < 1 || x > WORLD_SIZE - 1 || z > WORLD_SIZE - 1) return false;
@@ -330,44 +312,8 @@ export class ScatterChunks {
     }
     petalsB.count = fib;
 
-    // Trees — clump via grove noise threshold
-    for (let i = 0; i < treeCandidates; i++) {
-      const x = originX + 1.5 + hash2(i, 60, seed) * (CHUNK_SIZE - 3);
-      const z = originZ + 1.5 + hash2(i, 61, seed) * (CHUNK_SIZE - 3);
-      if (!placeOk(x, z)) continue;
-      if (
-        x >= HOMESTEAD_MIN_X - 4 &&
-        x <= HOMESTEAD_MAX_X + 4 &&
-        z >= HOMESTEAD_MIN_Z - 4 &&
-        z <= HOMESTEAD_MAX_Z + 4
-      )
-        continue;
-      // Near lake: fewer trees
-      if (Math.hypot(x - LAKE_CX, z - LAKE_CZ) < LAKE_RADIUS + 6) continue;
-      const grove = treeGroveNoise(x, z, TERRAIN_SEED);
-      if (grove < 0.58) continue; // threshold → groves
-      if (ti >= 6) break;
-      const y = this.heightAt(x, z);
-      const sc = 0.85 + hash2(i, 62, seed) * 0.5;
-      // trunk
-      this._p.set(x, y + 0.55 * sc, z);
-      this._e.set(0, hash2(i, 63, seed) * 6, 0);
-      this._q.setFromEuler(this._e);
-      this._s.set(sc, sc, sc);
-      this._m.compose(this._p, this._q, this._s);
-      trunks.setMatrixAt(ti++, this._m);
-      // canopy stack ×2
-      this._p.set(x, y + 1.35 * sc, z);
-      this._s.set(sc, sc, sc);
-      this._m.compose(this._p, this._q, this._s);
-      canopy.setMatrixAt(ci++, this._m);
-      this._p.set(x, y + 1.95 * sc, z);
-      this._s.set(sc * 0.72, sc * 0.7, sc * 0.72);
-      this._m.compose(this._p, this._q, this._s);
-      canopy.setMatrixAt(ci++, this._m);
-    }
-    trunks.count = ti;
-    canopy.count = ci;
+    // Trees are no longer scattered here — FarmTrees owns every overworld tree so
+    // each one is choppable and respawns on its own timer.
 
     grass.instanceMatrix.needsUpdate = true;
     pebbles.instanceMatrix.needsUpdate = true;
@@ -376,10 +322,8 @@ export class ScatterChunks {
     stems.instanceMatrix.needsUpdate = true;
     petals.instanceMatrix.needsUpdate = true;
     petalsB.instanceMatrix.needsUpdate = true;
-    trunks.instanceMatrix.needsUpdate = true;
-    canopy.instanceMatrix.needsUpdate = true;
 
-    group.add(grass, pebbles, boulders, bushes, stems, petals, petalsB, trunks, canopy);
+    group.add(grass, pebbles, boulders, bushes, stems, petals, petalsB);
 
     return { key, cx, cz, group };
   }

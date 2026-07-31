@@ -24,8 +24,14 @@ export const PLAYER_ACCEL = 28;
 export const PLAYER_DAMP = 14;
 export const TOOL_RANGE = 1.6;
 
+// Clock-derived durations
+/** One full day = daylight + night. */
+export const FULL_DAY = DAY_LENGTH + NIGHT_LENGTH;
+/** Every plant takes exactly two days to grow. */
+export const PLANT_GROW_TIME = FULL_DAY * 2;
+
 // Legacy single-crop constant (farm still uses per-species grow times)
-export const CROP_GROW_TIME = 100;
+export const CROP_GROW_TIME = PLANT_GROW_TIME;
 export const CROP_STAGES = 3;
 export const CROP_SELL_VALUE = 0;
 
@@ -59,6 +65,22 @@ export const LANTERN_DISTANCE_MIN = 2.5;
 export const TREE_CHOPS = 3;
 export const TREE_WOOD = 1;
 export const TREE_COUNT = 36;
+
+// Overworld (farm) trees — choppable, respawning
+/** Share of world tiles that carry a tree. */
+export const FARM_TREE_FRACTION = 0.25;
+/** Chops to fell an overworld tree. */
+export const FARM_TREE_CHOPS = 3;
+/** Wood added to the inventory per felled overworld tree. */
+export const FARM_TREE_WOOD = 2;
+/** Days before a chopped tile grows a tree back. */
+export const TREE_RESPAWN_DAYS = 2;
+/**
+ * Chunk radius kept live for overworld trees. Smaller than the scatter radius:
+ * a quarter of every tile is a tree, so each chunk is ~64 of them and the draw
+ * call count adds up fast. Two chunks still covers well past the camera.
+ */
+export const TREE_CHUNK_RADIUS = 2;
 export const BAG_SIZE_BASE = 6;
 export const BAG_SIZE_UPGRADED = 12;
 export const BAG_SIZE_CABIN = 16;
@@ -68,8 +90,10 @@ export const STALKER_SPEED_EMPTY = 4.2; // ~150 in old px terms relative
 export const STALKER_SPEED_FULL = 6.2; // ~210
 export const STALKER_DESPAWN_ON_EXIT = true;
 
-// Homestead tiers: 0 Lean-To, 1 Shack, 2 Cabin
+// Homestead tiers: 0 Lean-To, 1 Market Stall, 2 Cabin
 export const SHACK_COST = 40; // wood
+/** The tier-1 build is the market stall — same cost, clearer name. */
+export const STALL_COST = SHACK_COST;
 export const CABIN_COST_WOOD = 20;
 export const CABIN_COST_DARKWOOD = 30;
 /** @deprecated use SHACK_COST — kept for old win check path */
@@ -105,7 +129,15 @@ export const TREELINE_Z = 2.5;
 
 export const FIXED_DT = 1 / 60;
 export const SAVE_KEY = 'tarnation.save';
-export const BUCKET_CAPACITY = 2;
+export const BUCKET_CAPACITY = 10;
+
+// Inventory / toolbar
+export const INVENTORY_SLOTS = 24;
+export const TOOLBAR_SLOTS = 5;
+
+// Market stall
+/** Distance from the stall at which the sell counter opens. */
+export const MARKET_RANGE = 3.4;
 
 // Palettes
 export const FARM_COLORS = {
@@ -141,13 +173,13 @@ export const WOODS_COLORS = {
   crimson: 0xd85d4c,
 };
 
-/** Base crop catalogue */
+/** Base crop catalogue. Every plant grows in exactly two days. */
 export const CROP_DEFS = {
-  grass: { id: 'grass' as const, name: 'Grass', grow: 40, waterNeed: 0.25, color: 0x7cb342 },
-  dandelion: { id: 'dandelion' as const, name: 'Dandelion', grow: 55, waterNeed: 0.3, color: 0xf0d060 },
-  turnip: { id: 'turnip' as const, name: 'Turnip', grow: 100, waterNeed: 0.5, color: 0xc4d64a },
-  carrot: { id: 'carrot' as const, name: 'Carrot', grow: 130, waterNeed: 0.55, color: 0xe88a30 },
-  onion: { id: 'onion' as const, name: 'Onion', grow: 160, waterNeed: 0.75, color: 0xd0c0e0 },
+  grass: { id: 'grass' as const, name: 'Grass', grow: PLANT_GROW_TIME, waterNeed: 0.25, color: 0x7cb342 },
+  dandelion: { id: 'dandelion' as const, name: 'Dandelion', grow: PLANT_GROW_TIME, waterNeed: 0.3, color: 0xf0d060 },
+  turnip: { id: 'turnip' as const, name: 'Turnip', grow: PLANT_GROW_TIME, waterNeed: 0.5, color: 0xc4d64a },
+  carrot: { id: 'carrot' as const, name: 'Carrot', grow: PLANT_GROW_TIME, waterNeed: 0.55, color: 0xe88a30 },
+  onion: { id: 'onion' as const, name: 'Onion', grow: PLANT_GROW_TIME, waterNeed: 0.75, color: 0xd0c0e0 },
 };
 
 export type BaseCropId = keyof typeof CROP_DEFS;

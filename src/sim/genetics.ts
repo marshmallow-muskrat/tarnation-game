@@ -153,11 +153,12 @@ export function seedId(s: Seed): string {
   return `${s.displayName}|${s.species}|${s.traits.weirdness}|${s.mech}`;
 }
 
-export function growTimeForSeed(seed: Seed, baseGrow: number): number {
-  // Higher vigor → faster; greed_crop slightly faster yield path
-  const vigorMul = 1 - (seed.traits.vigor - 50) / 200;
-  const greed = seed.mech === 'greed_crop' ? 0.85 : 1;
-  return Math.max(20, baseGrow * vigorMul * greed);
+/**
+ * Every plant takes the same two days, hybrids included — vigor and greed_crop no
+ * longer bend the timer, so the player can plan a harvest by the calendar.
+ */
+export function growTimeForSeed(_seed: Seed, baseGrow: number): number {
+  return baseGrow;
 }
 
 export function waterNeedForSeed(seed: Seed, base: number): number {

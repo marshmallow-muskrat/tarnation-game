@@ -8,6 +8,7 @@ export default defineConfig({
     outDir: 'dist',
   },
   server: {
-    port: 5173,
+    // Honour PORT so a second dev server can run alongside the default one.
+    port: Number(process.env.PORT) || 5183,
   },
 });

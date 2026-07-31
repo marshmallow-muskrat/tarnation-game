@@ -1,6 +1,12 @@
 import * as THREE from 'three';
 import {
   BAG_SIZE_BASE,
+  FARM_TREE_CHOPS,
+  FARM_TREE_WOOD,
+  INVENTORY_SLOTS,
+  MARKET_RANGE,
+  STALL_COST,
+  TOOLBAR_SLOTS,
   BOW_COOLDOWN,
   BOW_SPEED,
   BLUNDER_COOLDOWN,
@@ -49,21 +55,38 @@ import {
   createGameState,
   cycleSeed,
   cycleWeapon,
+  darkwoodCount,
   dumpBag,
   fillBucket,
   forceDawn,
   forceDawnAfterStalker,
+  isTreeChopped,
   loadFromString,
+  markTreeChopped,
   markWinShown,
+  respawnTrees,
   saveToString,
   selectedSeed,
+  sellEverything,
+  sellItem,
   setToast,
   stepGameClock,
   takeFromInventory,
   tryUpgradeHomestead,
   useBucketWater,
+  woodCount,
   type GameState,
 } from '../sim/gameState';
+import { countItem, findItem, occupiedSlots } from '../sim/inventory';
+import {
+  cropItem,
+  cropName,
+  itemInfo,
+  ITEM_DARKWOOD,
+  ITEM_WOOD,
+  trophyItem,
+  type ItemId,
+} from '../sim/items';
 import {
   clearBreedingParents,
   destroyCrop,
@@ -103,7 +126,32 @@ import {
 } from '../sim/woods';
 import { cloneModel, preloadAll, initAssetLoaders } from './Assets';
 import { InputController } from './InputController';
+import { buildMarketStall } from './MarketStall';
 import { WorldRenderer } from './WorldRenderer';
+
+export type HudSlot = {
+  id: ItemId | null;
+  name: string;
+  glyph: string;
+  count: number;
+  price: number;
+};
+
+export type HudToolbarSlot = {
+  index: number;
+  /** '' for an empty slot. */
+  name: string;
+  glyph: string;
+  selected: boolean;
+  empty: boolean;
+};
+
+export type HudMarket = {
+  open: boolean;
+  /** Only what the player is actually carrying. */
+  items: { id: ItemId; name: string; glyph: string; count: number; price: number }[];
+  total: number;
+};
 
 export type HudSnapshot = {
   day: number;
@@ -130,7 +178,12 @@ export type HudSnapshot = {
   woodsDepth: string;
   codexCount: number;
   trophies: string[];
-  inventorySummary: string;
+  /** 24 inventory slots, unlimited stack size, empties included. */
+  inventory: HudSlot[];
+  ducketts: number;
+  toolbar: HudToolbarSlot[];
+  toolSlot: { name: string; glyph: string; selected: boolean; fill: number; capacity: number };
+  market: HudMarket;
   win: null | {
     daysSurvived: number;
     cropsHarvested: number;
@@ -196,6 +249,19 @@ type PlainsAnimal = {
 
 type ToolMode = 'farm' | 'trench' | 'breed' | 'trap';
 
+/**
+ * Bottom toolbar. Slot 1 is your fist (till / plant / harvest / chop), slot 2 the
+ * rock you throw, 3–5 are held for tools you haven't found yet. The bucket lives
+ * in its own dedicated water slot beside them.
+ */
+const TOOLBAR: { name: string; glyph: string; empty: boolean }[] = [
+  { name: 'Fist', glyph: '✊', empty: false },
+  { name: 'Rock', glyph: '🪨', empty: false },
+  { name: '', glyph: '', empty: true },
+  { name: '', glyph: '', empty: true },
+  { name: '', glyph: '', empty: true },
+];
+
 export class GameRuntime {
   private gs!: GameState;
   private world!: WorldRenderer;
@@ -222,6 +288,10 @@ export class GameRuntime {
   private shotCd = 0;
   private crops: CropActor[] = [];
   private houseRoot: THREE.Object3D | null = null;
+  private stallRoot: THREE.Object3D | null = null;
+  private nearMarket = false;
+  /** In-progress chops on overworld trees, keyed "tx,ty". */
+  private treeChops = new Map<string, number>();
 
   private trees: Tree[] = [];
   private fuel = LANTERN_FUEL;
@@ -262,8 +332,18 @@ export class GameRuntime {
     this.playerX = HOMESTEAD_MIN_X + HOMESTEAD_SIZE / 2;
     this.playerZ = HOMESTEAD_MIN_Z + HOMESTEAD_SIZE / 2;
 
+    // Trees are drawn by the renderer but owned by the sim: which tiles are felled
+    // and which are worked ground both live in GameState.
+    this.world.initFarmTrees({
+      heightAt: (x, z) => this.world.heightAt(x, z),
+      distToWater: (x, z) => this.world.distToWater(x, z),
+      isChopped: (tx, ty) => isTreeChopped(this.gs, tx, ty),
+      tileBlocked: (tx, ty) => (this.gs.tiles[ty]?.[tx]?.state ?? 'grass') !== 'grass',
+    });
+
     this.spawnPlayer();
     this.spawnHouse();
+    this.spawnStall();
     this.seedPlainsAnimals();
     this.world.syncFarmTiles(this.gs.tiles);
     this.rebuildCrops();
@@ -274,6 +354,51 @@ export class GameRuntime {
     this.running = true;
     this.loop(performance.now());
     this.pushHud(true);
+
+    // Dev handle: lets the browser console drive the game for spot checks.
+    (window as unknown as { tarnation?: GameRuntime }).tarnation = this;
+  }
+
+  /** Console helpers — teleport, hand out items, jump the homestead tier. */
+  debug() {
+    return {
+      state: this.gs,
+      teleport: (x: number, z: number) => {
+        this.playerX = x;
+        this.playerZ = z;
+        this.velX = 0;
+        this.velZ = 0;
+        this.world.snapCamera(x, z);
+      },
+      grant: (id: ItemId, n = 1) => {
+        addToInventory(this.gs, id, n);
+        this.pushHud(true);
+      },
+      setTier: (tier: 0 | 1 | 2) => {
+        this.gs.homesteadTier = tier;
+        this.spawnHouse();
+        this.spawnStall();
+        this.pushHud(true);
+      },
+      till: (radius = 3) => {
+        const cx = Math.floor(this.playerX);
+        const cz = Math.floor(this.playerZ);
+        for (let ty = cz - radius; ty <= cz + radius; ty++) {
+          for (let tx = cx - radius; tx <= cx + radius; tx++) {
+            tillTile(this.gs.tiles, tx, ty);
+          }
+        }
+        this.world.getFarmTrees()?.rebuildAll();
+        this.world.syncFarmTiles(this.gs.tiles);
+      },
+      skipDay: () => {
+        this.gs.clock = { ...this.gs.clock, day: this.gs.clock.day + 1 };
+        const back = respawnTrees(this.gs);
+        this.world.getFarmTrees()?.rebuildAll();
+        this.pushHud(true);
+        return back.length;
+      },
+    };
   }
 
   dispose(): void {
@@ -344,6 +469,67 @@ export class GameRuntime {
     this.houseRoot = root;
     this.world.getFarmActors().add(root);
     this.world.markShadowsDirty();
+  }
+
+  /** The stall stands once you've built it, and stays through the cabin upgrade. */
+  private spawnStall(): void {
+    if (this.gs.homesteadTier < 1) return;
+    if (this.stallRoot) return;
+    const root = buildMarketStall();
+    const sx = HOMESTEAD_MIN_X + HOMESTEAD_SIZE / 2 + 6;
+    const sz = HOMESTEAD_MIN_Z + HOMESTEAD_SIZE - 8;
+    root.position.set(sx, this.world.heightAt(sx, sz), sz);
+    root.rotation.y = -0.5;
+    this.stallRoot = root;
+    this.world.getFarmActors().add(root);
+    this.world.markShadowsDirty();
+  }
+
+  // ---------------------------------------------------------------- market API
+
+  sellOne(id: ItemId): void {
+    if (!this.nearMarket) return;
+    const earned = sellItem(this.gs, id, false);
+    if (earned > 0) {
+      this.pushFeed(`Sold ${itemInfo(id).name} · +${earned}₫`);
+      this.persist();
+      this.pushHud(true);
+    }
+  }
+
+  sellStack(id: ItemId): void {
+    if (!this.nearMarket) return;
+    const earned = sellItem(this.gs, id, true);
+    if (earned > 0) {
+      this.pushFeed(`Sold all ${itemInfo(id).name} · +${earned}₫`);
+      this.persist();
+      this.pushHud(true);
+    }
+  }
+
+  sellAll(): void {
+    if (!this.nearMarket) return;
+    const earned = sellEverything(this.gs);
+    if (earned > 0) {
+      setToast(this.gs, `Sold everything for ${earned} ducketts`, 2.5);
+      this.pushFeed(`Sold everything · +${earned}₫`);
+      this.persist();
+      this.pushHud(true);
+    }
+  }
+
+  selectSlot(index: number): void {
+    if (index < 0 || index >= TOOLBAR_SLOTS) return;
+    this.gs.toolbarSlot = index;
+    this.gs.toolSlotActive = false;
+    if (index === 0) this.toolMode = 'farm';
+    this.pushHud(true);
+  }
+
+  selectToolSlot(): void {
+    this.gs.toolSlotActive = true;
+    this.toolMode = 'farm';
+    this.pushHud(true);
   }
 
   private last = 0;
@@ -433,23 +619,34 @@ export class GameRuntime {
       const s = selectedSeed(this.gs);
       if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
     }
-    if (this.input.justPressed('Digit1')) this.toolMode = 'farm';
-    if (this.input.justPressed('Digit2')) {
-      this.toolMode = 'trench';
-      setToast(this.gs, 'Tool: trench dig', 1.2);
+    // 1–5 pick a toolbar slot, 6 / T the dedicated water slot.
+    for (let i = 0; i < TOOLBAR_SLOTS; i++) {
+      if (this.input.justPressed(`Digit${i + 1}`)) {
+        this.selectSlot(i);
+        const def = TOOLBAR[i]!;
+        setToast(this.gs, def.empty ? `Slot ${i + 1} — empty` : def.name, 1.2);
+      }
     }
-    if (this.input.justPressed('Digit3')) {
-      this.toolMode = 'breed';
-      setToast(this.gs, 'Tool: breeding bed', 1.2);
+    if (this.input.justPressed('Digit6') || this.input.justPressed('KeyT')) {
+      this.selectToolSlot();
+      setToast(this.gs, `Bucket · ${this.gs.bucketFill}/${BUCKET_CAPACITY}`, 1.2);
     }
-    if (this.input.justPressed('Digit4')) {
-      this.toolMode = 'trap';
-      setToast(this.gs, 'Tool: mushroom trap', 1.2);
+    // Farm structures moved off the number row when it became the toolbar.
+    const structure: [string, ToolMode, string][] = [
+      ['KeyZ', 'trench', 'Tool: trench dig'],
+      ['KeyX', 'breed', 'Tool: breeding bed'],
+      ['KeyC', 'trap', 'Tool: mushroom trap'],
+    ];
+    for (const [code, mode, label] of structure) {
+      if (!this.input.justPressed(code)) continue;
+      this.selectSlot(0);
+      this.toolMode = mode;
+      setToast(this.gs, label, 1.2);
     }
     if (this.input.justPressed('KeyV') && this.gs.irrigationTier < 3 && this.gs.homesteadTier >= 2) {
-      if (this.gs.wood >= 15 && this.gs.darkwood >= 5) {
-        this.gs.wood -= 15;
-        this.gs.darkwood -= 5;
+      if (woodCount(this.gs) >= 15 && darkwoodCount(this.gs) >= 5) {
+        takeFromInventory(this.gs, ITEM_WOOD, 15);
+        takeFromInventory(this.gs, ITEM_DARKWOOD, 5);
         this.gs.irrigationTier = 3;
         setToast(this.gs, 'Aqueduct tier unlocked!', 3);
       }
@@ -472,6 +669,13 @@ export class GameRuntime {
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 2);
       this.pushFeed('Bucket filled');
     }
+
+    this.nearMarket =
+      this.stallRoot !== null &&
+      Math.hypot(
+        this.playerX - this.stallRoot.position.x,
+        this.playerZ - this.stallRoot.position.z,
+      ) <= MARKET_RANGE;
 
     if (this.input.consumeRmb() || this.input.justPressed('Space')) this.tryShoot();
     if (this.input.consumeLmb()) this.tryTool();
@@ -503,6 +707,12 @@ export class GameRuntime {
       this.clearWeasels();
       setToast(this.gs, `Day ${this.gs.clock.day}`, 2);
       this.pushFeed(`Day ${this.gs.clock.day}`);
+      const back = respawnTrees(this.gs);
+      if (back.length) {
+        this.world.getFarmTrees()?.rebuildAll();
+        this.world.markShadowsDirty();
+        this.pushFeed(`${back.length} trees grew back`);
+      }
       this.persist();
       if (checkWin(this.gs) && !this.gs.winShown) this.winShownLocal = false;
     }
@@ -521,10 +731,23 @@ export class GameRuntime {
       if (Math.hypot(this.playerX - hx, this.playerZ - hz) < 2.2) {
         if (tryUpgradeHomestead(this.gs)) {
           this.spawnHouse();
-          const name = this.gs.homesteadTier === 1 ? 'Shack' : 'Cabin';
-          setToast(this.gs, `${name} built!`, 3.5);
+          this.spawnStall();
+          const name = this.gs.homesteadTier === 1 ? 'Market stall' : 'Cabin';
+          setToast(
+            this.gs,
+            this.gs.homesteadTier === 1
+              ? 'Market stall built! Walk up to it to sell for ducketts.'
+              : 'Cabin built!',
+            4,
+          );
           this.pushFeed(`${name} built`);
           this.persist();
+        } else if (this.gs.homesteadTier === 0) {
+          setToast(
+            this.gs,
+            `Market stall needs ${STALL_COST} wood — you have ${woodCount(this.gs)}`,
+            1.5,
+          );
         }
       }
     }
@@ -559,7 +782,7 @@ export class GameRuntime {
     }
 
     // Portable light hybrid in inventory slows fuel drain slightly
-    if ((this.gs.inventory['Glowshroom Gourd'] ?? 0) > 0) {
+    if (countItem(this.gs.inventory, cropItem('Glowshroom Gourd')) > 0) {
       this.fuel = Math.min(LANTERN_FUEL, this.fuel + dt * 0.15);
     }
 
@@ -663,6 +886,16 @@ export class GameRuntime {
   }
 
   private tryTool(): void {
+    // Slot 2 is the rock — clicking throws it rather than working the ground.
+    if (!this.gs.toolSlotActive && this.gs.toolbarSlot === 1) {
+      this.tryShoot();
+      return;
+    }
+    if (!this.gs.toolSlotActive && this.gs.toolbarSlot >= 2) {
+      setToast(this.gs, `Slot ${this.gs.toolbarSlot + 1} is empty`, 1.2);
+      return;
+    }
+
     const ndc = this.input.getPointerNdc();
     const hit = this.world.raycastGround(ndc.x, ndc.y);
     if (!hit) return;
@@ -673,6 +906,21 @@ export class GameRuntime {
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return;
+
+    // Bucket: fill at the water's edge, otherwise pour one water on a dry plant.
+    if (this.gs.toolSlotActive) {
+      if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
+        fillBucket(this.gs);
+        setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
+        this.pushFeed('Bucket filled');
+        return;
+      }
+      this.waterWithBucket(tx, ty, tile.state === 'planted' && !tile.watered);
+      return;
+    }
+
+    // Fist: a tree standing here has to come down before the ground can be worked.
+    if (this.chopFarmTree(tx, ty)) return;
 
     if (this.toolMode === 'trench') {
       if (this.gs.irrigationTier < 2) {
@@ -749,23 +997,14 @@ export class GameRuntime {
         this.pushFeed(`Planted ${seed.displayName}`);
       }
     } else if (tile.state === 'planted' && !tile.watered) {
-      if (this.gs.bucketFill > 0 || this.gs.irrigationTier >= 3) {
-        if (this.gs.irrigationTier < 3 && !useBucketWater(this.gs)) {
-          setToast(this.gs, 'Bucket empty — fill at river/lake (E)', 2);
-          return;
-        }
-        if (waterTile(this.gs.tiles, tx, ty, this.gs.simTime)) {
-          this.world.syncFarmTiles(this.gs.tiles);
-          this.pushFeed('Watered');
-        }
-      } else {
-        setToast(this.gs, 'Need water in bucket (E at river/lake)', 2);
-      }
+      // Watering belongs to the bucket in the dedicated water slot.
+      this.waterWithBucket(tx, ty, true);
     } else if (tile.state === 'mature') {
       const res = harvestTile(this.gs.tiles, tx, ty);
       if (res.ok && res.seed) {
+        const id = cropItem(res.seed.displayName);
+        if (!addToInventory(this.gs, id, res.count)) return;
         this.gs.stats.cropsHarvested += res.count;
-        addToInventory(this.gs, res.seed.displayName, res.count);
         // also keep a plantable seed copy
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
         this.rebuildCrops();
@@ -774,6 +1013,55 @@ export class GameRuntime {
         this.pushFeed(`+${res.count} ${res.seed.displayName}`);
       }
     }
+  }
+
+  /** Pour one bucket-water on a tile. Tier-3 irrigation waters without spending. */
+  private waterWithBucket(tx: number, ty: number, thirsty: boolean): void {
+    if (!thirsty) {
+      setToast(this.gs, 'Nothing to water here', 1.2);
+      return;
+    }
+    if (this.gs.irrigationTier < 3) {
+      if (this.gs.bucketFill <= 0) {
+        setToast(this.gs, 'Bucket empty — fill at the river or lake', 2);
+        return;
+      }
+      if (!useBucketWater(this.gs)) return;
+    }
+    if (waterTile(this.gs.tiles, tx, ty, this.gs.simTime)) {
+      this.world.syncFarmTiles(this.gs.tiles);
+      this.pushFeed(`Watered · bucket ${this.gs.bucketFill}/${BUCKET_CAPACITY}`);
+    }
+  }
+
+  /**
+   * Chop the overworld tree on this tile, if there is one. Returns true when the
+   * click was spent on a tree, so the caller leaves the ground alone.
+   */
+  private chopFarmTree(tx: number, ty: number): boolean {
+    const trees = this.world.getFarmTrees();
+    if (!trees?.hasTree(tx, ty)) return false;
+
+    const key = `${tx},${ty}`;
+    const chops = (this.treeChops.get(key) ?? 0) + 1;
+    this.treeChops.set(key, chops);
+    this.world.shake(0.06, 0.05);
+
+    if (chops < FARM_TREE_CHOPS) {
+      setToast(this.gs, `Chopping… ${chops}/${FARM_TREE_CHOPS}`, 0.8);
+      return true;
+    }
+
+    this.treeChops.delete(key);
+    if (!addToInventory(this.gs, ITEM_WOOD, FARM_TREE_WOOD)) return true;
+    markTreeChopped(this.gs, tx, ty);
+    trees.invalidateTile(tx, ty);
+    this.world.markShadowsDirty();
+    this.gs.stats.woodGathered += FARM_TREE_WOOD;
+    this.world.shake(0.14, 0.12);
+    setToast(this.gs, `+${FARM_TREE_WOOD} wood`, 1.4);
+    this.pushFeed(`Felled a tree · +${FARM_TREE_WOOD} wood`);
+    return true;
   }
 
   private tryShoot(): void {
@@ -797,17 +1085,11 @@ export class GameRuntime {
     let pellets = 1;
     let spread = 0;
     let ricochet = 0;
-    // Crops as ammo for special effects
-    let ammoKey: string | null = null;
-    if (weapon !== 'slingshot') {
-      // prefer special hybrids
-      for (const k of Object.keys(this.gs.inventory)) {
-        if (this.gs.inventory[k]! > 0) {
-          ammoKey = k;
-          break;
-        }
-      }
-      if (ammoKey && !takeFromInventory(this.gs, ammoKey, 1)) ammoKey = null;
+    // Crops as ammo for special effects — the bare rock never consumes any.
+    let ammo: string | null = null;
+    if (weapon !== 'rock') {
+      const id = findItem(this.gs.inventory, (i) => cropName(i) !== null);
+      if (id && takeFromInventory(this.gs, id, 1)) ammo = cropName(id);
     }
 
     if (weapon === 'bow') {
@@ -823,13 +1105,15 @@ export class GameRuntime {
       }
     }
 
-    if (ammoKey === 'Rubber Corn') ricochet = 3;
+    if (ammo === 'Rubber Corn') ricochet = 3;
     const color =
-      ammoKey === 'Screaming Cabbage'
+      ammo === 'Screaming Cabbage'
         ? 0x80ff80
-        : ammoKey === 'Ironroot Turnip'
+        : ammo === 'Ironroot Turnip'
           ? 0x888899
-          : 0xf2f0e4;
+          : weapon === 'rock'
+            ? 0x8d8578
+            : 0xf2f0e4;
 
     for (let p = 0; p < pellets; p++) {
       const ang = (this.gs.rng() - 0.5) * spread * 2;
@@ -877,6 +1161,8 @@ export class GameRuntime {
           a.timer = 2.5;
           this.gs.trophies.push(a.name);
           this.gs.stats.trophies += 1;
+          // Trophies are inventory items too — sellable at the stall.
+          addToInventory(this.gs, trophyItem(a.name), 1);
           setToast(this.gs, `Trophy: ${a.name}!`, 2);
           this.pushFeed(`Trophy ${a.name}`);
           if (s.ricochet > 0) {
@@ -1460,25 +1746,57 @@ export class GameRuntime {
     let hint =
       zone === 'woods'
         ? `LMB chop · RMB shoot · Q dump · ${depth || 'woods'}`
-        : `LMB farm (whole map) · RMB shoot · [ ] seed · R weapon · 2 trench · 3 breed · 4 trap`;
+        : `1 fist · 2 rock · 6 bucket · [ ] seed · R weapon · Z trench · X breed · C trap`;
     if (zone === 'farm' && this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
       hint = 'E — fill bucket';
     }
     if (zone === 'farm' && this.toolMode !== 'farm') {
-      hint = `Tool: ${this.toolMode} · 1 back to farm tool`;
+      hint = `Tool: ${this.toolMode} · 1 back to fist`;
+    }
+    if (this.nearMarket) {
+      hint = 'Market stall — sell for ducketts';
     }
 
-    const inv = Object.entries(this.gs.inventory)
-      .slice(0, 4)
-      .map(([k, v]) => `${k}×${v}`)
-      .join(' · ');
+    const inventory: HudSlot[] = this.gs.inventory.map((slot) => {
+      if (!slot) return { id: null, name: '', glyph: '', count: 0, price: 0 };
+      const info = itemInfo(slot.id);
+      return {
+        id: slot.id,
+        name: info.name,
+        glyph: info.glyph,
+        count: slot.count,
+        price: info.price,
+      };
+    });
+    while (inventory.length < INVENTORY_SLOTS) {
+      inventory.push({ id: null, name: '', glyph: '', count: 0, price: 0 });
+    }
+
+    const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
+      index: i,
+      name: t.name,
+      glyph: t.glyph,
+      empty: t.empty,
+      selected: !this.gs.toolSlotActive && this.gs.toolbarSlot === i,
+    }));
+
+    const marketItems = occupiedSlots(this.gs.inventory).map((s) => {
+      const info = itemInfo(s.id);
+      return {
+        id: s.id,
+        name: info.name,
+        glyph: info.glyph,
+        count: s.count,
+        price: info.price,
+      };
+    });
 
     const snap: HudSnapshot = {
       day: this.gs.clock.day,
       phase: this.gs.clock.phase,
       phaseT: this.gs.clock.t,
-      wood: this.gs.wood,
-      darkwood: this.gs.darkwood,
+      wood: woodCount(this.gs),
+      darkwood: darkwoodCount(this.gs),
       bagWood: this.gs.bagWood + this.gs.bagDarkwood,
       bagSize: this.gs.bagSize,
       lanternFuel: zone === 'woods' ? this.fuel / LANTERN_FUEL : 1,
@@ -1498,7 +1816,21 @@ export class GameRuntime {
       woodsDepth: depth || '—',
       codexCount: this.gs.codex.length,
       trophies: this.gs.trophies.slice(-5),
-      inventorySummary: inv || 'empty',
+      inventory,
+      ducketts: this.gs.ducketts,
+      toolbar,
+      toolSlot: {
+        name: 'Bucket',
+        glyph: '🪣',
+        selected: this.gs.toolSlotActive,
+        fill: this.gs.bucketFill,
+        capacity: BUCKET_CAPACITY,
+      },
+      market: {
+        open: this.nearMarket,
+        items: marketItems,
+        total: marketItems.reduce((n, i) => n + i.price * i.count, 0),
+      },
       win:
         this.gs.clock.day >= WIN_DAY &&
         this.gs.homesteadTier >= 1 &&

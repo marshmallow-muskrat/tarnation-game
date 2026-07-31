@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation"
+    "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
+    "check": "tsx scripts/simcheck.ts"
   },
   "dependencies": {
     "react": "^19.0.0",
@@ -21,6 +22,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "wrangler": "^3.99.0"
+    "wrangler": "^3.99.0",
+    "tsx": "^4.19.0"
   }
 }

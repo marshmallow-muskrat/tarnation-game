@@ -10,7 +10,9 @@ import {
   CABIN_COST_WOOD,
   GRID_H,
   GRID_W,
-  SHACK_COST,
+  STALL_COST,
+  TOOLBAR_SLOTS,
+  TREE_RESPAWN_DAYS,
   WIN_DAY,
 } from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
@@ -22,10 +24,22 @@ import {
 } from './farm';
 import type { CodexEntry, Seed } from './genetics';
 import { makeSeed, seedId } from './genetics';
+import {
+  addItem,
+  cloneInventory,
+  countItem,
+  createInventory,
+  normalizeInventory,
+  removeAll,
+  removeItem,
+  type Inventory,
+} from './inventory';
+import { itemInfo, ITEM_DARKWOOD, ITEM_WOOD, type ItemId } from './items';
 import { mulberry32, type Rng } from './rng';
 import {
   createNewSave,
   defaultStats,
+  type ChoppedTrees,
   type GameStats,
   type HomesteadTier,
   type SaveData,
@@ -39,8 +53,6 @@ export interface GameState {
   rng: Rng;
   clock: ClockState;
   tiles: Tile[][];
-  wood: number;
-  darkwood: number;
   bagWood: number;
   bagDarkwood: number;
   bagSize: number;
@@ -51,8 +63,16 @@ export interface GameState {
   irrigationTier: number;
   bucketFill: number;
   selectedCrop: string;
-  /** Harvested crop counts by displayName / species key for ammo + planting */
-  inventory: Record<string, number>;
+  /** 24 slots, unlimited stack size */
+  inventory: Inventory;
+  /** Currency earned at the market stall */
+  ducketts: number;
+  /** "tx,ty" → day the overworld tree was felled */
+  choppedTrees: ChoppedTrees;
+  /** Selected toolbar slot 0..TOOLBAR_SLOTS-1 */
+  toolbarSlot: number;
+  /** Dedicated water tool (bucket) selected instead of a numbered slot */
+  toolSlotActive: boolean;
   /** Plantable seeds (including hybrids) */
   seedInventory: Seed[];
   codex: CodexEntry[];
@@ -82,19 +102,21 @@ export function createGameState(seed?: number): GameState {
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
-    wood: 0,
-    darkwood: 0,
     bagWood: 0,
     bagDarkwood: 0,
     bagSize: BAG_SIZE_BASE,
     shedBuilt: false,
     homesteadTier: 0,
-    weapon: 'slingshot',
-    unlockedWeapons: ['slingshot'],
+    weapon: 'rock',
+    unlockedWeapons: ['rock'],
     irrigationTier: 1,
     bucketFill: 0,
     selectedCrop: 'turnip',
-    inventory: {},
+    inventory: createInventory(),
+    ducketts: 0,
+    choppedTrees: {},
+    toolbarSlot: 0,
+    toolSlotActive: false,
     seedInventory: starter,
     codex: [],
     attention: 0,
@@ -122,17 +144,19 @@ export function loadFromSaveData(data: SaveData): GameState {
     ...base,
     clock: createClock(data.day, data.phase, data.elapsed),
     tiles,
-    wood: data.wood,
-    darkwood: data.darkwood ?? 0,
     bagSize: data.bagSize,
     shedBuilt: data.shedBuilt || (data.homesteadTier ?? 0) >= 1,
     homesteadTier: data.homesteadTier ?? (data.shedBuilt ? 1 : 0),
-    weapon: data.weapon ?? 'slingshot',
-    unlockedWeapons: data.unlockedWeapons ?? ['slingshot'],
+    weapon: data.weapon ?? 'rock',
+    unlockedWeapons: data.unlockedWeapons ?? ['rock'],
     irrigationTier: data.irrigationTier ?? 1,
-    bucketFill: data.bucketFill ?? 0,
+    bucketFill: Math.min(data.bucketFill ?? 0, BUCKET_CAPACITY),
     selectedCrop: data.selectedCrop ?? 'turnip',
-    inventory: data.inventory ?? {},
+    inventory: normalizeInventory(data.inventory),
+    ducketts: data.ducketts ?? 0,
+    choppedTrees: { ...(data.choppedTrees ?? {}) },
+    toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 0, 0), TOOLBAR_SLOTS - 1),
+    toolSlotActive: data.toolSlotActive ?? false,
     seedInventory: data.seedInventory?.length ? data.seedInventory : base.seedInventory,
     codex: data.codex ?? [],
     attentionFloor: data.attentionFloor ?? 0,
@@ -145,14 +169,14 @@ export function loadFromSaveData(data: SaveData): GameState {
 
 export function toSaveData(gs: GameState): SaveData {
   return {
-    version: 3,
+    version: 4,
     seed: gs.seed,
     day: gs.clock.day,
     phase: gs.clock.phase,
     elapsed: gs.clock.elapsed,
     tiles: cloneGrid(gs.tiles),
-    wood: gs.wood,
-    darkwood: gs.darkwood,
+    wood: woodCount(gs),
+    darkwood: darkwoodCount(gs),
     bagSize: gs.bagSize,
     shedBuilt: gs.homesteadTier >= 1,
     homesteadTier: gs.homesteadTier,
@@ -161,7 +185,11 @@ export function toSaveData(gs: GameState): SaveData {
     irrigationTier: gs.irrigationTier,
     bucketFill: gs.bucketFill,
     selectedCrop: gs.selectedCrop,
-    inventory: { ...gs.inventory },
+    inventory: cloneInventory(gs.inventory),
+    ducketts: gs.ducketts,
+    choppedTrees: { ...gs.choppedTrees },
+    toolbarSlot: gs.toolbarSlot,
+    toolSlotActive: gs.toolSlotActive,
     seedInventory: gs.seedInventory.map((s) => ({
       ...s,
       traits: { ...s.traits },
@@ -213,11 +241,55 @@ export function setToast(gs: GameState, msg: string, duration = 3): void {
   gs.toastTimer = duration;
 }
 
+// ---------------------------------------------------------------- inventory
+
+export function addToInventory(gs: GameState, id: ItemId, n = 1): boolean {
+  const ok = addItem(gs.inventory, id, n);
+  if (!ok) setToast(gs, 'Inventory full!', 2);
+  return ok;
+}
+
+export function takeFromInventory(gs: GameState, id: ItemId, n = 1): boolean {
+  return removeItem(gs.inventory, id, n);
+}
+
+export function woodCount(gs: GameState): number {
+  return countItem(gs.inventory, ITEM_WOOD);
+}
+
+export function darkwoodCount(gs: GameState): number {
+  return countItem(gs.inventory, ITEM_DARKWOOD);
+}
+
+/** Sell one item stack (or a single unit) for ducketts. Returns ducketts earned. */
+export function sellItem(gs: GameState, id: ItemId, all: boolean): number {
+  const have = countItem(gs.inventory, id);
+  if (have <= 0) return 0;
+  const n = all ? have : 1;
+  if (!removeItem(gs.inventory, id, n)) return 0;
+  const earned = itemInfo(id).price * n;
+  gs.ducketts += earned;
+  return earned;
+}
+
+export function sellEverything(gs: GameState): number {
+  let earned = 0;
+  for (const slot of [...gs.inventory]) {
+    if (!slot) continue;
+    const n = removeAll(gs.inventory, slot.id);
+    earned += itemInfo(slot.id).price * n;
+  }
+  gs.ducketts += earned;
+  return earned;
+}
+
+// ------------------------------------------------------------------ hauling
+
 export function bankBag(gs: GameState): number {
   const n = gs.bagWood;
   const d = gs.bagDarkwood;
-  gs.wood += n;
-  gs.darkwood += d;
+  if (n > 0) addToInventory(gs, ITEM_WOOD, n);
+  if (d > 0) addToInventory(gs, ITEM_DARKWOOD, d);
   gs.stats.woodGathered += n;
   gs.stats.darkwoodGathered += d;
   gs.bagWood = 0;
@@ -234,8 +306,8 @@ export function dumpBag(gs: GameState): number {
 
 export function tryUpgradeHomestead(gs: GameState): boolean {
   if (gs.homesteadTier === 0) {
-    if (gs.wood < SHACK_COST) return false;
-    gs.wood -= SHACK_COST;
+    if (woodCount(gs) < STALL_COST) return false;
+    removeItem(gs.inventory, ITEM_WOOD, STALL_COST);
     gs.homesteadTier = 1;
     gs.shedBuilt = true;
     gs.bagSize = BAG_SIZE_UPGRADED;
@@ -243,9 +315,9 @@ export function tryUpgradeHomestead(gs: GameState): boolean {
     return true;
   }
   if (gs.homesteadTier === 1) {
-    if (gs.wood < CABIN_COST_WOOD || gs.darkwood < CABIN_COST_DARKWOOD) return false;
-    gs.wood -= CABIN_COST_WOOD;
-    gs.darkwood -= CABIN_COST_DARKWOOD;
+    if (woodCount(gs) < CABIN_COST_WOOD || darkwoodCount(gs) < CABIN_COST_DARKWOOD) return false;
+    removeItem(gs.inventory, ITEM_WOOD, CABIN_COST_WOOD);
+    removeItem(gs.inventory, ITEM_DARKWOOD, CABIN_COST_DARKWOOD);
     gs.homesteadTier = 2;
     gs.bagSize = BAG_SIZE_CABIN;
     if (!gs.unlockedWeapons.includes('blunderbuss')) gs.unlockedWeapons.push('blunderbuss');
@@ -259,6 +331,37 @@ export function tryUpgradeHomestead(gs: GameState): boolean {
 export function tryBuildShed(gs: GameState): boolean {
   if (gs.homesteadTier >= 1) return false;
   return tryUpgradeHomestead(gs);
+}
+
+// --------------------------------------------------------------------- trees
+
+export function treeKey(tx: number, ty: number): string {
+  return `${tx},${ty}`;
+}
+
+export function isTreeChopped(gs: GameState, tx: number, ty: number): boolean {
+  return treeKey(tx, ty) in gs.choppedTrees;
+}
+
+export function markTreeChopped(gs: GameState, tx: number, ty: number): void {
+  gs.choppedTrees[treeKey(tx, ty)] = gs.clock.day;
+}
+
+/**
+ * Grow felled trees back after TREE_RESPAWN_DAYS — but never onto worked ground,
+ * or a farm laid out over a clearing would re-forest itself under the player.
+ */
+export function respawnTrees(gs: GameState): { tx: number; ty: number }[] {
+  const back: { tx: number; ty: number }[] = [];
+  for (const [key, day] of Object.entries(gs.choppedTrees)) {
+    if (gs.clock.day - day < TREE_RESPAWN_DAYS) continue;
+    const [tx, ty] = key.split(',').map(Number) as [number, number];
+    const tile = gs.tiles[ty]?.[tx];
+    if (!tile || tile.state !== 'grass') continue;
+    delete gs.choppedTrees[key];
+    back.push({ tx, ty });
+  }
+  return back;
 }
 
 export function checkWin(gs: GameState): boolean {
@@ -289,18 +392,6 @@ export function forceDawnAfterStalker(gs: GameState): void {
 
 export function canEnterWoods(gs: GameState): boolean {
   return gs.clock.phase === 'day';
-}
-
-export function addToInventory(gs: GameState, key: string, n: number): void {
-  gs.inventory[key] = (gs.inventory[key] ?? 0) + n;
-}
-
-export function takeFromInventory(gs: GameState, key: string, n = 1): boolean {
-  const have = gs.inventory[key] ?? 0;
-  if (have < n) return false;
-  gs.inventory[key] = have - n;
-  if (gs.inventory[key] === 0) delete gs.inventory[key];
-  return true;
 }
 
 export function discoverSeed(gs: GameState, seed: Seed): boolean {

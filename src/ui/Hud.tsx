@@ -1,13 +1,27 @@
 import type { HudSnapshot } from '../game/GameRuntime';
+import type { ItemId } from '../sim/items';
 
 type Props = {
   hud: HudSnapshot | null;
   onDismissWin: () => void;
+  onSelectSlot: (index: number) => void;
+  onSelectToolSlot: () => void;
+  onSellOne: (id: ItemId) => void;
+  onSellStack: (id: ItemId) => void;
+  onSellAll: () => void;
 };
 
-const TIER = ['Lean-To', 'Shack', 'Cabin'];
+const TIER = ['Lean-To', 'Market Stall', 'Cabin'];
 
-export function Hud({ hud, onDismissWin }: Props) {
+export function Hud({
+  hud,
+  onDismissWin,
+  onSelectSlot,
+  onSelectToolSlot,
+  onSellOne,
+  onSellStack,
+  onSellAll,
+}: Props) {
   if (!hud) return null;
 
   const phasePct = Math.round(hud.phaseT * 100);
@@ -28,6 +42,8 @@ export function Hud({ hud, onDismissWin }: Props) {
           Homestead
         </p>
         <p className="value">{TIER[hud.homesteadTier] ?? 'Lean-To'}</p>
+        <p className="label">Ducketts</p>
+        <p className="value amber">₫ {hud.ducketts}</p>
       </div>
 
       <div className="panel hud-bottom-left">
@@ -63,44 +79,99 @@ export function Hud({ hud, onDismissWin }: Props) {
           <>
             <p className="label">Bucket · irrig t{hud.irrigationTier}</p>
             <p className={`value ${hud.bucketFull ? 'teal' : ''}`}>
-              {hud.bucketFill}/{2}
+              {hud.toolSlot.fill}/{hud.toolSlot.capacity}
               {hud.nearWater && !hud.bucketFull ? ' — E fill' : ''}
             </p>
-            <p className="label">Inventory</p>
-            <p className="value" style={{ fontSize: 12, color: 'var(--muted)' }}>
-              {hud.inventorySummary}
-            </p>
-            <p className="label">Codex · {hud.codexCount} · Trophies · {hud.trophies.length}</p>
+            <p className="label">Codex · {hud.codexCount}</p>
           </>
         )}
       </div>
 
-      <div className="panel hud-bottom-center">
-        <p className="hint">{hud.hint}</p>
-      </div>
-
-      <div className="panel hud-right">
-        <p className="label">Log</p>
-        <ul className="feed-list">
-          {hud.feed.length === 0 && (
-            <li>Till anywhere. Breed hybrids. Risk the woods.</li>
-          )}
-          {hud.feed.map((line, i) => (
-            <li key={`${i}-${line}`}>{line}</li>
+      <div className="panel hud-inventory">
+        <p className="label">
+          Inventory · {hud.inventory.filter((s) => s.id).length}/{hud.inventory.length}
+        </p>
+        <div className="inv-grid">
+          {hud.inventory.map((slot, i) => (
+            <div
+              key={`slot-${i}`}
+              className={`inv-slot ${slot.id ? 'filled' : ''}`}
+              title={slot.id ? `${slot.name} ×${slot.count} · ${slot.price}₫ each` : 'Empty'}
+            >
+              {slot.id && (
+                <>
+                  <span className="inv-glyph">{slot.glyph}</span>
+                  <span className="inv-count">{slot.count}</span>
+                </>
+              )}
+            </div>
           ))}
-        </ul>
-        {hud.trophies.length > 0 && (
-          <>
-            <p className="label" style={{ marginTop: 10 }}>
-              Recent trophies
-            </p>
-            <ul className="feed-list">
-              {hud.trophies.map((t, i) => (
-                <li key={`${t}-${i}`}>{t}</li>
-              ))}
-            </ul>
-          </>
-        )}
+        </div>
+      </div>
+
+      {hud.market.open && (
+        <div className="panel hud-market">
+          <p className="label">Market stall</p>
+          {hud.market.items.length === 0 ? (
+            <p className="hint">Nothing to sell. Bring crops, wood or trophies.</p>
+          ) : (
+            <>
+              <ul className="market-list">
+                {hud.market.items.map((item) => (
+                  <li key={item.id}>
+                    <span className="market-name">
+                      {item.glyph} {item.name} ×{item.count}
+                    </span>
+                    <span className="market-price">{item.price}₫</span>
+                    <button type="button" onClick={() => onSellOne(item.id)}>
+                      Sell 1
+                    </button>
+                    <button type="button" onClick={() => onSellStack(item.id)}>
+                      All
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <button type="button" className="market-all" onClick={onSellAll}>
+                Sell everything · {hud.market.total}₫
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="hud-bottom-center">
+        <p className="hint">{hud.hint}</p>
+        <div className="toolbar">
+          {hud.toolbar.map((slot) => (
+            <button
+              type="button"
+              key={`tool-${slot.index}`}
+              className={`tool-slot ${slot.selected ? 'selected' : ''} ${
+                slot.empty ? 'empty' : ''
+              }`}
+              onClick={() => onSelectSlot(slot.index)}
+              title={slot.empty ? 'Empty' : slot.name}
+            >
+              <span className="tool-key">{slot.index + 1}</span>
+              <span className="tool-glyph">{slot.glyph}</span>
+              <span className="tool-name">{slot.empty ? '' : slot.name}</span>
+            </button>
+          ))}
+          <span className="toolbar-divider" />
+          <button
+            type="button"
+            className={`tool-slot water ${hud.toolSlot.selected ? 'selected' : ''}`}
+            onClick={onSelectToolSlot}
+            title={`${hud.toolSlot.name} · ${hud.toolSlot.fill}/${hud.toolSlot.capacity} water`}
+          >
+            <span className="tool-key">6</span>
+            <span className="tool-glyph">{hud.toolSlot.glyph}</span>
+            <span className="tool-name">
+              {hud.toolSlot.fill}/{hud.toolSlot.capacity}
+            </span>
+          </button>
+        </div>
       </div>
 
       {hud.win && (

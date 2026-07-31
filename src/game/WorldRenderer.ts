@@ -15,6 +15,8 @@ import {
 } from '../content';
 import type { Tile } from '../sim/farm';
 import { cloneModel, type ModelKey } from './Assets';
+import { buildDirtGeometries, DIRT_VARIANTS, dirtVariant, dirtYaw } from './dirt';
+import { FarmTrees } from './FarmTrees';
 import { standardMaterial } from './materials';
 import { hash2 } from './noise';
 import { ScatterChunks } from './ScatterChunks';
@@ -55,7 +57,9 @@ export class WorldRenderer {
 
   private overworldRoot = new THREE.Group();
   private woodsRoot = new THREE.Group();
-  private farmTiles!: THREE.InstancedMesh;
+  /** One instanced mesh per dirt patch shape, plus a box for trench/breed/trap. */
+  private dirtMeshes: THREE.InstancedMesh[] = [];
+  private specialTiles!: THREE.InstancedMesh;
   private furrowMesh!: THREE.InstancedMesh;
   private woodsTiles!: THREE.InstancedMesh;
   /** Contextual tool hover: center + 8 neighbours */
@@ -67,6 +71,7 @@ export class WorldRenderer {
 
   private terrain!: TerrainSystem;
   private scatter!: ScatterChunks;
+  private farmTrees: FarmTrees | null = null;
   private sky!: THREE.Mesh;
   private horizonGroup = new THREE.Group();
   private motePoints!: THREE.Points;
@@ -108,8 +113,7 @@ export class WorldRenderer {
 
     this.terrain = buildTerrain();
     this.overworldRoot.add(this.terrain.mesh);
-    this.overworldRoot.add(this.terrain.riverMesh);
-    this.overworldRoot.add(this.terrain.lakeMesh);
+    this.overworldRoot.add(this.terrain.water);
     this.overworldRoot.add(this.terrain.bankScatter);
 
     this.scatter = new ScatterChunks(this.terrain.heightAt, this.terrain.distToWater);
@@ -268,12 +272,28 @@ export class WorldRenderer {
     // 0.18 thick, not 0.06: terrain carries ±1.2 noise across 1-unit quads, so a
     // thin tile sitting ~0.01 proud of the sampled centre height gets swallowed by
     // the ground and the player cannot tell tilled from grass.
+    const dirtGeos = buildDirtGeometries();
+    for (const geo of dirtGeos) {
+      const mesh = new THREE.InstancedMesh(
+        geo,
+        standardMaterial(0xffffff, { roughness: 0.92, flatShading: true }),
+        maxTiles,
+      );
+      mesh.receiveShadow = true;
+      mesh.castShadow = true;
+      mesh.count = 0;
+      this.dirtMeshes.push(mesh);
+      this.overworldRoot.add(mesh);
+    }
+
+    // Trenches, breeding beds and traps stay square — they are dug structures,
+    // not turned soil, and the straight edge is how the player reads them.
     const geo = new THREE.BoxGeometry(1.0, 0.18, 1.0);
     const mat = standardMaterial(0xffffff, { roughness: 0.92, flatShading: true });
-    this.farmTiles = new THREE.InstancedMesh(geo, mat, maxTiles);
-    this.farmTiles.receiveShadow = true;
-    this.farmTiles.castShadow = true;
-    this.farmTiles.count = 0;
+    this.specialTiles = new THREE.InstancedMesh(geo, mat, maxTiles);
+    this.specialTiles.receiveShadow = true;
+    this.specialTiles.castShadow = true;
+    this.specialTiles.count = 0;
 
     const furrowGeo = new THREE.BoxGeometry(0.92, 0.02, 0.06);
     const furrowMat = standardMaterial(FARM_COLORS.tilledLight, {
@@ -285,8 +305,18 @@ export class WorldRenderer {
     this.furrowMesh.receiveShadow = true;
     this.furrowMesh.count = 0;
 
-    this.overworldRoot.add(this.farmTiles);
+    this.overworldRoot.add(this.specialTiles);
     this.overworldRoot.add(this.furrowMesh);
+  }
+
+  /** Overworld trees are owned here but need sim state — GameRuntime supplies it. */
+  initFarmTrees(hooks: ConstructorParameters<typeof FarmTrees>[0]): void {
+    this.farmTrees = new FarmTrees(hooks);
+    this.overworldRoot.add(this.farmTrees.getRoot());
+  }
+
+  getFarmTrees(): FarmTrees | null {
+    return this.farmTrees;
   }
 
   /** Soft emissive outlines for hover tile + 8 neighbours — faded, never persistent. */
@@ -383,17 +413,18 @@ export class WorldRenderer {
   }
 
   syncFarmTiles(tiles: Tile[][]): void {
-    let ti = 0;
+    let si = 0;
     let fi = 0;
+    const dirtCounts = new Array<number>(DIRT_VARIANTS).fill(0);
     const _q = new THREE.Quaternion();
     const _s = new THREE.Vector3(1, 1, 1);
-    const maxT = this.farmTiles.instanceMatrix.count;
+    const maxT = this.specialTiles.instanceMatrix.count;
 
     for (let row = 0; row < GRID_H; row++) {
       for (let col = 0; col < GRID_W; col++) {
         const t = tiles[row]![col]!;
         if (t.state === 'grass' && !t.trap) continue;
-        if (ti >= maxT) break;
+        if (si >= maxT) break;
 
         const variation = seeded(row * GRID_W + col + 17);
         const wx = col + 0.5;
@@ -404,6 +435,9 @@ export class WorldRenderer {
         // floor; anything below it disappears into the ground noise.
         const TILE_LIFT = 0.1;
         let yOff = TILE_LIFT;
+        // Turned soil gets one of five irregular dirt patches; dug structures keep
+        // the square slab.
+        let soil = false;
         if (t.state === 'trench') {
           // Wet channel: dark earth lerped toward water so it reads as dug and full.
           _color.set(FARM_COLORS.trench).lerp(new THREE.Color(FARM_COLORS.water), 0.45);
@@ -416,9 +450,11 @@ export class WorldRenderer {
             .set(FARM_COLORS.tilled)
             .lerp(new THREE.Color(FARM_COLORS.tilledLight), 0.55);
           yOff = TILE_LIFT;
+          soil = true;
         } else if (t.watered || t.state === 'mature') {
           _color.set(FARM_COLORS.watered);
           yOff = TILE_LIFT;
+          soil = true;
         } else if (t.trap) {
           _color.set(0x9a5ac0);
           yOff = TILE_LIFT + 0.05;
@@ -428,12 +464,29 @@ export class WorldRenderer {
             .lerp(new THREE.Color(FARM_COLORS.floorB), variation * 0.55);
         }
 
-        this.farmTiles.setColorAt(ti, _color);
         _pos.set(wx, groundY + yOff, wz);
-        _matrix.identity();
-        _matrix.setPosition(_pos);
-        this.farmTiles.setMatrixAt(ti, _matrix);
-        ti++;
+        if (soil) {
+          const v = dirtVariant(col, row);
+          const mesh = this.dirtMeshes[v]!;
+          const idx = dirtCounts[v]!;
+          if (idx < mesh.instanceMatrix.count) {
+            // Slight per-tile scale jitter on top of the shape + quarter-turn, so
+            // even two neighbours on the same variant don't line up.
+            const jitter = 0.94 + variation * 0.16;
+            _q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), dirtYaw(col, row));
+            _s.set(jitter, 1, jitter);
+            _matrix.compose(_pos, _q, _s);
+            mesh.setMatrixAt(idx, _matrix);
+            mesh.setColorAt(idx, _color);
+            dirtCounts[v] = idx + 1;
+          }
+        } else {
+          this.specialTiles.setColorAt(si, _color);
+          _matrix.identity();
+          _matrix.setPosition(_pos);
+          this.specialTiles.setMatrixAt(si, _matrix);
+          si++;
+        }
 
         if (t.state === 'tilled' || (t.state === 'planted' && !t.watered)) {
           for (let r = 0; r < 3; r++) {
@@ -441,17 +494,31 @@ export class WorldRenderer {
             const zOff = -0.28 + r * 0.28;
             _pos.set(wx, groundY + yOff + 0.1, wz + zOff);
             _s.set(1, 1, 1);
+            _q.identity();
             _matrix.compose(_pos, _q, _s);
             this.furrowMesh.setMatrixAt(fi++, _matrix);
           }
         }
       }
     }
-    this.farmTiles.count = ti;
+
+    for (let v = 0; v < this.dirtMeshes.length; v++) {
+      const mesh = this.dirtMeshes[v]!;
+      mesh.count = dirtCounts[v]!;
+      mesh.instanceMatrix.needsUpdate = true;
+      if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      // An InstancedMesh caches its bounding sphere from the instances it had when
+      // it was first culled — which was none. Without this the whole field is
+      // invisible: the stale sphere sits at the origin, 120 units from the farm.
+      mesh.computeBoundingSphere();
+    }
+    this.specialTiles.count = si;
     this.furrowMesh.count = fi;
-    this.farmTiles.instanceMatrix.needsUpdate = true;
+    this.specialTiles.instanceMatrix.needsUpdate = true;
     this.furrowMesh.instanceMatrix.needsUpdate = true;
-    if (this.farmTiles.instanceColor) this.farmTiles.instanceColor.needsUpdate = true;
+    if (this.specialTiles.instanceColor) this.specialTiles.instanceColor.needsUpdate = true;
+    this.specialTiles.computeBoundingSphere();
+    this.furrowMesh.computeBoundingSphere();
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -614,6 +681,7 @@ export class WorldRenderer {
 
     if (this.zone === 'farm') {
       this.scatter.update(x, z);
+      this.farmTrees?.update(x, z);
     }
   }
 
@@ -623,7 +691,10 @@ export class WorldRenderer {
     this.camera.position.copy(this.cameraTarget).add(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
     this.sky.position.copy(this.cameraTarget);
-    if (this.zone === 'farm') this.scatter.update(x, z);
+    if (this.zone === 'farm') {
+      this.scatter.update(x, z);
+      this.farmTrees?.update(x, z);
+    }
   }
 
   shake(duration: number, amplitude: number): void {
