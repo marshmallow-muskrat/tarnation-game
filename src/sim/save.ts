@@ -116,6 +116,8 @@ export function deserialize(raw: string): SaveData | null {
       ? (parsed.unlockedWeapons as unknown[]).map(migrateWeapon)
       : ['rock' as const];
 
+    // Capture the incoming version before stamping: `data` aliases `parsed`.
+    const incoming = typeof parsed.version === 'number' ? parsed.version : 0;
     const data = parsed as unknown as SaveData;
     data.version = SAVE_VERSION;
     data.inventory = migrateInventory(parsed);
@@ -141,7 +143,11 @@ export function deserialize(raw: string): SaveData | null {
       parsed.dropPity && typeof parsed.dropPity === 'object'
         ? (parsed.dropPity as PityState)
         : {};
-    data.toolbarSlot = typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : 1;
+    // Slot meanings changed in v5 (0 was the fist, now it's the rock), so an
+    // older save's index no longer points at the tool the player had selected.
+    const preV5 = incoming < SAVE_VERSION;
+    data.toolbarSlot =
+      !preV5 && typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : 1;
     data.toolSlotActive = parsed.toolSlotActive === true;
     return data;
   } catch {

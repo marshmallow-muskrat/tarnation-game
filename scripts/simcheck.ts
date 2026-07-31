@@ -251,3 +251,13 @@ console.log(m.join('\n'));
 const all = [...results, ...m];
 console.log(all.some((r) => r.startsWith('FAIL')) ? '\nSOME CHECKS FAILED' : '\nALL CHECKS PASSED');
 if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
+
+// v4 → v5 slot remap: index 0 used to be the fist, now it's the rock.
+{
+  const v4 = JSON.parse(legacy) as Record<string, unknown>;
+  v4.toolbarSlot = 0;
+  const g = deserialize(JSON.stringify(v4));
+  const label = g && g.toolbarSlot === 1 ? 'PASS' : 'FAIL';
+  console.log(`${label}  v4 toolbar slot re-points at the fist — got ${g?.toolbarSlot}`);
+  if (label === 'FAIL') process.exitCode = 1;
+}
