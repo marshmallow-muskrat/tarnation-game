@@ -3,37 +3,11 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { MODEL_KEYS, modelDef, type ModelKey } from '../content/models';
 
-export type ModelKey =
-  | 'player'
-  | 'weasel'
-  | 'crop1'
-  | 'crop2'
-  | 'crop3'
-  | 'tree_farm'
-  | 'tree_woods'
-  | 'house1'
-  | 'house2'
-  | 'stalker'
-  | 'animal_a'
-  | 'animal_b'
-  | 'scatter';
-
-const MODEL_PATHS: Record<ModelKey, string> = {
-  player: 'models/player.glb',
-  weasel: 'models/weasel.glb',
-  crop1: 'models/crop1.glb',
-  crop2: 'models/crop2.glb',
-  crop3: 'models/crop3.glb',
-  tree_farm: 'models/tree_farm.glb',
-  tree_woods: 'models/tree_woods.glb',
-  house1: 'models/house1.glb',
-  house2: 'models/house2.glb',
-  stalker: 'models/stalker.glb',
-  animal_a: 'models/animal_a.glb',
-  animal_b: 'models/animal_b.glb',
-  scatter: 'models/scatter.glb',
-};
+// Model definitions live in src/content/models.ts. Adding an asset is a data edit
+// there, never a code edit here.
+export type { ModelKey } from '../content/models';
 
 type CacheEntry = {
   scene: THREE.Object3D;
@@ -44,8 +18,6 @@ type CacheEntry = {
 const logged = new Set<string>();
 const cache = new Map<ModelKey, CacheEntry>();
 const loader = new GLTFLoader();
-
-const WEASEL_BROWN = 0x8b5e3c;
 
 function logOnce(key: string, msg: string): void {
   if (logged.has(key)) return;
@@ -70,7 +42,7 @@ function fallbackFor(key: ModelKey): THREE.Object3D {
       break;
     }
     case 'weasel': {
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.35, 4, 8), matStd(WEASEL_BROWN));
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.35, 4, 8), matStd(0x8b5e3c));
       body.rotation.z = Math.PI / 2;
       body.rotation.x = THREE.MathUtils.degToRad(25);
       body.position.y = 0.22;
@@ -213,19 +185,8 @@ function tintMaterials(root: THREE.Object3D, tint: number, strength = 0.72): voi
   });
 }
 
-/** Brown weasel materials. */
-function applyWeaselMaterials(root: THREE.Object3D): void {
-  tintMaterials(root, WEASEL_BROWN, 0.72);
-  root.traverse((obj) => {
-    if (obj instanceof THREE.Mesh) {
-      obj.castShadow = true;
-      obj.receiveShadow = true;
-    }
-  });
-}
-
-/** Woodsman: pure black unlit, fog false. */
-function applyWoodsmanMaterials(root: THREE.Object3D): void {
+/** Unlit pure black, fog disabled — for anything that should read as a pure silhouette. */
+function applySilhouetteMaterials(root: THREE.Object3D): void {
   root.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       obj.material = new THREE.MeshBasicMaterial({ color: 0x000000, fog: false });
@@ -235,41 +196,14 @@ function applyWoodsmanMaterials(root: THREE.Object3D): void {
   });
 }
 
-function applyAnimalMaterials(root: THREE.Object3D, color: number): void {
-  tintMaterials(root, color, 0.55);
-}
-
-/** Key-specific pose / material treatment after load or clone. */
+/** Manifest-driven treatment. No per-key switch — everything comes from ModelDef. */
 function treatModel(key: ModelKey, root: THREE.Object3D): void {
+  const def = modelDef(key);
   enableShadows(root);
-
-  switch (key) {
-    case 'player':
-      scaleToHeight(root, 1.55);
-      break;
-    case 'weasel':
-      scaleToHeight(root, 0.55);
-      // ~0.45 overall + pitch forward ~25° so it runs low
-      root.scale.multiplyScalar(0.45 / 0.55);
-      root.rotation.x = THREE.MathUtils.degToRad(25);
-      applyWeaselMaterials(root);
-      groundFeet(root);
-      break;
-    case 'stalker':
-      scaleToHeight(root, 1.75);
-      applyWoodsmanMaterials(root);
-      break;
-    case 'animal_a':
-      scaleToHeight(root, 1.1);
-      applyAnimalMaterials(root, 0x8a6a4a);
-      break;
-    case 'animal_b':
-      scaleToHeight(root, 1.0);
-      applyAnimalMaterials(root, 0x6a7a5a);
-      break;
-    default:
-      break;
-  }
+  if (def.height) scaleToHeight(root, def.height);
+  if (def.rotateX) root.rotation.x = THREE.MathUtils.degToRad(def.rotateX);
+  if (def.silhouette) applySilhouetteMaterials(root);
+  else if (def.tint !== undefined) tintMaterials(root, def.tint, def.tintStrength ?? 0.7);
 }
 
 /**
@@ -289,14 +223,14 @@ export function initAssetLoaders(renderer: THREE.WebGLRenderer): void {
 
 /** Load all known keys (missing files become fallbacks). */
 export async function preloadAll(): Promise<void> {
-  await Promise.all((Object.keys(MODEL_PATHS) as ModelKey[]).map((k) => loadModel(k)));
+  await Promise.all(MODEL_KEYS.map((k) => loadModel(k)));
 }
 
 export async function loadModel(key: ModelKey): Promise<CacheEntry> {
   const existing = cache.get(key);
   if (existing) return existing;
 
-  const path = MODEL_PATHS[key];
+  const path = `models/${modelDef(key).path}`;
   try {
     const gltf = await loader.loadAsync(path);
     const scene = gltf.scene;
@@ -333,10 +267,10 @@ export function cloneModel(key: ModelKey): {
   // SkeletonUtils.clone — Object3D.clone() does NOT rebind skinned meshes to the
   // cloned skeleton, so rigged glTF characters come out collapsed or invisible.
   const root = entry.isFallback ? entry.scene.clone(true) : skeletonClone(entry.scene);
-  if (key === 'weasel') applyWeaselMaterials(root);
-  if (key === 'stalker') applyWoodsmanMaterials(root);
-  if (key === 'animal_a') applyAnimalMaterials(root, 0x8a6a4a);
-  if (key === 'animal_b') applyAnimalMaterials(root, 0x6a7a5a);
+  // Re-apply material treatment: clones share materials with the cached source.
+  const def = modelDef(key);
+  if (def.silhouette) applySilhouetteMaterials(root);
+  else if (def.tint !== undefined) tintMaterials(root, def.tint, def.tintStrength ?? 0.7);
   enableShadows(root);
   return { root, animations: entry.animations, isFallback: entry.isFallback };
 }
