@@ -153,7 +153,7 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
   }
   const cover = trees / tiles;
   ok(
-    'about 15% of tiles carry a tree',
+    'about 5% of tiles carry a tree',
     Math.abs(cover - FARM_TREE_FRACTION) < 0.03,
     `${(cover * 100).toFixed(1)}%`,
   );
