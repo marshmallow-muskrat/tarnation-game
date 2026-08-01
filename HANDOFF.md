@@ -37,6 +37,8 @@ manifest paths. `window.tarn` exposes the runtime for browser debugging.
   trap catches, construction, and rewards without adding permanent scene clutter.
 - Shovel and axe targets now show an in-world hover state, while the HUD explains range limits,
   blocked tiles, required tools, planting, watering, harvesting, and chopping results.
+- `+ / −` adjusts bounded camera zoom and `M` toggles persisted reduced motion, including camera
+  shake suppression; both are documented in the pausing field guide.
 
 ## 3. Asset rules that save time
 

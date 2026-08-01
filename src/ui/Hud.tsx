@@ -337,6 +337,7 @@ export function Hud({
               <p><kbd>P</kbd> Open the building panel</p>
               <p><kbd>N</kbd> Next building while placing</p>
               <p><kbd>I</kbd> Inventory · <kbd>H</kbd> This guide</p>
+              <p><kbd>+ −</kbd> Camera zoom · <kbd>M</kbd> Reduced motion</p>
               <p><kbd>Esc</kbd> Close the active panel</p>
             </div>
           </div>

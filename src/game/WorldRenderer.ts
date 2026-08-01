@@ -35,6 +35,7 @@ export class WorldRenderer {
   private readonly shakeOffset = new THREE.Vector3();
   private targetZoom = 1;
   private zoom = 1;
+  private reducedMotion = false;
 
   private hemisphere!: THREE.HemisphereLight;
   private keyLight!: THREE.DirectionalLight;
@@ -533,8 +534,26 @@ export class WorldRenderer {
   }
 
   shake(duration: number, amplitude: number): void {
+    if (this.reducedMotion) {
+      this.shakeTime = 0;
+      this.shakeAmp = 0;
+      return;
+    }
     this.shakeTime = duration;
     this.shakeAmp = amplitude;
+  }
+
+  adjustZoom(delta: number): number {
+    this.targetZoom = THREE.MathUtils.clamp(this.targetZoom + delta, 0.78, 1.3);
+    return this.targetZoom;
+  }
+
+  setReducedMotion(enabled: boolean): void {
+    this.reducedMotion = enabled;
+    if (enabled) {
+      this.shakeTime = 0;
+      this.shakeAmp = 0;
+    }
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {

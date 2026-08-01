@@ -549,6 +549,7 @@ export class GameRuntime {
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
   private helpOpen = false;
+  private reducedMotion = false;
   private placeableBuildingIndex = 0;
 
   private foxes: Fox[] = [];
@@ -612,6 +613,8 @@ export class GameRuntime {
 
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
     this.world = new WorldRenderer(canvas);
+    this.reducedMotion = localStorage.getItem('tarnation.reducedMotion') === '1';
+    this.world.setReducedMotion(this.reducedMotion);
     initAssetLoaders(this.world.renderer);
     await preloadAll();
     // React development mode can dispose an effect while the asynchronous
@@ -1285,6 +1288,20 @@ export class GameRuntime {
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
     if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
+    if (this.input.justPressed('Equal') || this.input.justPressed('NumpadAdd')) {
+      const zoom = this.world.adjustZoom(0.1);
+      setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
+    }
+    if (this.input.justPressed('Minus') || this.input.justPressed('NumpadSubtract')) {
+      const zoom = this.world.adjustZoom(-0.1);
+      setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
+    }
+    if (this.input.justPressed('KeyM')) {
+      this.reducedMotion = !this.reducedMotion;
+      this.world.setReducedMotion(this.reducedMotion);
+      localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
+      setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
+    }
     if (this.input.justPressed('KeyP')) {
       this.toggleBuildMode();
     }
@@ -2920,7 +2937,7 @@ export class GameRuntime {
   }
 
   private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'})`;
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion`;
     if (this.buildingMode) {
       const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
       return `Build: ${selected.name} · N next · click place · P exit`;

@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, target-hint, build-panel, placement-ghost, and field-guide polish shipped; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, target-hint, build-panel, placement-ghost, field-guide, zoom, and reduced-motion polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
@@ -207,7 +207,9 @@ two income paths are competitive; the measured first-session curve is documented
 - Replace stacked instructional text with one prioritized message channel plus short-lived action
   feedback. Keep the action bar readable at common window sizes.
 - Add a compact first-day onboarding path, pause/help screen, remappable actions, camera zoom
-  bounds, reduced camera motion, high-contrast target outlines, and a readable text scale.
+  bounds, reduced camera motion, high-contrast target outlines, and a readable text scale. The
+  field guide now exposes bounded `+ / −` zoom and a persisted `M` reduced-motion toggle; full
+  rebinding and text-scale controls remain later work.
 - Add a small coherent sound set for footsteps, tool contact, crops, water, sales, fox warnings,
   traps, building, and UI. Randomize repeated sounds and keep a credits ledger for third-party
   audio.
