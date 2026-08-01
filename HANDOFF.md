@@ -97,7 +97,10 @@ The characterization baseline intentionally preserves current behavior for later
   11.64 ms maximum over 24 samples. Local browser smoke passed fresh New Adventure, reload/Continue,
   HUD Saved status, and a visible v7 Import JSON flow preserving Day 4/night, resources, buildings,
   and inventory crops. Corrupt-slot recovery remains covered by the deterministic service fixtures;
-  local storage was not manipulated from the browser.
+  local storage was not manipulated from the browser. M1 release PR #8 merged as `f343e4a`; the
+  automatic workflow [30721616462](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30721616462)
+  passed all verification and deployment steps, and the canonical live smoke passed the M1 launch,
+  reload/Continue, HUD Saved status, and console-health journeys.
 - Purchases remain free by default unless the existing `paid` URL capability is present; honest
   production purchasing is ECON-01, not part of BASE-02.
 
@@ -146,3 +149,8 @@ Deployment record:
   passed all verification and deployment steps. Fresh production smoke test passed New Adventure,
   Day 1 startup, keyboard movement before and after the field guide, and produced no console
   warnings or errors.
+- `f343e4a` — M1 save safety: compact v9 saves, SaveService recovery boundary, save timing, and
+  accessible save feedback — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30721616462](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30721616462)
+  passed all verification and deployment steps. Live smoke passed fresh New Adventure, reload/
+  Continue, HUD Saved status, and produced no console warnings or errors.
