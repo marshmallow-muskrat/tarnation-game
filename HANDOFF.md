@@ -68,8 +68,6 @@ timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundat
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Define save timing and accessible saving/saved/failed feedback on top of the compact v9 schema and
-  SaveService boundary.
 - Make paid economy the production default; free purchases are development-only.
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
@@ -93,8 +91,13 @@ The characterization baseline intentionally preserves current behavior for later
   on `agent/masterplan-v2-implementation`. SAVE-02 now routes runtime persistence through a checksummed
   atomic two-slot SaveService with structured failure statuses, legacy migration, recovery, and JSON
   import/export; production-build smoke confirmed validated Continue after reload. PR #6 is integrated
-  on `agent/masterplan-v2-implementation`. SAVE-03 save timing and player-visible saving/saved/failed
-  state remains.
+  on `agent/masterplan-v2-implementation`. PR #7 adds boundary and 15-second fallback timing,
+  best-effort visibility/unload flushes, and accessible persistent save feedback. The integrated M1
+  gate has 83 deterministic tests; representative midgame round-trip measured 4.48 ms average and
+  11.64 ms maximum over 24 samples. Local browser smoke passed fresh New Adventure, reload/Continue,
+  HUD Saved status, and a visible v7 Import JSON flow preserving Day 4/night, resources, buildings,
+  and inventory crops. Corrupt-slot recovery remains covered by the deterministic service fixtures;
+  local storage was not manipulated from the browser.
 - Purchases remain free by default unless the existing `paid` URL capability is present; honest
   production purchasing is ECON-01, not part of BASE-02.
 
