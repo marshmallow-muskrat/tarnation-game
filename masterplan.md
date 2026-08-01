@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, build-panel, placement-ghost, and field-guide polish shipped; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, target-hint, build-panel, placement-ghost, and field-guide polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
@@ -145,7 +145,8 @@ the shotgun can fire; shovel and axe actions visibly contact the intended target
   defeats, chopping, farming, watering, traps, construction, and rewards; audio hooks remain a
   later pass once the interaction events are stable.
 - Make trees, crops, water, traps, buildings, and foxes expose range, target, invalid state, and
-  result without relying on a debug console.
+  result without relying on a debug console. Shovel/axe hover targets and contextual HUD reasons now
+  cover the primary farm actions; fox/trap telegraphs and audio remain follow-up work.
 - Give foxes approach, attack, hit, caught, retreat, and defeat states with separation so multiple
   attackers do not collapse into one pile around the player. Cap simultaneous contact damage and
   make the attack window visible.

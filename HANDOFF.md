@@ -35,6 +35,8 @@ manifest paths. `window.tarn` exposes the runtime for browser debugging.
   specific placement reason; `H` opens a pausing field guide for movement, tools, combat, and building.
 - Shared short-lived low-poly feedback bursts now mark hits, defeats, chopping, farming, watering,
   trap catches, construction, and rewards without adding permanent scene clutter.
+- Shovel and axe targets now show an in-world hover state, while the HUD explains range limits,
+  blocked tiles, required tools, planting, watering, harvesting, and chopping results.
 
 ## 3. Asset rules that save time
 
@@ -56,8 +58,8 @@ The next active work is Milestone 3 in
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
-- Continue player-facing range/target/invalid-state explanations, then calibrate the first-session
-  economy against measured play.
+- Continue fox/trap telegraphs and audio hooks, then calibrate the first-session economy against
+  measured play.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.

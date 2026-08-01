@@ -1465,7 +1465,9 @@ export class GameRuntime {
       return;
     }
     this.world.setBuildPreview(null);
-    if (this.gs.toolSlotActive || this.gs.toolbarSlot !== SLOT_SHOVEL) {
+    const shovelSelected = !this.gs.toolSlotActive && this.gs.toolbarSlot === SLOT_SHOVEL;
+    const axeSelected = !this.gs.toolSlotActive && this.gs.toolbarSlot === SLOT_AXE;
+    if (!shovelSelected && !axeSelected) {
       this.world.setHover(null, null, false);
       return;
     }
@@ -1476,7 +1478,10 @@ export class GameRuntime {
     }
     const wc = this.farmTileWorld(tile.tx, tile.ty);
     const dist = Math.hypot(this.playerX - wc.x, this.playerZ - wc.z);
-    const usable = dist <= TOOL_RANGE && !this.tileBlockedForTilling(tile.tx, tile.ty);
+    const trees = this.world.getFarmTrees();
+    const usable = shovelSelected
+      ? dist <= TOOL_RANGE && !this.tileBlockedForTilling(tile.tx, tile.ty)
+      : dist <= TOOL_RANGE + 0.6 && !!trees && (trees.hasTree(tile.tx, tile.ty) || trees.hasStump(tile.tx, tile.ty));
     this.world.setHover(tile.tx, tile.ty, usable);
   }
 
@@ -2914,20 +2919,61 @@ export class GameRuntime {
     this.popups = this.popups.filter((p) => p.life > 0);
   }
 
+  private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'})`;
+    if (this.buildingMode) {
+      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
+      return `Build: ${selected.name} · N next · click place · P exit`;
+    }
+    if (this.nearMarket) return 'Market stall — sell for duckettes';
+    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) return 'E — fill bucket';
+    if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
+
+    const tile = this.pointerTile();
+    if (this.gs.toolSlotActive) {
+      if (!tile) return '6 bucket · point at a planted tile to water';
+      const target = getTile(this.gs.tiles, tile.tx, tile.ty);
+      if (target?.state === 'planted' && !target.watered) return '6 bucket · click to water';
+      if (target?.state === 'mature') return 'Harvest is ready · switch to the shovel';
+      return '6 bucket · point at a thirsty crop';
+    }
+
+    if (this.gs.toolbarSlot === SLOT_SHOVEL) {
+      if (!tile) return '2 shovel · point at a farm tile';
+      const target = getTile(this.gs.tiles, tile.tx, tile.ty);
+      const wc = this.farmTileWorld(tile.tx, tile.ty);
+      if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return 'Move closer to work this tile';
+      const trees = this.world.getFarmTrees();
+      if (trees?.hasTree(tile.tx, tile.ty)) return 'Axe required here · switch to slot 3';
+      if (trees?.hasStump(tile.tx, tile.ty)) return 'Clear the stump with the axe · slot 3';
+      if (trees?.rockSlot(tile.tx, tile.ty)) return 'Boulder occupies this tile';
+      if (!target) return 'Point at a farm tile';
+      if (target.state === 'grass') return 'Click to till this tile';
+      if (target.state === 'tilled' || target.state === 'breeding') {
+        return seed ? `Click to plant ${seed.displayName}` : 'No seed selected';
+      }
+      if (target.state === 'planted' && !target.watered) return 'Use the bucket to water this crop';
+      if (target.state === 'mature') return 'Click to harvest';
+    }
+
+    if (this.gs.toolbarSlot === SLOT_AXE) {
+      const trees = tile ? this.world.getFarmTrees() : null;
+      if (tile && trees?.hasTree(tile.tx, tile.ty)) return 'Click to chop this tree';
+      if (tile && trees?.hasStump(tile.tx, tile.ty)) return 'Click to clear this stump';
+      return '3 axe · point at a tree to chop';
+    }
+
+    if (this.gs.toolbarSlot === SLOT_SHOTGUN) return '1 shotgun · click or right-click to fire';
+    return controls;
+  }
+
   // ------------------------------------------------------------------- HUD
 
   private pushHud(force: boolean): void {
     if (!this.onHud) return;
 
     const seed = selectedSeed(this.gs);
-    let hint = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'})`;
-    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) hint = 'E — fill bucket';
-    if (this.toolMode !== 'farm') hint = `Tool: ${this.toolMode} · 2 back to shovel`;
-    if (this.buildingMode) {
-      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
-      hint = `Build: ${selected.name} · N next · click place · P exit`;
-    }
-    if (this.nearMarket) hint = 'Market stall — sell for duckettes';
+    const hint = this.interactionHint(seed);
 
     const inventory: HudSlot[] = this.gs.inventory.map((slot) => {
       if (!slot) return { id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' };
