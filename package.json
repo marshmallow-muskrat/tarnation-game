@@ -20,9 +20,10 @@
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.185.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "fbx2gltf": "^0.9.7-p1",
+    "tsx": "^4.19.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
-    "wrangler": "^3.99.0",
-    "tsx": "^4.19.0"
+    "wrangler": "^3.99.0"
   }
 }
