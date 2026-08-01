@@ -56,10 +56,10 @@ exposes the runtime for browser debugging.
 
 ## 4. Current quality work
 
-Milestones 0–2 are implemented in the current branch, and the runtime now exposes economy session
-metrics through `window.tarn.debug().economy()`, including first-upgrade timing and action kinds.
-The next active work is Milestone 3 in
-`masterplan.md`:
+Milestones 0–4 of `vendor-deed-system-plan.md` are implemented in the current branch. The runtime
+now exposes economy session metrics through `window.tarn.debug().economy()`, including first-upgrade
+timing and action kinds. The next active work is placement and interaction polish in Milestones 5–9
+of `vendor-deed-system-plan.md`:
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -83,4 +83,10 @@ production. Deploy after every major masterplan milestone with `npm run deploy`,
 the live site and record the URL/commit here.
 
 Last known production target: <https://tarnation.pages.dev/> (audio-feedback release `cbac5ba`;
-preview <https://25e8c4e8.tarnation.pages.dev/>).
+preview <https://c98d7f82.tarnation.pages.dev/>; merchant/deed checkpoint `75b69c7`).
+
+Deployment record:
+
+- `fb4d5f7` — direct tree/catalog/save foundation — <https://4b009596.tarnation.pages.dev>
+- `75b69c7` — stationary merchant, fixed encampment, stacked deeds, shop tabs, launch scaffolding —
+  <https://c98d7f82.tarnation.pages.dev>
