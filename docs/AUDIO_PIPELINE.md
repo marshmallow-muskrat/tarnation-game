@@ -4,6 +4,11 @@ Audio is a polish milestone, not a reason to block the current playable loop. Bu
 coherent sound vocabulary for footsteps, shovel/axe contact, crops, water, sales, fox warnings,
 traps, building, and UI actions.
 
+The current runtime includes an optional synthesized Web Audio hook for UI, tools, shots, hits,
+defeats, water, traps, construction, and rewards. `V` toggles a persisted mute setting. This is a
+development-quality layer; authored sounds can replace individual hooks later without changing the
+gameplay events or making asset loading mandatory.
+
 ## Rules
 
 - Keep repeated sounds from machine-gunning: vary pitch or playback rate by roughly 5–8%.

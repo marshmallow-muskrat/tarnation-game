@@ -40,6 +40,8 @@ exposes the runtime for browser debugging.
   blocked tiles, required tools, planting, watering, harvesting, and chopping results.
 - `+ / −` adjusts bounded camera zoom and `M` toggles persisted reduced motion, including camera
   shake suppression; both are documented in the pausing field guide.
+- Optional synthesized Web Audio feedback covers UI, tools, shots, hits, defeats, water, traps,
+  construction, and rewards; `V` toggles persisted mute without adding an asset dependency.
 
 ## 3. Asset rules that save time
 

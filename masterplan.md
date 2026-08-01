@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, target-hint, build-panel, placement-ghost, field-guide, zoom, and reduced-motion polish shipped; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, target-hint, build-panel, placement-ghost, field-guide, zoom, reduced-motion, and synthesized-audio-hook polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
@@ -225,7 +225,8 @@ two income paths are competitive; the measured first-session curve is documented
   rebinding and text-scale controls remain later work.
 - Add a small coherent sound set for footsteps, tool contact, crops, water, sales, fox warnings,
   traps, building, and UI. Randomize repeated sounds and keep a credits ledger for third-party
-  audio.
+  audio. The current release has optional synthesized hooks for the core interaction events with a
+  persisted `V` mute toggle; authored sounds remain a later review pass.
 - Use audio and visual emphasis to separate work, reward, warning, and failure without making the
   screen noisy.
 

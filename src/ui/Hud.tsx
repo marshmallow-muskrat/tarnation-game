@@ -338,6 +338,7 @@ export function Hud({
               <p><kbd>N</kbd> Next building while placing</p>
               <p><kbd>I</kbd> Inventory · <kbd>H</kbd> This guide</p>
               <p><kbd>+ −</kbd> Camera zoom · <kbd>M</kbd> Reduced motion</p>
+              <p><kbd>V</kbd> Toggle synthesized sound feedback</p>
               <p><kbd>Esc</kbd> Close the active panel</p>
             </div>
           </div>

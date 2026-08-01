@@ -111,6 +111,7 @@ import {
   type FoxType,
 } from '../sim/raid';
 import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Assets';
+import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
 import { WorldRenderer } from './WorldRenderer';
@@ -521,6 +522,7 @@ export class GameRuntime {
   private gs!: GameState;
   private world!: WorldRenderer;
   private input = new InputController();
+  private audio = new AudioFeedback();
   private canvas!: HTMLCanvasElement;
   private accum = 0;
   private running = false;
@@ -612,6 +614,7 @@ export class GameRuntime {
     this.disposed = false;
     this.canvas = canvas;
     this.onHud = onHud;
+    this.input.setGestureHandler(() => this.audio.unlock());
 
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
     this.world = new WorldRenderer(canvas);
@@ -669,6 +672,8 @@ export class GameRuntime {
     this.clearLootMarkers();
     this.clearFeedbackBursts();
     this.input.dispose();
+    this.input.setGestureHandler(null);
+    this.audio.dispose();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
     this.persist();
@@ -1290,6 +1295,11 @@ export class GameRuntime {
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
     if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
+    if (this.input.justPressed('KeyV')) {
+      const muted = this.audio.toggleMuted();
+      setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
+      if (!muted) this.audio.play('ui');
+    }
     if (this.input.justPressed('Equal') || this.input.justPressed('NumpadAdd')) {
       const zoom = this.world.adjustZoom(0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
@@ -1608,6 +1618,7 @@ export class GameRuntime {
     this.syncBuildings();
     this.persist();
     this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
+    this.audio.play('build');
     setToast(
       this.gs,
       unlocked
@@ -1632,6 +1643,7 @@ export class GameRuntime {
     this.syncBuildings();
     this.persist();
     this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
+    this.audio.play('build');
     setToast(this.gs, `Built ${selected.name}`, 1.6);
   }
 
@@ -1640,6 +1652,7 @@ export class GameRuntime {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
       this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
+      this.audio.play('water');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
       return;
     }
@@ -1707,6 +1720,7 @@ export class GameRuntime {
         }
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
+        this.audio.play('tool');
       }
       return;
     }
@@ -1717,6 +1731,7 @@ export class GameRuntime {
         this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
+        this.audio.play('build');
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
         const parents = clearBreedingParents(this.gs.tiles, tx, ty);
@@ -1727,6 +1742,7 @@ export class GameRuntime {
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.world.syncFarmTiles(this.gs.tiles);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
+          this.audio.play('reward');
           setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
         }
       }
@@ -1744,6 +1760,7 @@ export class GameRuntime {
         this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
+        this.audio.play('tool');
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
       if (this.meleeCd > 0) return;
@@ -1759,6 +1776,7 @@ export class GameRuntime {
         this.rebuildCrops();
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
+        this.audio.play('tool');
       }
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
@@ -1777,6 +1795,7 @@ export class GameRuntime {
         this.world.syncFarmTiles(this.gs.tiles);
         this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
         this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+        this.audio.play('reward');
       }
     }
   }
@@ -1799,6 +1818,7 @@ export class GameRuntime {
       this.world.syncFarmTiles(this.gs.tiles);
       const wc = this.farmTileWorld(tx, ty);
       this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 4, 0.2);
+      this.audio.play('water');
     }
   }
 
@@ -1820,6 +1840,7 @@ export class GameRuntime {
         this.treeChops.set(key, swings);
         this.recordAction('chop');
         this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
+        this.audio.play('tool');
         return true;
       }
       this.treeChops.delete(key);
@@ -1828,6 +1849,7 @@ export class GameRuntime {
       trees.invalidateTile(tx, ty);
       this.world.markShadowsDirty();
       this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+      this.audio.play('tool');
       setToast(this.gs, 'Stump cleared', 1.2);
       return true;
     }
@@ -1839,6 +1861,7 @@ export class GameRuntime {
     this.treeChops.set(key, chops);
     this.world.shake(0.05, 0.04);
     this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
+    this.audio.play('tool');
 
     if (chops < FARM_TREE_CHOPS) {
       setToast(this.gs, `Chopping… ${chops}/${FARM_TREE_CHOPS}`, 0.8);
@@ -1854,6 +1877,7 @@ export class GameRuntime {
     this.economyMetrics.treesFelled++;
     this.world.shake(0.14, 0.12);
     this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 8, 0.32);
+    this.audio.play('reward');
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
     return true;
   }
@@ -1929,6 +1953,7 @@ export class GameRuntime {
     }
     this.shotCd = SHOTGUN_COOLDOWN;
     this.playPlayerAction('shoot');
+    this.audio.play('shot');
     this.world.shake(0.06, 0.05);
   }
 
@@ -1963,6 +1988,7 @@ export class GameRuntime {
     });
     this.shotCd = BOW_COOLDOWN;
     this.playPlayerAction('shoot');
+    this.audio.play('shot');
   }
 
   private beginMeleeAction(clip: PlayerClip): boolean {
@@ -2105,6 +2131,7 @@ export class GameRuntime {
     this.syncBearTrapModels();
     this.persist();
     this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
+    this.audio.play('trap');
     setToast(this.gs, 'Bear trap set', 1.4);
   }
 
@@ -2168,6 +2195,7 @@ export class GameRuntime {
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
       this.spawnFeedbackBurst(w.x, w.z, 0xffb45c, 4, 0.2);
+      this.audio.play('hit');
       return;
     }
     w.dead = true;
@@ -2178,6 +2206,7 @@ export class GameRuntime {
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
     this.spawnFeedbackBurst(w.x, w.z, 0xef7561, 8, 0.32);
+    this.audio.play('defeat');
     w.actions.mixer?.stopAllAction();
     this.spawnDeathMarker(w.root, w.baseScale, w.x, w.z, w.root.rotation.y, 'fox');
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
@@ -2192,10 +2221,12 @@ export class GameRuntime {
     if (a.hp > 0) {
       a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
       this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
+      this.audio.play('hit');
       return;
     }
     a.mixer?.stopAllAction();
     this.spawnFeedbackBurst(a.x, a.z, 0xef7561, 8, 0.32);
+    this.audio.play('defeat');
     this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
     this.animals = this.animals.filter((o) => o !== a);
     this.rollTrophy(`animal:${a.name}`, a.name, a.x, a.z);
@@ -2583,6 +2614,7 @@ export class GameRuntime {
           this.world.syncFarmTiles(this.gs.tiles);
           this.syncBearTrapModels();
           this.spawnFeedbackBurst(w.x, w.z, 0xd2a86a, 8, 0.3);
+          this.audio.play('trap');
           setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
           continue;
         }

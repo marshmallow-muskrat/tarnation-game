@@ -36,6 +36,9 @@ npm run dev
 | P | Build mode |
 | I | Inventory |
 | `[` / `]` | Cycle seed |
+| `+` / `-` | Camera zoom |
+| M | Reduced motion |
+| V | Toggle sound feedback |
 | Left click | Use the selected tool |
 | Right click / Space | Use the selected ranged weapon |
 | E | Fill the bucket at water |

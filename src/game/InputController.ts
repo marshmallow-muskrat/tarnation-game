@@ -14,6 +14,7 @@ export class InputController {
   private lmbPressed = false;
   private rmbPressed = false;
   private canvas: HTMLCanvasElement | null = null;
+  private onGesture: (() => void) | null = null;
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
@@ -27,6 +28,10 @@ export class InputController {
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  }
+
+  setGestureHandler(handler: (() => void) | null): void {
+    this.onGesture = handler;
   }
 
   dispose(): void {
@@ -92,6 +97,7 @@ export class InputController {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    this.onGesture?.();
     if (!this.held.has(e.code)) this.pressed.add(e.code);
     this.held.add(e.code);
     if (e.code === 'Space') e.preventDefault();
@@ -107,6 +113,7 @@ export class InputController {
   };
 
   private onPointerDown = (e: PointerEvent): void => {
+    this.onGesture?.();
     this.updatePointer(e);
     if (e.button === 0) {
       this.lmb = true;
