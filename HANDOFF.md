@@ -68,13 +68,13 @@ timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundat
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Make paid economy the production default; free purchases are development-only.
+- Make catalog availability explicit, then instrument and tune the honest economy (ECON-02–04).
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: 63 deterministic pure tests,
+- BASE-02 characterization is now integrated with Vitest: 88 deterministic tests across 10 files,
   compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
   released save versions 3 through 7. PR #3 merged into the integration branch as `5ff922b`.
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
@@ -101,8 +101,10 @@ The characterization baseline intentionally preserves current behavior for later
   automatic workflow [30721616462](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30721616462)
   passed all verification and deployment steps, and the canonical live smoke passed the M1 launch,
   reload/Continue, HUD Saved status, and console-health journeys.
-- Purchases remain free by default unless the existing `paid` URL capability is present; honest
-  production purchasing is ECON-01, not part of BASE-02.
+- ECON-01 now uses a typed Vite build capability: production builds always charge catalog costs, the
+  development-only free sandbox is visibly labeled in the merchant panel, and public query
+  parameters cannot change purchase policy. Pure quote/transaction coverage verifies exact
+  deduction and atomic failed purchases; the integrated branch is ready for ECON-02.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
