@@ -97,3 +97,5 @@ Deployment record:
   <https://2307ce5a.tarnation.pages.dev>
 - `97eac34` — save compatibility, migration coverage, and launch validation —
   <https://8adc4535.tarnation.pages.dev>
+- `9c71e65` — completed vendor/deed plan, final QA, and release documentation —
+  <https://174a94e2.tarnation.pages.dev>
