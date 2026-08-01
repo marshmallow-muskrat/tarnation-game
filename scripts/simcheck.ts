@@ -33,6 +33,7 @@ import { assetDefinition, deedItemId, validatePurchasableCatalog } from '../src/
 import {
   calculateEnclosedTiles,
   orientedFootprint,
+  occupiedPlacedTiles,
   placementStatus,
   tileIsEnclosed,
   tileKey,
@@ -110,6 +111,10 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
     });
     ok('placed assets reject overlapping footprints', !blocked.valid && blocked.reason.includes('overlaps'));
     ok('deeds retain the asset id', deedItemId('fence') === 'deed:fence');
+    const closedGate = occupiedPlacedTiles([{ id: 'gate', x: 60.5, z: 60.5, rotation: 0, gateOpen: false }]);
+    const openGate = occupiedPlacedTiles([{ id: 'gate', x: 60.5, z: 60.5, rotation: 0, gateOpen: true }]);
+    ok('closed gates block movement tiles', closedGate.has(tileKey(60, 60)));
+    ok('open gates leave a walkable hole', !openGate.has(tileKey(60, 60)));
     const boundary = new Set<string>();
     for (let x = 40; x <= 44; x++) {
       boundary.add(tileKey(x, 40));
