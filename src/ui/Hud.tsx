@@ -340,16 +340,23 @@ export function Hud({
                   <p className="vendor-name">{item.name}</p>
                   <p className="vendor-description">{item.description}</p>
                   <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType}</p>
-                  <span className="vendor-cost-placeholder" aria-hidden="true" />
+                  <p className="vendor-cost">Cost: {item.price}₫{item.material === '—' ? '' : ` + ${item.material}`}</p>
+                  <p className="vendor-owned">Owned: {item.owned}</p>
+                  <p className={`vendor-lock ${item.canBuy ? 'available' : 'blocked'}`}>{item.lockReason}</p>
                 </div>
-                <button type="button" className="vendor-buy" onClick={() => onVendorBuy(item.id)}>
+                <button
+                  type="button"
+                  className="vendor-buy"
+                  onClick={() => onVendorBuy(item.id)}
+                  disabled={!item.canBuy}
+                >
                   Buy
                 </button>
               </div>
             ))}
           </div>
-          {hud.vendor.message && <p className="vendor-message">{hud.vendor.message}</p>}
-          <p className="vendor-footer">Free purchases are testing scaffolding. Price, material, and inventory checks remain wired for paid mode.</p>
+          {hud.vendor.message && <p className="vendor-message" role="status" aria-live="polite">{hud.vendor.message}</p>}
+          <p className="vendor-footer">{hud.vendor.economyLabel}. Prices and materials are shown before purchase.</p>
         </div>
       )}
 

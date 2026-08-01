@@ -1,4 +1,5 @@
 import type { ModelKey } from './models';
+import { HOMESTEAD_UPGRADE_WOOD } from '../content';
 
 export type AssetId = string;
 export type AssetUseType = 'place' | 'equip' | 'apply';
@@ -9,7 +10,7 @@ export type AssetCategory =
   | 'Upgrades'
   | 'Utilities'
   | 'Fixtures';
-export type AssetAvailability = 'shop' | 'keybind' | 'debug' | 'fixture';
+export type AssetAvailability = 'starter' | 'merchant' | 'upgrade' | 'debug' | 'unreleased' | 'fixture';
 
 export type MaterialCost = Readonly<Record<string, number>>;
 
@@ -33,36 +34,31 @@ export type PurchasableAsset = {
 };
 
 const place = (
-  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate' | 'availability'> &
-    Partial<Pick<PurchasableAsset, 'fixture' | 'gate' | 'availability'>>,
+  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate'> &
+    Partial<Pick<PurchasableAsset, 'fixture' | 'gate'>>,
 ): PurchasableAsset => ({
   ...entry,
   useType: 'place',
   fixture: entry.fixture ?? false,
   gate: entry.gate ?? false,
-  availability: entry.availability ?? 'shop',
 });
 
 const equip = (
-  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate' | 'availability'> &
-    Partial<Pick<PurchasableAsset, 'availability'>>,
+  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate'>,
 ): PurchasableAsset => ({
   ...entry,
   useType: 'equip',
   fixture: false,
   gate: false,
-  availability: entry.availability ?? 'shop',
 });
 
 const apply = (
-  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate' | 'availability'> &
-    Partial<Pick<PurchasableAsset, 'availability'>>,
+  entry: Omit<PurchasableAsset, 'useType' | 'fixture' | 'gate'>,
 ): PurchasableAsset => ({
   ...entry,
   useType: 'apply',
   fixture: false,
   gate: false,
-  availability: entry.availability ?? 'shop',
 });
 
 /**
@@ -83,7 +79,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'A dependable Survival Pack shotgun.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: '1',
   }),
   equip({
@@ -98,7 +94,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'Till, plant and harvest the homestead.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: '2',
   }),
   equip({
@@ -113,7 +109,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'Chop standing trees and clear their log-like stumps.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: '3',
   }),
   equip({
@@ -128,7 +124,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'Carry water from the river to thirsty crops.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: '6',
   }),
   apply({
@@ -143,7 +139,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'Roll a heavy boulder through a line of attackers.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: 'Q',
   }),
   place({
@@ -158,7 +154,7 @@ export const PURCHASABLE_ASSETS = [
     price: 0,
     materialCost: {},
     description: 'Catch a fox that enters the trap radius.',
-    availability: 'keybind',
+    availability: 'starter',
     keybind: 'B',
   }),
   apply({
@@ -173,6 +169,7 @@ export const PURCHASABLE_ASSETS = [
     price: 12,
     materialCost: { wood: 12 },
     description: 'Unlocks reliable tier-three irrigation for every crop tile.',
+    availability: 'upgrade',
   }),
   place({
     id: 'well',
@@ -186,6 +183,7 @@ export const PURCHASABLE_ASSETS = [
     price: 3,
     materialCost: { wood: 3 },
     description: 'A compact water fixture for a growing homestead.',
+    availability: 'unreleased',
   }),
   place({
     id: 'fence',
@@ -199,6 +197,7 @@ export const PURCHASABLE_ASSETS = [
     price: 1,
     materialCost: { wood: 1 },
     description: 'A four-tile field boundary section.',
+    availability: 'merchant',
   }),
   place({
     id: 'fence2',
@@ -212,6 +211,7 @@ export const PURCHASABLE_ASSETS = [
     price: 1,
     materialCost: { wood: 1 },
     description: 'An alternate four-tile field boundary section.',
+    availability: 'unreleased',
   }),
   place({
     id: 'gate',
@@ -226,6 +226,7 @@ export const PURCHASABLE_ASSETS = [
     price: 2,
     materialCost: { wood: 2 },
     description: 'A fence-line gate that opens as you walk through.',
+    availability: 'merchant',
   }),
   place({
     id: 'chicken_coop',
@@ -239,6 +240,7 @@ export const PURCHASABLE_ASSETS = [
     price: 5,
     materialCost: { wood: 5 },
     description: 'A compact home for future farm animals.',
+    availability: 'unreleased',
   }),
   place({
     id: 'small_barn',
@@ -252,6 +254,7 @@ export const PURCHASABLE_ASSETS = [
     price: 5,
     materialCost: { wood: 5 },
     description: 'A first serious shelter for the farm.',
+    availability: 'unreleased',
   }),
   place({
     id: 'open_barn',
@@ -265,6 +268,7 @@ export const PURCHASABLE_ASSETS = [
     price: 7,
     materialCost: { wood: 7 },
     description: 'An open-sided barn for tools and animals.',
+    availability: 'unreleased',
   }),
   place({
     id: 'barn',
@@ -278,6 +282,7 @@ export const PURCHASABLE_ASSETS = [
     price: 10,
     materialCost: { wood: 10 },
     description: 'A substantial farm building.',
+    availability: 'unreleased',
   }),
   place({
     id: 'silo',
@@ -291,6 +296,7 @@ export const PURCHASABLE_ASSETS = [
     price: 7,
     materialCost: { wood: 7 },
     description: 'Store a larger harvest close to home.',
+    availability: 'unreleased',
   }),
   place({
     id: 'silo_house',
@@ -304,6 +310,7 @@ export const PURCHASABLE_ASSETS = [
     price: 14,
     materialCost: { wood: 14 },
     description: 'A combined home and storage building.',
+    availability: 'unreleased',
   }),
   place({
     id: 'windmill',
@@ -317,6 +324,7 @@ export const PURCHASABLE_ASSETS = [
     price: 8,
     materialCost: { wood: 8 },
     description: 'A landmark that turns open land into a settlement.',
+    availability: 'unreleased',
   }),
   place({
     id: 'tower_windmill',
@@ -330,6 +338,7 @@ export const PURCHASABLE_ASSETS = [
     price: 12,
     materialCost: { wood: 12 },
     description: 'A taller windmill for a mature town.',
+    availability: 'unreleased',
   }),
   place({
     id: 'water_tower',
@@ -343,6 +352,7 @@ export const PURCHASABLE_ASSETS = [
     price: 10,
     materialCost: { wood: 10 },
     description: 'A visible sign that the settlement is growing.',
+    availability: 'unreleased',
   }),
   place({
     id: 'big_barn',
@@ -356,6 +366,7 @@ export const PURCHASABLE_ASSETS = [
     price: 18,
     materialCost: { wood: 18 },
     description: 'A high-capacity barn for a prosperous farm.',
+    availability: 'unreleased',
   }),
   ...([1, 2, 3, 4, 5] as const).map((tier) =>
     place({
@@ -367,10 +378,13 @@ export const PURCHASABLE_ASSETS = [
       facings: 4,
       blocksMovement: true,
       blocksEnclosure: true,
-      price: tier === 1 ? 0 : [0, 6, 12, 24, 48][tier]!,
-      materialCost: tier === 1 ? {} : { wood: [0, 6, 12, 24, 48][tier]! },
+      price: tier === 1 ? 0 : HOMESTEAD_UPGRADE_WOOD[tier - 1]!,
+      materialCost: tier === 1 ? {} : { wood: HOMESTEAD_UPGRADE_WOOD[tier - 1]! },
       description: `Homestead upgrade tier ${tier}.`,
-      availability: tier === 1 ? 'debug' : 'shop',
+      // The direct homestead path is still the current legacy behavior. These
+      // deed rows remain loadable for old saves, but are not production choices
+      // until CORE-05 gives the merchant/deed path one authored progression job.
+      availability: tier === 1 ? 'debug' : 'unreleased',
     }),
   ),
   // Fixed central encampment definitions. These are catalogued for shared model
@@ -458,12 +472,14 @@ export function assetDefinition(id: AssetId): PurchasableAsset | null {
   return ASSET_BY_ID.get(id) ?? null;
 }
 
+export function isVendorAsset(asset: PurchasableAsset): boolean {
+  return asset.availability === 'merchant' || asset.availability === 'upgrade';
+}
+
 export function shopAssets(category?: AssetCategory): PurchasableAsset[] {
   return PURCHASABLE_ASSETS.filter(
     (asset) =>
-      asset.availability !== 'debug' &&
-      asset.availability !== 'fixture' &&
-      !asset.fixture &&
+      isVendorAsset(asset) &&
       (!category || asset.category === category),
   );
 }
@@ -472,13 +488,12 @@ export function placeableAssets(includeDebug = false): PurchasableAsset[] {
   return PURCHASABLE_ASSETS.filter(
     (asset) =>
       asset.useType === 'place' &&
-      !asset.fixture &&
-      (includeDebug || asset.availability !== 'debug'),
+      (isVendorAsset(asset) || (includeDebug && asset.availability === 'debug')),
   );
 }
 
 export function fixtureAssets(): PurchasableAsset[] {
-  return PURCHASABLE_ASSETS.filter((asset) => asset.fixture);
+  return PURCHASABLE_ASSETS.filter((asset) => asset.availability === 'fixture');
 }
 
 export function deedItemId(assetId: AssetId): string {
@@ -499,8 +514,14 @@ export function validatePurchasableCatalog(): string[] {
       problems.push(`invalid footprint: ${asset.id}`);
     }
     if (![1, 2, 4].includes(asset.facings)) problems.push(`invalid facings: ${asset.id}`);
-    if (asset.fixture && asset.availability !== 'fixture') {
-      problems.push(`fixture must use fixture availability: ${asset.id}`);
+    if (asset.fixture !== (asset.availability === 'fixture')) {
+      problems.push(`fixture flag and availability disagree: ${asset.id}`);
+    }
+    if (asset.availability === 'starter' && !asset.keybind) {
+      problems.push(`starter asset needs a keybind: ${asset.id}`);
+    }
+    if (asset.keybind && asset.availability !== 'starter') {
+      problems.push(`only starter assets may have keybinds: ${asset.id}`);
     }
   }
   return problems;

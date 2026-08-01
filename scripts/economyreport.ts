@@ -11,6 +11,12 @@ import {
   TROPHY_PITY_STEP,
 } from '../src/content';
 import { cropItem, ITEM_WOOD, itemInfo } from '../src/sim/items';
+import {
+  DEFAULT_FIRST_SESSION_DAYS,
+  DEFAULT_ECONOMY_SIMULATION_DAYS,
+  DEFAULT_ECONOMY_SIMULATION_SEEDS,
+  simulateEconomyAcrossSeeds,
+} from '../src/sim/economySimulation';
 
 const workbookActionsPerDay = 300;
 const woodValue = itemInfo(ITEM_WOOD).price;
@@ -33,4 +39,28 @@ console.log(
   `Fox trophy: ${itemInfo('trophy:Thicket Fox').price}₫ base value, ` +
     `${TROPHY_DROP_CHANCE * 100}% base drop chance + ${TROPHY_PITY_STEP * 100}% pity per dry kill.`,
 );
+const simulation = simulateEconomyAcrossSeeds();
+const firstSession = simulateEconomyAcrossSeeds(DEFAULT_ECONOMY_SIMULATION_SEEDS, {
+  days: DEFAULT_FIRST_SESSION_DAYS,
+});
+console.log(
+  `Seeded simulation: ${DEFAULT_ECONOMY_SIMULATION_SEEDS.length} seeds × ` +
+    `${DEFAULT_ECONOMY_SIMULATION_DAYS} days; ` +
+    `${simulation.totalSales} sales and ${simulation.totalCompletedPurchases} completed purchases.`,
+);
+console.log(
+  `Resource starvation: ${simulation.starvationRuns}/${simulation.reports.length} runs; ` +
+    `runaway growth: ${simulation.runawayRuns}/${simulation.reports.length} runs.`,
+);
+console.log(
+  `First meaningful upgrade (${DEFAULT_FIRST_SESSION_DAYS}-day target): ` +
+    `${firstSession.firstSessionUpgradeRuns}/${firstSession.reports.length} runs; ` +
+    `median day ${firstSession.medianFirstMeaningfulUpgradeDay ?? '—'} ` +
+    `(range ${Math.min(...firstSession.firstMeaningfulUpgradeDays)}–${Math.max(...firstSession.firstMeaningfulUpgradeDays)}).`,
+);
+const deadPurchases = Object.entries(simulation.deadPurchaseCounts)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([id, count]) => `${id} (${count}/${simulation.reports.length})`);
+console.log(`Dead purchases: ${deadPurchases.length ? deadPurchases.join(', ') : 'none'}.`);
+console.log(`Malformed catalog costs observed: ${simulation.reports.flatMap((report) => report.malformedPurchases).join(', ') || 'none'}.`);
 console.log('Future workbook-only rows: fish, quadrant tiers, bosses, and seed purchase costs.');

@@ -66,3 +66,40 @@ actions and meaningful clock boundaries, with a fixed-step 15-second fallback fo
 visibility and unload flushes are best-effort only. The HUD exposes Saving, Saved, and Save failed
 states through an accessible live region, and a failure has no timeout: it stays visible until a
 later successful save resolves it.
+
+## 2026-08-01 — Gate free purchases behind the build environment
+
+Production economy policy is selected from Vite's typed development capability, not from the public
+URL. Production builds always charge the authored duckette and material costs; only a visibly
+labelled development build may use free purchases. Purchase quotes and commits remain pure and
+atomic so a rejected transaction cannot consume currency, materials, or an inventory slot.
+
+## 2026-08-01 — Make catalog availability explicit
+
+Catalog entries must declare whether they are starter, merchant, upgrade, debug, unreleased, or
+fixed fixtures. Production vendor and build selectors admit only explicit merchant/upgrade entries;
+starter tools remain available through their authored controls, while nonfunctional buildings stay
+loadable and usable for existing saves but are hidden from new production choices. Removing the two empty
+toolbar slots remaps a legacy empty-slot selection to the last supported starter tool without
+changing the save wire shape.
+
+## 2026-08-01 — Keep economy outcome metrics local and deterministic
+
+ECON-03 records attempted, rejected, cancelled, and completed outcomes plus first-completion game time
+for planting, harvest, sale, purchase, building, fox defense, and the settlement goal. The counters are
+runtime debug data only: they are not part of the save schema and no telemetry or network transport is
+introduced. The seeded economy diagnostic uses a fixed 16-seed cohort and a 30-day policy, with explicit
+observation thresholds for starvation, runaway accumulation, and inventory pressure. Malformed catalog
+costs are reported as dead purchases and quarantined by the diagnostic rather than silently repaired in
+the instrumentation task.
+
+## 2026-08-01 — Tune the first-session economy from a seeded distribution
+
+ECON-04 uses the fixed 16-seed cohort rather than a single hand-played run. The accepted baseline is a
+five-day first-session target: the first crop sale arrives on day 3, and the irrigation capability
+upgrade is affordable by day 5 across the cohort. A completed tree now yields one felled-tree wood plus
+the existing one-wood stump-clear bonus; base crop payouts are 4/6/8/10/12₫ from grass through lettuce.
+The homestead wood cadence remains 6/12/24/48, the rare trophy remains 60₫ with 1% base and 1% pity
+steps, and the released merchant choices are the functional irrigation, fence, and gate paths. The
+cosmetic fence variant and duplicate/nonfunctional homestead deed rows remain loadable legacy content
+but are unreleased until their functions and progression authority are complete.

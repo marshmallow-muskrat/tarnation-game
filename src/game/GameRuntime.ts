@@ -99,9 +99,18 @@ import {
   totalWeirdness,
 } from '../sim/farm';
 import { crossbreed } from '../sim/genetics';
-import { occupiedSlots } from '../sim/inventory';
-import { hasRoomFor } from '../sim/inventory';
+import { hasRoomFor, occupiedSlots } from '../sim/inventory';
 import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
+import { purchaseAsset, quotePurchase } from '../sim/economy';
+import {
+  cloneOutcomeMetrics,
+  createOutcomeMetrics,
+  firstOutcomeCompletionTimes,
+  recordOutcomeMetric,
+  type OutcomeKind,
+  type OutcomeMetrics,
+  type OutcomeStatus,
+} from '../sim/outcomes';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
@@ -121,11 +130,13 @@ import {
   type SaveFeedbackState,
 } from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
+import { getEconomyCapability } from './EconomyCapability';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
   assetDefinition,
   deedAssetId,
   deedItemId,
+  isVendorAsset,
   shopAssets,
   type AssetCategory,
   type AssetId,
@@ -191,6 +202,9 @@ export type HudVendorAsset = {
   model: ModelKey;
   price: number;
   material: string;
+  owned: number;
+  canBuy: boolean;
+  lockReason: string;
 };
 
 export type HudVendor = {
@@ -198,6 +212,7 @@ export type HudVendor = {
   tab: AssetCategory;
   tabs: AssetCategory[];
   items: HudVendorAsset[];
+  economyLabel: string;
   message: string;
 };
 
@@ -226,6 +241,7 @@ type EconomyMetrics = {
   sessionStartedAt: number;
   actions: number;
   actionKinds: Record<string, number>;
+  outcomes: OutcomeMetrics;
   saleTransactions: number;
   duckettesEarned: number;
   upgrades: number;
@@ -551,20 +567,9 @@ const HOMESTEAD_MODEL_KEYS = [
 ] as const;
 
 const PLACEABLE_BUILDING_IDS = [
-  'well',
-  'chicken_coop',
-  'silo',
-  'windmill',
-  'tower_windmill',
-  'water_tower',
   'fence',
   'fence2',
   'gate',
-  'small_barn',
-  'open_barn',
-  'barn',
-  'silo_house',
-  'big_barn',
 ] as const;
 
 const PLACEABLE_BUILDINGS: {
@@ -599,17 +604,17 @@ const TOOLBAR_ASSET_IDS = [
   'tool:shotgun',
   'tool:shovel',
   'tool:axe',
-  null,
-  null,
 ] as const;
 
+const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as const satisfies readonly AssetCategory[];
+
 const TOOLBAR = TOOLBAR_ASSET_IDS.map((id) => {
-  const asset = id ? assetDefinition(id) : null;
+  const asset = assetDefinition(id);
   return {
     name: asset?.displayName ?? '',
     glyph: '',
     model: asset?.modelKey ?? null,
-    empty: !asset,
+    empty: false,
   };
 });
 
@@ -633,6 +638,8 @@ function itemIconModel(id: ItemId): ModelKey | null {
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+
+  private readonly economyCapability = getEconomyCapability();
 
   private gs!: GameState;
   private world!: WorldRenderer;
@@ -739,6 +746,7 @@ export class GameRuntime {
     sessionStartedAt: performance.now(),
     actions: 0,
     actionKinds: {},
+    outcomes: createOutcomeMetrics(),
     saleTransactions: 0,
     duckettesEarned: 0,
     upgrades: 0,
@@ -1198,33 +1206,47 @@ export class GameRuntime {
   // ---------------------------------------------------------------- HUD API
 
   sellOne(id: ItemId): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellItem(this.gs, id, false);
     if (earned > 0) this.afterSale(id, earned);
+    else this.recordOutcome('sale', 'rejected');
   }
 
   sellStack(id: ItemId): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellItem(this.gs, id, true);
     if (earned > 0) this.afterSale(id, earned);
+    else this.recordOutcome('sale', 'rejected');
   }
 
   sellAll(): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellEverything(this.gs);
     if (earned > 0) {
-      this.recordAction('sale');
+      this.recordOutcome('sale', 'completed');
       this.economyMetrics.saleTransactions++;
       this.economyMetrics.duckettesEarned += earned;
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
       this.popup(`+${earned}₫`, this.playerX, this.playerZ);
       this.persist();
       this.pushHud(true);
-    }
+    } else this.recordOutcome('sale', 'rejected');
   }
 
   private afterSale(id: ItemId, earned: number): void {
-    this.recordAction('sale');
+    this.recordOutcome('sale', 'completed');
     this.economyMetrics.saleTransactions++;
     this.economyMetrics.duckettesEarned += earned;
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
@@ -1316,6 +1338,10 @@ export class GameRuntime {
     return new URLSearchParams(window.location.search).has('legacy');
   }
 
+  private availableVendorTabs(): AssetCategory[] {
+    return VENDOR_CATEGORIES.filter((category) => shopAssets(category).length > 0);
+  }
+
   openVendor(): void {
     if (!this.nearMerchant) {
       setToast(this.gs, 'Stand near the Traveling Merchant to shop', 1.8);
@@ -1340,40 +1366,41 @@ export class GameRuntime {
   }
 
   selectVendorTab(tab: AssetCategory): void {
-    if (!['Housing', 'Weapons', 'Buildings', 'Upgrades'].includes(tab)) return;
+    if (!this.availableVendorTabs().includes(tab)) return;
     this.vendorTab = tab;
     this.vendorMessage = '';
     this.pushHud(true);
   }
 
   buyAsset(id: AssetId): void {
-    if (!this.nearMerchant) return;
+    this.recordOutcome('purchase', 'attempted');
+    if (!this.nearMerchant) {
+      this.recordOutcome('purchase', 'rejected');
+      return;
+    }
     const asset = assetDefinition(id);
-    if (!asset || asset.fixture || asset.availability === 'debug' || asset.availability === 'fixture') return;
-    const itemId = deedItemId(id);
-    const freePurchases = !new URLSearchParams(window.location.search).has('paid');
-    const reasons: string[] = [];
-    if (this.gs.duckettes < asset.price) reasons.push(`need ${asset.price} duckettes`);
-    const woodCost = asset.materialCost.wood ?? 0;
-    if (woodCount(this.gs) < woodCost) reasons.push(`need ${woodCost} Wood`);
-    if (!hasRoomFor(this.gs.inventory, itemId)) reasons.push('inventory has no free slot');
-    if (reasons.length && !freePurchases) {
-      this.vendorMessage = `Cannot buy ${asset.displayName}: ${reasons.join(' · ')}`;
+    if (!asset || !isVendorAsset(asset)) {
+      this.recordOutcome('purchase', 'rejected');
+      return;
+    }
+    const result = purchaseAsset(this.gs, asset, this.economyCapability);
+    if (!result.ok) {
+      this.recordOutcome('purchase', 'rejected');
+      this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
       setToast(this.gs, this.vendorMessage, 2.2);
       this.pushHud(true);
       return;
     }
-    if (!addToInventory(this.gs, itemId, 1)) {
-      this.vendorMessage = 'Inventory has no free slot';
-      this.pushHud(true);
-      return;
-    }
-    if (!freePurchases) {
-      this.gs.duckettes -= asset.price;
-      if (woodCost > 0) takeFromInventory(this.gs, ITEM_WOOD, woodCost);
-    }
-    this.vendorMessage = `${asset.displayName} deed added to inventory`;
-    this.recordAction('purchase');
+    const materialSummary = Object.entries(result.materialSpent)
+      .map(([material, cost]) => `${cost} ${material}`)
+      .join(', ');
+    const spentSummary = result.duckettesSpent > 0 || materialSummary
+      ? ` · spent ${result.duckettesSpent} duckettes${materialSummary ? ` + ${materialSummary}` : ''}`
+      : this.economyCapability.allowFreePurchases
+        ? ' · no currency cost in this sandbox'
+        : ' · no duckette or material cost';
+    this.vendorMessage = `${asset.displayName} deed added to inventory${spentSummary}`;
+    this.recordOutcome('purchase', 'completed');
     this.persist();
     this.pushHud(true);
   }
@@ -1483,6 +1510,7 @@ export class GameRuntime {
       return;
     }
     if (this.buildingMode || this.placementAssetId) {
+      this.recordOutcome('building', 'cancelled');
       this.buildingMode = false;
       this.placementAssetId = null;
       this.world.setBuildPreview(null);
@@ -1723,13 +1751,29 @@ export class GameRuntime {
     this.economyMetrics.actionKinds[kind] = (this.economyMetrics.actionKinds[kind] ?? 0) + 1;
   }
 
-  private economySnapshot(): EconomyMetrics & { sessionSeconds: number; inGameSeconds: number; day: number } {
+  private recordOutcome(
+    kind: OutcomeKind,
+    status: OutcomeStatus,
+    legacyActionKind: string = kind,
+  ): void {
+    recordOutcomeMetric(this.economyMetrics.outcomes, kind, status, this.gs.simTime);
+    if (status === 'completed') this.recordAction(legacyActionKind);
+  }
+
+  private economySnapshot(): EconomyMetrics & {
+    sessionSeconds: number;
+    inGameSeconds: number;
+    day: number;
+    timeToFirst: Record<OutcomeKind, number | null>;
+  } {
     return {
       ...this.economyMetrics,
       actionKinds: { ...this.economyMetrics.actionKinds },
+      outcomes: cloneOutcomeMetrics(this.economyMetrics.outcomes),
       sessionSeconds: (performance.now() - this.economyMetrics.sessionStartedAt) / 1000,
       inGameSeconds: this.gs.simTime,
       day: this.gs.clock.day,
+      timeToFirst: firstOutcomeCompletionTimes(this.economyMetrics.outcomes),
     };
   }
 
@@ -2060,7 +2104,12 @@ export class GameRuntime {
       }
       this.world.syncFarmTiles(this.gs.tiles);
       this.persist();
-      if (checkWin(this.gs) && !this.gs.winShown) this.winShownLocal = false;
+      if (checkWin(this.gs) && !this.gs.winShown) {
+        if (this.economyMetrics.outcomes.settlement_goal.completed === 0) {
+          this.recordOutcome('settlement_goal', 'completed');
+        }
+        this.winShownLocal = false;
+      }
     }
   }
 
@@ -2423,19 +2472,22 @@ export class GameRuntime {
   }
 
   private placeSelectedBuilding(): void {
+    this.recordOutcome('building', 'attempted');
     const placement = this.buildingPlacementStatus();
     const selected = placement.asset;
     if (!selected || !placement.valid || !placement.tile) {
+      this.recordOutcome('building', 'rejected');
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
     const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
     if (!this.placementAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
     else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+      this.recordOutcome('building', 'rejected');
       setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
       return;
     }
-    this.recordAction('build');
+    this.recordOutcome('building', 'completed', 'build');
     placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
@@ -2573,14 +2625,19 @@ export class GameRuntime {
         this.persist();
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
-      if (this.meleeCd > 0) return;
+      this.recordOutcome('plant', 'attempted');
+      if (this.meleeCd > 0) {
+        this.recordOutcome('plant', 'rejected');
+        return;
+      }
       const seed = selectedSeed(this.gs);
       if (!seed) {
+        this.recordOutcome('plant', 'rejected');
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
       if (plantTile(this.gs.tiles, tx, ty, seed)) {
-        this.recordAction('plant');
+        this.recordOutcome('plant', 'completed');
         this.economyMetrics.cropsPlanted++;
         this.beginMeleeAction('pickUp');
         this.rebuildCrops();
@@ -2588,17 +2645,24 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
-      }
+      } else this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
     } else if (tile.state === 'mature') {
-      if (this.meleeCd > 0) return;
+      this.recordOutcome('harvest', 'attempted');
+      if (this.meleeCd > 0) {
+        this.recordOutcome('harvest', 'rejected');
+        return;
+      }
       const res = harvestTile(this.gs.tiles, tx, ty);
       if (res.ok && res.seed) {
         this.beginMeleeAction('pickUp');
         const id = cropItem(res.seed.displayName);
-        if (!addToInventory(this.gs, id, res.count)) return;
-        this.recordAction('harvest');
+        if (!addToInventory(this.gs, id, res.count)) {
+          this.recordOutcome('harvest', 'rejected');
+          return;
+        }
+        this.recordOutcome('harvest', 'completed');
         this.economyMetrics.cropsHarvested += res.count;
         this.gs.stats.cropsHarvested += res.count;
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
@@ -2608,7 +2672,7 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
         this.audio.play('reward');
         this.persist();
-      }
+      } else this.recordOutcome('harvest', 'rejected');
     }
   }
 
@@ -3010,6 +3074,7 @@ export class GameRuntime {
 
   private damageFox(w: Fox, amount: number): void {
     if (w.dead) return;
+    this.recordOutcome('fox_defense', 'attempted');
     w.hp -= amount;
     if (w.hp > 0) {
       w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
@@ -3021,7 +3086,7 @@ export class GameRuntime {
     }
     w.dead = true;
     this.resetFoxTrap(w);
-    this.recordAction('fox_felled');
+    this.recordOutcome('fox_defense', 'completed', 'fox_felled');
     this.gs.stats.foxesFelled += 1;
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
@@ -4034,6 +4099,9 @@ export class GameRuntime {
       };
     });
 
+    const vendorTabs = this.availableVendorTabs();
+    if (!vendorTabs.includes(this.vendorTab)) this.vendorTab = vendorTabs[0] ?? 'Housing';
+
     const snap: HudSnapshot = {
       day: this.gs.clock.day,
       phase: this.gs.clock.phase,
@@ -4092,20 +4160,27 @@ export class GameRuntime {
       vendor: {
         open: this.vendorOpen,
         tab: this.vendorTab,
-        tabs: ['Housing', 'Weapons', 'Buildings', 'Upgrades'],
-        items: shopAssets(this.vendorTab).map((asset) => ({
-          id: asset.id,
-          name: asset.displayName,
-          description: asset.description,
-          footprint: `${asset.footprint.width}×${asset.footprint.height}`,
-          useType: asset.useType,
-          gate: asset.gate,
-          model: asset.modelKey,
-          price: asset.price,
-          material: Object.entries(asset.materialCost)
-            .map(([name, cost]) => `${cost} ${name}`)
-            .join(', ') || '—',
-        })),
+        tabs: vendorTabs,
+        economyLabel: this.economyCapability.label,
+        items: shopAssets(this.vendorTab).map((asset) => {
+          const quote = quotePurchase(this.gs, asset, this.economyCapability);
+          return {
+            id: asset.id,
+            name: asset.displayName,
+            description: asset.description,
+            footprint: `${asset.footprint.width}×${asset.footprint.height}`,
+            useType: asset.useType,
+            gate: asset.gate,
+            model: asset.modelKey,
+            price: asset.price,
+            material: Object.entries(asset.materialCost)
+              .map(([name, cost]) => `${cost} ${name}`)
+              .join(', ') || '—',
+            owned: quote.owned,
+            canBuy: quote.canBuy,
+            lockReason: quote.reasons.join(' · ') || 'Ready to buy',
+          };
+        }),
         message: this.vendorMessage,
       },
       contextMenu: { ...this.contextMenu },
