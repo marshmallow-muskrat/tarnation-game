@@ -41,89 +41,11 @@ function fallbackFor(key: ModelKey): THREE.Object3D {
       g.add(body);
       break;
     }
-    case 'weasel': {
+    case 'fox': {
       const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.35, 4, 8), matStd(0x8b5e3c));
       body.rotation.z = Math.PI / 2;
       body.rotation.x = THREE.MathUtils.degToRad(25);
       body.position.y = 0.22;
-      body.castShadow = true;
-      body.receiveShadow = true;
-      g.add(body);
-      break;
-    }
-    case 'crop1':
-    case 'crop2':
-    case 'crop3': {
-      const h = key === 'crop1' ? 0.25 : key === 'crop2' ? 0.45 : 0.7;
-      const c = key === 'crop3' ? 0xe8c33a : 0xc4d64a;
-      const m = new THREE.Mesh(new THREE.ConeGeometry(0.12, h, 6), matStd(c));
-      m.position.y = h / 2;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      g.add(m);
-      break;
-    }
-    case 'tree_farm': {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.9, 6), matStd(0x5a3a22));
-      trunk.position.y = 0.45;
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.1, 7), matStd(0x3d6b35));
-      crown.position.y = 1.25;
-      crown.castShadow = true;
-      crown.receiveShadow = true;
-      g.add(trunk, crown);
-      break;
-    }
-    case 'tree_woods': {
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.12, 1.2, 5), matStd(0x2a2218));
-      trunk.position.y = 0.6;
-      trunk.castShadow = true;
-      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.35, 0.9, 5), matStd(0x1e2824));
-      crown.position.y = 1.4;
-      crown.castShadow = true;
-      g.add(trunk, crown);
-      break;
-    }
-    case 'house1': {
-      const base = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.0, 1.4), matStd(0x9a6b42));
-      base.position.y = 0.5;
-      base.castShadow = true;
-      base.receiveShadow = true;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.2, 0.7, 4), matStd(0x7a4e2e));
-      roof.position.y = 1.25;
-      roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
-      g.add(base, roof);
-      break;
-    }
-    case 'house2': {
-      const base = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.3, 1.8), matStd(0x9a6b42));
-      base.position.y = 0.65;
-      base.castShadow = true;
-      base.receiveShadow = true;
-      const roof = new THREE.Mesh(new THREE.ConeGeometry(1.6, 0.9, 4), matStd(0x7a4e2e));
-      roof.position.y = 1.55;
-      roof.rotation.y = Math.PI / 4;
-      roof.castShadow = true;
-      g.add(base, roof);
-      break;
-    }
-    case 'stalker': {
-      const body = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.3, 0.9, 4, 8),
-        new THREE.MeshBasicMaterial({ color: 0x000000, fog: false }),
-      );
-      body.position.y = 0.75;
-      body.castShadow = true;
-      g.add(body);
-      break;
-    }
-    case 'animal_a':
-    case 'animal_b': {
-      const c = key === 'animal_a' ? 0x8a6a4a : 0x6a7a5a;
-      const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.5, 4, 8), matStd(c));
-      body.position.y = 0.5;
       body.castShadow = true;
       body.receiveShadow = true;
       g.add(body);

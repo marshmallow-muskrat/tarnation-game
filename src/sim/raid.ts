@@ -1,7 +1,7 @@
 import {
-  WEASEL_BASE_COUNT,
-  WEASEL_MAX,
-  WEASEL_PER_NIGHT,
+  FOX_BASE_COUNT,
+  FOX_MAX,
+  FOX_PER_NIGHT,
   GRID_W,
   GRID_H,
   TILE,
@@ -10,21 +10,21 @@ import {
 } from '../content';
 import { mulberry32, randInt, type Rng } from './rng';
 
-export type WeaselType = 'diggler' | 'nibbler' | 'sapper' | 'hauler';
+export type FoxType = 'diggler' | 'nibbler' | 'sapper' | 'hauler';
 
 export interface SpawnPoint {
   x: number;
   y: number;
   edge: 'n' | 's' | 'e' | 'w';
-  kind: WeaselType;
+  kind: FoxType;
 }
 
-export function weaselCountForDay(day: number, cropValue = 0, weirdness = 0): number {
+export function foxCountForDay(day: number, cropValue = 0, weirdness = 0): number {
   const greed = Math.floor(cropValue / 8) + Math.floor(weirdness / 80);
-  return Math.min(WEASEL_BASE_COUNT + (day - 1) * WEASEL_PER_NIGHT + greed, WEASEL_MAX);
+  return Math.min(FOX_BASE_COUNT + (day - 1) * FOX_PER_NIGHT + greed, FOX_MAX);
 }
 
-function pickKind(rng: Rng, day: number): WeaselType {
+function pickKind(rng: Rng, day: number): FoxType {
   const r = rng();
   if (day >= 4 && r < 0.15) return 'hauler';
   if (day >= 3 && r < 0.35) return 'sapper';
@@ -40,7 +40,7 @@ export function generateWave(
   weirdness = 0,
 ): SpawnPoint[] {
   const rng = mulberry32((seed ^ (day * 0x9e3779b9)) >>> 0);
-  const count = weaselCountForDay(day, cropValue, weirdness);
+  const count = foxCountForDay(day, cropValue, weirdness);
   const points: SpawnPoint[] = [];
   for (let i = 0; i < count; i++) {
     const sp = randomEdgeSpawn(rng);
@@ -84,79 +84,4 @@ export function nearestEdgePoint(x: number, y: number): { x: number; y: number }
   if (min === distS) return { x, y: FARM_H };
   if (min === distW) return { x: 0, y };
   return { x: FARM_W, y };
-}
-
-/** 15+ mushroom trap behaviours */
-export type TrapBehaviour =
-  | 'backflip'
-  | 'chase_tail'
-  | 'high_five'
-  | 'attack_ally'
-  | 'walk_off'
-  | 'spin'
-  | 'sleep'
-  | 'zoomies'
-  | 'dance'
-  | 'confuse'
-  | 'shrink'
-  | 'grow'
-  | 'flee_fast'
-  | 'freeze'
-  | 'loop';
-
-const TRAP_BEHAVIOURS: TrapBehaviour[] = [
-  'backflip',
-  'chase_tail',
-  'high_five',
-  'attack_ally',
-  'walk_off',
-  'spin',
-  'sleep',
-  'zoomies',
-  'dance',
-  'confuse',
-  'shrink',
-  'grow',
-  'flee_fast',
-  'freeze',
-  'loop',
-];
-
-export function rollTrapBehaviour(rng: Rng): TrapBehaviour {
-  return TRAP_BEHAVIOURS[randInt(rng, 0, TRAP_BEHAVIOURS.length)]!;
-}
-
-export function trapBehaviourLabel(b: TrapBehaviour): string {
-  switch (b) {
-    case 'backflip':
-      return 'backflipped away';
-    case 'chase_tail':
-      return 'chased its tail';
-    case 'high_five':
-      return 'high-fived another weasel';
-    case 'attack_ally':
-      return 'attacked another weasel';
-    case 'walk_off':
-      return 'walked off the map';
-    case 'spin':
-      return 'spun in place';
-    case 'sleep':
-      return 'fell asleep';
-    case 'zoomies':
-      return 'got the zoomies';
-    case 'dance':
-      return 'started dancing';
-    case 'confuse':
-      return 'got confused';
-    case 'shrink':
-      return 'shrank';
-    case 'grow':
-      return 'puffed up';
-    case 'flee_fast':
-      return 'fled at high speed';
-    case 'freeze':
-      return 'froze solid';
-    case 'loop':
-      return 'looped forever';
-  }
 }

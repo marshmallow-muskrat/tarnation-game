@@ -80,14 +80,7 @@ export const MODELS = {
   },
 
   // ── Animals ───────────────────────────────────────────────────────────────
-  // The crop raider is a FOX, not a weasel — the pack has no weasel, and a tinted
-  // fox pretending to be one looks worse than just using the fox. Key stays 'weasel'
-  // until the call sites are renamed.
-  weasel: {
-    path: 'animals/fox.glb',
-    height: 0.38,
-    note: 'Fox. Quaternius Ultimate Animated Animals — animated, untinted.',
-  },
+  // Crop raiders use the actual fox model supplied by the animal pack.
   donkey: { path: 'animals/donkey.glb', height: 0.95 },
   cow: { path: 'animals/cow.glb', height: 1.0 },
   bull: { path: 'animals/bull.glb', height: 1.05 },
@@ -106,8 +99,8 @@ export const MODELS = {
 
   // ── Crops — one entry per species per stage ──────────────────────────────
   // 4 stages per species (_1.._4), named for the models that exist. The crop roster
-  // follows the art rather than the other way round — no forcing a turnip when the
-  // pack ships a beet.
+  // follows the art rather than the other way round — every listed crop has a
+  // matching model in the accepted pack.
   beet_1: { path: 'crops/beet_1.glb', height: 0.18 },
   beet_2: { path: 'crops/beet_2.glb', height: 0.3 },
   beet_3: { path: 'crops/beet_3.glb', height: 0.42 },
@@ -195,7 +188,6 @@ export const MODELS = {
   big_barn: { path: 'buildings/big_barn.glb', height: 6.4 },
 
   // ── Items & tools ─────────────────────────────────────────────────────────
-  slingshot: { path: 'items/slingshot.glb', height: 0.4 },
   shotgun_2: { path: 'items/shotgun_2.glb', height: 0.85, note: 'Brown Survival Pack shotgun.' },
   shovel: { path: 'items/shovel.glb', height: 1.1, note: 'Survival Pack shovel.' },
   bow: { path: 'items/bow.glb', height: 1.0 },
@@ -223,21 +215,6 @@ export const MODELS = {
   guardian_a: { path: 'monsters/guardian_a.glb', height: 2.2 },
   guardian_b: { path: 'monsters/guardian_b.glb', height: 2.6 },
 
-  // ── LEGACY ────────────────────────────────────────────────────────────────
-  // Keys the current code already calls, pointing at the flat files in
-  // public/models/. Kept so nothing breaks while the Quaternius assets land.
-  // Migrate call sites to the categorised keys above, then delete this block.
-  crop1: { path: 'crops/beet_1.glb', height: 0.18 },
-  crop2: { path: 'crops/beet_2.glb', height: 0.3 },
-  crop3: { path: 'crops/beet_4.glb', height: 0.5 },
-  tree_farm: { path: 'nature/common_tree_1.glb', height: 4.5 },
-  tree_woods: { path: 'nature/birch_tree_dead_1.glb', height: 4.2 },
-  house1: { path: 'buildings/small_barn.glb', height: 2.6 },
-  house2: { path: 'buildings/barn.glb', height: 4.4 },
-  animal_a: { path: 'animals/deer.glb', height: 1.0, tint: 0x8a6a4a, tintStrength: 0.55 },
-  animal_b: { path: 'animals/fox.glb', height: 0.38, tint: 0x6a7a5a, tintStrength: 0.55 },
-  scatter: { path: 'scatter.glb', height: 0.4 },
-  stalker: { path: 'monsters/guardian_a.glb', height: 1.75, silhouette: true },
 } satisfies Record<string, ModelDef>;
 
 export type ModelKey = keyof typeof MODELS;

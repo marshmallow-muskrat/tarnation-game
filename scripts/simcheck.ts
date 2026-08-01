@@ -63,7 +63,7 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
 
   const planted = createEmptyGrid();
   tillTile(planted, 6, 6, 3);
-  plantTile(planted, 6, 6, makeSeed('turnip'));
+  plantTile(planted, 6, 6, makeSeed('beet'));
   ok('planted ground is never reclaimed', decayUnplantedTilth(planted, 9).length === 0);
 }
 
@@ -71,9 +71,9 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
 {
   const inv = createInventory();
   ok('24 slots', inv.length === 24 && INVENTORY_SLOTS === 24);
-  addItem(inv, cropItem('Turnip'), 5000);
-  addItem(inv, cropItem('Turnip'), 5000);
-  ok('stack is unbounded', countItem(inv, cropItem('Turnip')) === 10000);
+  addItem(inv, cropItem('Beet'), 5000);
+  addItem(inv, cropItem('Beet'), 5000);
+  ok('stack is unbounded', countItem(inv, cropItem('Beet')) === 10000);
   ok('one stack = one slot', inv.filter(Boolean).length === 1);
   for (let i = 0; i < 23; i++) addItem(inv, `filler:${i}`, 1);
   ok('rejects a 25th distinct item', addItem(inv, 'overflow', 1) === false);
@@ -105,11 +105,11 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
 {
   ok('trophies start at 1%', TROPHY_ODDS.base === 0.01);
   const pity: Record<string, number> = {};
-  for (let i = 0; i < 5; i++) pity['weasel:diggler'] = i;
+  for (let i = 0; i < 5; i++) pity['fox:diggler'] = i;
   ok(
     'each dry kill adds a point of chance',
-    Math.abs(dropChance(pity, 'weasel:diggler', TROPHY_ODDS) - 0.05) < 1e-9,
-    `${(dropChance(pity, 'weasel:diggler', TROPHY_ODDS) * 100).toFixed(0)}% after 4 misses`,
+    Math.abs(dropChance(pity, 'fox:diggler', TROPHY_ODDS) - 0.05) < 1e-9,
+    `${(dropChance(pity, 'fox:diggler', TROPHY_ODDS) * 100).toFixed(0)}% after 4 misses`,
   );
 
   const rng = mulberry32(12345);
@@ -120,7 +120,7 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
   let streak = 0;
   while (kills < 20000) {
     kills++;
-    if (rollDrop(state, 'weasel:diggler', TROPHY_ODDS, rng)) {
+    if (rollDrop(state, 'fox:diggler', TROPHY_ODDS, rng)) {
       drops++;
       worstStreak = Math.max(worstStreak, streak);
       streak = 0;
@@ -130,7 +130,7 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
   }
   ok('pity guarantees a drop inside 100 kills', worstStreak < 100, `worst dry streak ${worstStreak}`);
   ok('drop rate stays rare', drops / kills < 0.12, `${((drops / kills) * 100).toFixed(1)}% overall`);
-  ok('a drop resets the counter', state['weasel:diggler'] !== undefined || drops > 0);
+  ok('a drop resets the counter', state['fox:diggler'] !== undefined || drops > 0);
 }
 
 // ------------------------------------------------------------ tree cover
@@ -214,14 +214,14 @@ const legacy = JSON.stringify({
   tiles: [],
   bagSize: 12,
   homesteadTier: 1,
-  weapon: 'rock',
-  unlockedWeapons: ['rock', 'bow'],
+  weapon: 'shotgun',
+  unlockedWeapons: ['shotgun', 'bow'],
   irrigationTier: 1,
   bucketFill: 2,
-  selectedCrop: 'turnip',
+  selectedCrop: 'beet',
   inventory: [
     { id: 'wood', count: 37 },
-    { id: 'crop:Turnip', count: 9 },
+    { id: 'crop:Beet', count: 9 },
   ],
   ducketts: 250,
   choppedTrees: { '10,10': 2 },
@@ -253,13 +253,13 @@ const all = [...results, ...m];
 console.log(all.some((r) => r.startsWith('FAIL')) ? '\nSOME CHECKS FAILED' : '\nALL CHECKS PASSED');
 if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
 
-// v4 → v5 slot remap: index 0 used to be the fist, now it's the ranged tool.
+// v4 → v5 slot remap: index 0 used to be the original unarmed action.
 {
   const v4 = JSON.parse(legacy) as Record<string, unknown>;
   v4.toolbarSlot = 0;
   const g = deserialize(JSON.stringify(v4));
   const label = g && g.toolbarSlot === 1 ? 'PASS' : 'FAIL';
-  console.log(`${label}  v4 toolbar slot re-points at the fist — got ${g?.toolbarSlot}`);
+  console.log(`${label}  v4 toolbar slot remaps to the ranged tool — got ${g?.toolbarSlot}`);
   if (label === 'FAIL') process.exitCode = 1;
 }
 

@@ -22,12 +22,13 @@ import {
   removeItem,
   type Inventory,
 } from './inventory';
-import { itemInfo, ITEM_DARKWOOD, ITEM_WOOD, type ItemId } from './items';
+import { itemInfo, ITEM_WOOD, type ItemId } from './items';
 import type { PityState } from './luck';
 import { mulberry32, type Rng } from './rng';
 import {
   createNewSave,
   defaultStats,
+  SAVE_VERSION,
   type ChoppedTrees,
   type BuildingId,
   type GameStats,
@@ -163,7 +164,7 @@ export function loadFromSaveData(data: SaveData): GameState {
 
 export function toSaveData(gs: GameState): SaveData {
   return {
-    version: 6,
+    version: SAVE_VERSION,
     seed: gs.seed,
     day: gs.clock.day,
     phase: gs.clock.phase,
@@ -261,10 +262,6 @@ export function takeFromInventory(gs: GameState, id: ItemId, n = 1): boolean {
 
 export function woodCount(gs: GameState): number {
   return countItem(gs.inventory, ITEM_WOOD);
-}
-
-export function darkwoodCount(gs: GameState): number {
-  return countItem(gs.inventory, ITEM_DARKWOOD);
 }
 
 /** Sell one item stack (or a single unit) for duckettes. Returns what was earned. */

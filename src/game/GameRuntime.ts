@@ -32,9 +32,7 @@ import {
   PLAYER_DAMP,
   PLAYER_SPEED,
   SAVE_KEY,
-  SHOT_COOLDOWN,
   SHOT_LIFETIME,
-  SHOT_SPEED,
   SHOTGUN_COOLDOWN,
   SHOTGUN_PELLETS,
   SHOTGUN_SPEED,
@@ -43,12 +41,12 @@ import {
   TOOLBAR_SLOTS,
   TOOL_RANGE,
   WATER_COLLECT_RANGE,
-  WEASEL_ATTACK_RADIUS,
-  WEASEL_ATTACK_SLOT_GAP,
-  WEASEL_BURROW_TIME,
-  WEASEL_SEPARATION,
-  WEASEL_EAT_TIME,
-  WEASEL_SPEED,
+  FOX_ATTACK_RADIUS,
+  FOX_ATTACK_SLOT_GAP,
+  FOX_BURROW_TIME,
+  FOX_SEPARATION,
+  FOX_EAT_TIME,
+  FOX_SPEED,
   WIN_DAY,
   WORLD_SIZE,
 } from '../content';
@@ -91,7 +89,6 @@ import {
   makeBreedingBed,
   nibbleCrop,
   placeBearTrap,
-  placeTrap,
   plantTile,
   tillTile,
   tileCenter,
@@ -102,15 +99,13 @@ import {
   totalWeirdness,
 } from '../sim/farm';
 import { crossbreed } from '../sim/genetics';
-import { findItem, occupiedSlots } from '../sim/inventory';
+import { occupiedSlots } from '../sim/inventory';
 import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
   nearestEdgePoint,
-  rollTrapBehaviour,
-  trapBehaviourLabel,
-  type WeaselType,
+  type FoxType,
 } from '../sim/raid';
 import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Assets';
 import { InputController } from './InputController';
@@ -201,14 +196,14 @@ export type HudSnapshot = {
   };
 };
 
-type WeaselState = 'burrow' | 'seek' | 'eat' | 'flee' | 'trapped';
+type FoxState = 'burrow' | 'seek' | 'eat' | 'flee' | 'trapped';
 
-type Weasel = {
+type Fox = {
   root: THREE.Object3D;
   x: number;
   z: number;
-  state: WeaselState;
-  kind: WeaselType;
+  state: FoxState;
+  kind: FoxType;
   hp: number;
   timer: number;
   targetTx: number;
@@ -222,7 +217,7 @@ type Weasel = {
 
 type Shot = {
   root: THREE.Object3D;
-  kind: 'rock' | 'arrow' | 'pellet';
+  kind: 'arrow' | 'pellet';
   x: number;
   z: number;
   vx: number;
@@ -263,7 +258,7 @@ type PlainsAnimal = {
   name: string;
 };
 
-type ToolMode = 'farm' | 'trench' | 'breed' | 'trap';
+type ToolMode = 'farm' | 'trench' | 'breed';
 
 type PlayerClip =
   | 'idle'
@@ -290,6 +285,22 @@ type ToolProfile = {
   /** Some carry clips are authored for a particular silhouette. */
   runClip: 'walkCarry' | 'runCarry';
 };
+
+const CROP_MODEL_BASE: Record<keyof typeof CROP_DEFS, string> = {
+  grass: 'grasscrop',
+  dandelion: 'dandelion',
+  beet: 'beet',
+  carrot: 'carrot',
+  lettuce: 'lettuce',
+};
+
+const PLAINS_ANIMALS: readonly { model: ModelKey; name: string }[] = [
+  { model: 'stag', name: 'Marsh Stag' },
+  { model: 'bull', name: 'Gloam Bull' },
+  { model: 'deer', name: 'Pebble Deer' },
+  { model: 'fox', name: 'Thicket Fox' },
+  { model: 'donkey', name: 'Dust Donkey' },
+];
 
 const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
   axe: {
@@ -392,7 +403,7 @@ const CROP_ICON_MODELS: Record<string, ModelKey> = {
 };
 
 function itemIconModel(id: ItemId): ModelKey | null {
-  if (id === ITEM_WOOD || id === 'darkwood') return 'wood_log';
+  if (id === ITEM_WOOD) return 'wood_log';
   const crop = cropName(id);
   if (crop !== null) return CROP_ICON_MODELS[crop] ?? null;
   if (id.startsWith('trophy:')) return 'trophy';
@@ -429,7 +440,7 @@ export class GameRuntime {
   private buildingMode = false;
   private placeableBuildingIndex = 0;
 
-  private weasels: Weasel[] = [];
+  private foxes: Fox[] = [];
   private shots: Shot[] = [];
   private boulders: Boulder[] = [];
   private shotCd = 0;
@@ -819,7 +830,7 @@ export class GameRuntime {
       },
       raid: () => {
         this.spawnRaid();
-        for (const w of this.weasels) {
+        for (const w of this.foxes) {
           w.state = 'seek';
           w.timer = 0;
           w.x = this.playerX + (this.gs.rng() - 0.5) * 5;
@@ -827,13 +838,13 @@ export class GameRuntime {
           w.root.scale.setScalar(1);
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
         }
-        return this.weasels.length;
+        return this.foxes.length;
       },
-      weaselCount: () => this.weasels.length,
+      foxCount: () => this.foxes.length,
       melee: () => {
         this.meleeCd = 0;
         this.meleeSwing(AXE_DAMAGE);
-        return this.weasels.length;
+        return this.foxes.length;
       },
     };
   }
@@ -1000,7 +1011,6 @@ export class GameRuntime {
     const structure: [string, ToolMode, string][] = [
       ['KeyZ', 'trench', 'Tool: trench dig'],
       ['KeyX', 'breed', 'Tool: breeding bed'],
-      ['KeyC', 'trap', 'Tool: mushroom trap'],
     ];
     for (const [code, mode, label] of structure) {
       if (!this.input.justPressed(code)) continue;
@@ -1019,7 +1029,7 @@ export class GameRuntime {
     if (this.meleeCd > 0) this.meleeCd -= dt;
     this.stepShots(dt);
     this.stepBoulders(dt);
-    this.stepWeasels(dt);
+    this.stepFoxes(dt);
     this.stepAnimals(dt);
 
     this.nearWater = this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE;
@@ -1061,7 +1071,7 @@ export class GameRuntime {
       this.persist();
     }
     if (clock.becameDay) {
-      this.clearWeasels();
+      this.clearFoxes();
       const { lostTilth, regrown } = onNewDay(this.gs);
       setToast(
         this.gs,
@@ -1352,15 +1362,6 @@ export class GameRuntime {
       return;
     }
 
-    if (this.toolMode === 'trap') {
-      if (this.meleeCd > 0) return;
-      if (placeTrap(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('swordSlash');
-        this.world.syncFarmTiles(this.gs.tiles);
-      }
-      return;
-    }
-
     if (tile.state === 'grass') {
       if (this.meleeCd > 0) return;
       if (this.tileBlockedForTilling(tx, ty)) {
@@ -1479,11 +1480,7 @@ export class GameRuntime {
       this.fireBow();
       return;
     }
-    if (this.gs.weapon === 'axe') {
-      this.meleeSwing(AXE_DAMAGE);
-      return;
-    }
-    this.throwRock();
+    this.meleeSwing(AXE_DAMAGE);
   }
 
   private aimDirection(): { dx: number; dz: number } {
@@ -1578,43 +1575,6 @@ export class GameRuntime {
     this.playPlayerAction('shoot');
   }
 
-  private throwRock(): void {
-    if (this.shotCd > 0) return;
-    const { dx, dz } = this.aimDirection();
-
-    // Special crops act as ammo when you have them; a bare rock costs nothing.
-    let ammo: string | null = null;
-    const ammoId = findItem(this.gs.inventory, (i) => {
-      const n = cropName(i);
-      return n === 'Rubber Corn' || n === 'Screaming Cabbage' || n === 'Ironroot Beet';
-    });
-    if (ammoId && takeFromInventory(this.gs, ammoId, 1)) ammo = cropName(ammoId);
-
-    const color =
-      ammo === 'Screaming Cabbage' ? 0x80ff80 : ammo === 'Ironroot Beet' ? 0x888899 : 0x8d8578;
-
-    const mesh = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(0.16, 0),
-      new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: 0.9 }),
-    );
-    mesh.position.set(this.playerX, 0.8, this.playerZ);
-    mesh.castShadow = true;
-    this.world.getSharedActors().add(mesh);
-    this.shots.push({
-      root: mesh,
-      kind: 'rock',
-      x: this.playerX,
-      z: this.playerZ,
-      vx: dx * SHOT_SPEED,
-      vz: dz * SHOT_SPEED,
-      life: SHOT_LIFETIME,
-      ricochet: ammo === 'Rubber Corn' ? 3 : 0,
-      dmg: 1,
-    });
-    this.shotCd = SHOT_COOLDOWN;
-    this.playPlayerAction('shoot');
-  }
-
   private beginMeleeAction(clip: PlayerClip): boolean {
     if (this.meleeCd > 0) return false;
     this.meleeCd = MELEE_COOLDOWN;
@@ -1624,10 +1584,10 @@ export class GameRuntime {
 
   private applyMeleeDamage(damage: number): void {
     let connected = false;
-    for (const w of [...this.weasels]) {
+    for (const w of [...this.foxes]) {
       if (w.dead) continue;
       if (Math.hypot(w.x - this.playerX, w.z - this.playerZ) > MELEE_RANGE) continue;
-      this.damageWeasel(w, damage);
+      this.damageFox(w, damage);
       connected = true;
     }
     for (const a of [...this.animals]) {
@@ -1694,11 +1654,11 @@ export class GameRuntime {
         step / BOULDER_RADIUS,
       );
 
-      for (const w of [...this.weasels]) {
+      for (const w of [...this.foxes]) {
         if (w.dead || b.hit.has(w)) continue;
         if (Math.hypot(w.x - b.x, w.z - b.z) > BOULDER_RADIUS + 0.4) continue;
         b.hit.add(w);
-        this.damageWeasel(w, BOULDER_DAMAGE);
+        this.damageFox(w, BOULDER_DAMAGE);
       }
       for (const a of [...this.animals]) {
         if (b.hit.has(a)) continue;
@@ -1762,9 +1722,6 @@ export class GameRuntime {
       s.root.position.set(s.x, this.world.heightAt(s.x, s.z) + (s.kind === 'arrow' ? 0.95 : 0.8), s.z);
       if (s.kind === 'arrow') {
         s.root.rotation.y = Math.atan2(s.vx, s.vz);
-      } else if (s.kind === 'rock') {
-        s.root.rotation.x += dt * 9;
-        s.root.rotation.y += dt * 7;
       }
 
       if (s.life <= 0) {
@@ -1774,10 +1731,10 @@ export class GameRuntime {
       }
 
       let consumed = false;
-      for (const w of [...this.weasels]) {
+      for (const w of [...this.foxes]) {
         if (w.dead) continue;
         if (Math.hypot(s.x - w.x, s.z - w.z) > 0.8) continue;
-        this.damageWeasel(w, s.dmg);
+        this.damageFox(w, s.dmg);
         if (s.ricochet > 0) {
           s.ricochet--;
           s.vx = -s.vx + (this.gs.rng() - 0.5) * 4;
@@ -1808,7 +1765,7 @@ export class GameRuntime {
     }
   }
 
-  private damageWeasel(w: Weasel, amount: number): void {
+  private damageFox(w: Fox, amount: number): void {
     if (w.dead) return;
     w.hp -= amount;
     if (w.hp > 0) {
@@ -1817,13 +1774,13 @@ export class GameRuntime {
       return;
     }
     w.dead = true;
-    this.gs.stats.weaselsFelled += 1;
+    this.gs.stats.foxesFelled += 1;
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
     w.root.removeFromParent();
-    this.rollTrophy(`weasel:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
+    this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
     // Dead is dead — drop it now rather than waiting for the next sweep.
-    this.weasels = this.weasels.filter((o) => !o.dead);
+    this.foxes = this.foxes.filter((o) => !o.dead);
   }
 
   private damageAnimal(a: PlainsAnimal, amount: number): void {
@@ -1856,7 +1813,7 @@ export class GameRuntime {
   // ----------------------------------------------------------------- raids
 
   private spawnRaid(): void {
-    this.clearWeasels();
+    this.clearFoxes();
     const spawns = generateWave(
       this.gs.clock.day,
       this.gs.seed,
@@ -1864,7 +1821,7 @@ export class GameRuntime {
       totalWeirdness(this.gs.tiles),
     );
     for (const sp of spawns) {
-      const { root, animations } = cloneModel('weasel');
+      const { root, animations } = cloneModel('fox');
       const x = sp.x;
       const z = sp.y;
       root.position.set(x, this.world.heightAt(x, z), z);
@@ -1875,35 +1832,35 @@ export class GameRuntime {
         root.userData.mixer = mixer;
       }
       this.world.getFarmActors().add(root);
-      this.weasels.push({
+      this.foxes.push({
         root,
         x,
         z,
         state: 'burrow',
         kind: sp.kind,
         hp: 1,
-        timer: WEASEL_BURROW_TIME,
+        timer: FOX_BURROW_TIME,
         targetTx: -1,
         targetTy: -1,
         eatTimer: 0,
         dead: false,
         haulSeed: false,
-        attackSlot: this.weasels.length,
+        attackSlot: this.foxes.length,
         attackAngle: this.gs.rng() * Math.PI * 2,
       });
     }
     this.world.markShadowsDirty();
   }
 
-  private clearWeasels(): void {
-    for (const w of this.weasels) w.root.removeFromParent();
-    this.weasels = [];
+  private clearFoxes(): void {
+    for (const w of this.foxes) w.root.removeFromParent();
+    this.foxes = [];
   }
 
-  private weaselSpeed(w: Weasel): number {
+  private foxSpeed(w: Fox): number {
     if (w.kind === 'nibbler') return NIBBLER_SPEED;
     if (w.kind === 'hauler') return HAULER_SPEED;
-    return WEASEL_SPEED;
+    return FOX_SPEED;
   }
 
   private nearestOpenBearTrap(x: number, z: number): { tx: number; ty: number; wx: number; wz: number } | null {
@@ -1927,9 +1884,9 @@ export class GameRuntime {
     return best;
   }
 
-  private stepWeasels(dt: number): void {
+  private stepFoxes(dt: number): void {
     const crops = findCropTiles(this.gs.tiles);
-    for (const w of [...this.weasels]) {
+    for (const w of [...this.foxes]) {
       if (w.dead) continue;
       (w.root.userData.mixer as THREE.AnimationMixer | undefined)?.update(dt);
 
@@ -1951,30 +1908,8 @@ export class GameRuntime {
 
       const tpos = this.worldToFarmTile(w.x, w.z);
       if (tpos && w.state !== 'burrow' && w.state !== 'trapped') {
-        const t = getTile(this.gs.tiles, tpos.tx, tpos.ty);
-        if (t?.trap) {
-          t.trap = false;
-          const b = rollTrapBehaviour(this.gs.rng);
-          setToast(this.gs, `Trap: weasel ${trapBehaviourLabel(b)}`, 1.6);
-          this.world.syncFarmTiles(this.gs.tiles);
-          if (b === 'attack_ally') {
-            for (const o of [...this.weasels]) {
-              if (o !== w && !o.dead && Math.hypot(o.x - w.x, o.z - w.z) < 4) {
-                this.damageWeasel(o, 1);
-                break;
-              }
-            }
-          }
-          if (b === 'sleep' || b === 'freeze') {
-            w.state = 'trapped';
-            w.timer = 4;
-            continue;
-          }
-          if (b === 'shrink') w.root.scale.setScalar(0.4);
-          if (b === 'grow') w.root.scale.setScalar(1.6);
-          w.state = 'flee';
-          continue;
-        }
+      // Bear traps are the only placeable wildlife trap. Their trigger and
+      // closed-model swap are handled above so the interaction stays readable.
       }
 
       if (tpos && hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, 3)) w.state = 'flee';
@@ -1987,7 +1922,7 @@ export class GameRuntime {
 
       if (w.state === 'burrow') {
         w.timer -= dt;
-        const t = 1 - w.timer / WEASEL_BURROW_TIME;
+        const t = 1 - w.timer / FOX_BURROW_TIME;
         w.root.scale.setScalar(0.15 + 0.85 * Math.min(1, t));
         if (w.timer <= 0) {
           w.state = 'seek';
@@ -2020,15 +1955,15 @@ export class GameRuntime {
           // Give each fox a point on an attack ring. Without this, every raid
           // actor seeks the exact player coordinate and the models stack into a
           // single broken-looking pile.
-          const radius = WEASEL_ATTACK_RADIUS + (w.attackSlot % 3) * WEASEL_ATTACK_SLOT_GAP;
+          const radius = FOX_ATTACK_RADIUS + (w.attackSlot % 3) * FOX_ATTACK_SLOT_GAP;
           const targetX = this.playerX + Math.sin(w.attackAngle) * radius;
           const targetZ = this.playerZ + Math.cos(w.attackAngle) * radius;
           const dx = targetX - w.x;
           const dz = targetZ - w.z;
           const len = Math.hypot(dx, dz) || 1;
           if (len > 0.18) {
-            w.x += (dx / len) * this.weaselSpeed(w) * 0.5 * dt;
-            w.z += (dz / len) * this.weaselSpeed(w) * 0.5 * dt;
+            w.x += (dx / len) * this.foxSpeed(w) * 0.5 * dt;
+            w.z += (dz / len) * this.foxSpeed(w) * 0.5 * dt;
           }
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
@@ -2065,11 +2000,11 @@ export class GameRuntime {
             w.state = 'flee';
           } else {
             w.state = 'eat';
-            w.eatTimer = WEASEL_EAT_TIME;
+            w.eatTimer = FOX_EAT_TIME;
             w.root.scale.set(1.25, 0.85, 1.25);
           }
         } else {
-          const sp = this.weaselSpeed(w);
+          const sp = this.foxSpeed(w);
           w.x += (dx / dist) * sp * dt;
           w.z += (dz / dist) * sp * dt;
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
@@ -2096,7 +2031,7 @@ export class GameRuntime {
         const dx = edge.x - w.x;
         const dz = edge.y - w.z;
         const dist = Math.hypot(dx, dz) || 1;
-        const sp = this.weaselSpeed(w) * (w.haulSeed ? 1.15 : 1.3);
+        const sp = this.foxSpeed(w) * (w.haulSeed ? 1.15 : 1.3);
         w.x += (dx / dist) * sp * dt;
         w.z += (dz / dist) * sp * dt;
         w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
@@ -2106,35 +2041,35 @@ export class GameRuntime {
         }
       }
     }
-    this.separateWeasels();
-    this.weasels = this.weasels.filter((w) => !w.dead);
+    this.separateFoxes();
+    this.foxes = this.foxes.filter((w) => !w.dead);
   }
 
-  private separateWeasels(): void {
-    for (let i = 0; i < this.weasels.length; i++) {
-      const a = this.weasels[i]!;
+  private separateFoxes(): void {
+    for (let i = 0; i < this.foxes.length; i++) {
+      const a = this.foxes[i]!;
       if (a.dead || a.state === 'trapped') continue;
-      for (let j = i + 1; j < this.weasels.length; j++) {
-        const b = this.weasels[j]!;
+      for (let j = i + 1; j < this.foxes.length; j++) {
+        const b = this.foxes[j]!;
         if (b.dead || b.state === 'trapped') continue;
         let dx = a.x - b.x;
         let dz = a.z - b.z;
         let distance = Math.hypot(dx, dz);
-        if (distance >= WEASEL_SEPARATION) continue;
+        if (distance >= FOX_SEPARATION) continue;
         if (distance < 0.001) {
           const angle = (i * 2.17 + j * 1.31) % (Math.PI * 2);
           dx = Math.sin(angle);
           dz = Math.cos(angle);
           distance = 1;
         }
-        const push = (WEASEL_SEPARATION - distance) * 0.52;
+        const push = (FOX_SEPARATION - distance) * 0.52;
         a.x += (dx / distance) * push;
         a.z += (dz / distance) * push;
         b.x -= (dx / distance) * push;
         b.z -= (dz / distance) * push;
       }
     }
-    for (const w of this.weasels) {
+    for (const w of this.foxes) {
       if (w.dead || w.state === 'trapped') continue;
       w.x = THREE.MathUtils.clamp(w.x, 2, WORLD_SIZE - 2);
       w.z = THREE.MathUtils.clamp(w.z, 2, WORLD_SIZE - 2);
@@ -2142,7 +2077,7 @@ export class GameRuntime {
     }
   }
 
-  private pickTarget(w: Weasel, crops: { x: number; y: number }[]): void {
+  private pickTarget(w: Fox, crops: { x: number; y: number }[]): void {
     if (!crops.length) {
       w.targetTx = -1;
       w.targetTy = -1;
@@ -2172,8 +2107,10 @@ export class GameRuntime {
         const t = this.gs.tiles[ty]![tx]!;
         if (t.state !== 'planted' && t.state !== 'mature') continue;
         const stage = t.state === 'mature' ? 2 : t.stage;
-        const key = stage === 0 ? 'crop1' : stage === 1 ? 'crop2' : 'crop3';
-        const { root } = cloneModel(key as 'crop1');
+        const base = CROP_MODEL_BASE[t.seed?.species ?? 'beet'];
+        const suffix = stage === 2 ? 4 : stage + 1;
+        const key = `${base}_${suffix}` as ModelKey;
+        const { root } = cloneModel(key);
         const wc = this.farmTileWorld(tx, ty);
         root.position.set(wc.x, this.world.heightAt(wc.x, wc.z), wc.z);
         const col = t.seed ? CROP_DEFS[t.seed.species]?.color : undefined;
@@ -2196,9 +2133,8 @@ export class GameRuntime {
   private seedPlainsAnimals(): void {
     if (this.animalsSeeded) return;
     this.animalsSeeded = true;
-    const names = ['Marsh Stag', 'Gloam Boar', 'Pebble Hare', 'Thicket Fox', 'Dust Ram'];
     for (let i = 0; i < 10; i++) {
-      const key = i % 2 === 0 ? 'animal_a' : 'animal_b';
+      const animal = PLAINS_ANIMALS[i % PLAINS_ANIMALS.length]!;
       let x = 0;
       let z = 0;
       let tries = 0;
@@ -2207,7 +2143,7 @@ export class GameRuntime {
         z = 20 + this.gs.rng() * (WORLD_SIZE - 40);
         tries++;
       } while (tries < 40 && this.world.distToWater(x, z) < 4);
-      const { root, animations } = cloneModel(key as 'animal_a');
+      const { root, animations } = cloneModel(animal.model);
       root.position.set(x, this.world.heightAt(x, z), z);
       this.world.getFarmActors().add(root);
       let mixer: THREE.AnimationMixer | null = null;
@@ -2226,7 +2162,7 @@ export class GameRuntime {
         timer: 2 + this.gs.rng() * 4,
         hp: 3,
         state: 'idle',
-        name: names[i % names.length]!,
+        name: animal.name,
       });
     }
   }

@@ -24,8 +24,6 @@ export interface Tile {
   breedB: Seed | null;
   /** Fence / trench damage for sappers */
   structureHp: number;
-  /** Legacy mushroom trap present */
-  trap: boolean;
   /** Bear trap placed from the Q slot. */
   bearTrap: boolean;
   /** The bear trap has fired and should render its closed model. */
@@ -45,7 +43,6 @@ export function emptyTile(): Tile {
     breedA: null,
     breedB: null,
     structureHp: 0,
-    trap: false,
     bearTrap: false,
     bearTrapClosed: false,
     tilledDay: -1,
@@ -259,7 +256,7 @@ export function clearBreedingParents(tiles: Tile[][], tx: number, ty: number): {
   return { a, b };
 }
 
-/** Destroy crop (weasel ate it) → tilled. Ironroot resists. */
+/** Destroy crop (fox ate it) → tilled. Ironroot resists. */
 export function destroyCrop(tiles: Tile[][], tx: number, ty: number): boolean {
   const t = getTile(tiles, tx, ty);
   if (!t || (t.state !== 'planted' && t.state !== 'mature')) return false;
@@ -349,25 +346,18 @@ export function cropValueScore(tiles: Tile[][]): number {
   return v;
 }
 
-/** Nearby repel_weasels hybrid within radius (tile units). */
+/** Nearby repel_foxes hybrid within radius (tile units). */
 export function hasRepelNearby(tiles: Tile[][], tx: number, ty: number, radius: number): boolean {
   const r = Math.ceil(radius);
   for (let y = ty - r; y <= ty + r; y++) {
     for (let x = tx - r; x <= tx + r; x++) {
       const t = getTile(tiles, x, y);
-      if (t?.seed?.mech === 'repel_weasels' && isCropTile(t)) {
+      if (t?.seed?.mech === 'repel_foxes' && isCropTile(t)) {
         if (Math.hypot(x - tx, y - ty) <= radius) return true;
       }
     }
   }
   return false;
-}
-
-export function placeTrap(tiles: Tile[][], tx: number, ty: number): boolean {
-  const t = getTile(tiles, tx, ty);
-  if (!t || t.state === 'planted' || t.state === 'mature') return false;
-  t.trap = true;
-  return true;
 }
 
 export function placeBearTrap(tiles: Tile[][], tx: number, ty: number): boolean {

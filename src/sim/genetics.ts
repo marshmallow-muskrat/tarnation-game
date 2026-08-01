@@ -15,7 +15,7 @@ export interface Traits {
 }
 
 export type HybridMech =
-  | 'repel_weasels'
+  | 'repel_foxes'
   | 'portable_light'
   | 'ironroot'
   | 'ricochet'
@@ -77,13 +77,13 @@ function mutation(rng: Rng, parentWeird: number): number {
 function nameHybrid(a: Seed, b: Seed, weird: number, rng: Rng): { name: string; mech: HybridMech } {
   if (weird >= 75) {
     const absurd = [
-      { name: 'Screaming Cabbage', mech: 'repel_weasels' as const },
+      { name: 'Screaming Cabbage', mech: 'repel_foxes' as const },
       { name: 'Glowshroom Gourd', mech: 'portable_light' as const },
       { name: 'Ironroot Beet', mech: 'ironroot' as const },
       { name: 'Rubber Corn', mech: 'ricochet' as const },
       { name: 'Carrot Corn', mech: 'greed_crop' as const },
-      { name: 'Onilettuce', mech: 'repel_weasels' as const },
-      { name: 'Screaming Cabbage', mech: 'repel_weasels' as const },
+      { name: 'Onilettuce', mech: 'repel_foxes' as const },
+      { name: 'Screaming Cabbage', mech: 'repel_foxes' as const },
     ];
     return absurd[Math.floor(rng() * absurd.length)]!;
   }

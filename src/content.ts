@@ -35,20 +35,20 @@ export const CROP_GROW_TIME = PLANT_GROW_TIME;
 export const CROP_STAGES = 3;
 export const CROP_SELL_VALUE = 0;
 
-// Weasels
-export const WEASEL_BASE_COUNT = 3;
-export const WEASEL_PER_NIGHT = 1;
-export const WEASEL_MAX = 10;
-export const WEASEL_SPEED = 3.2;
-export const WEASEL_EAT_TIME = 3;
-export const WEASEL_HP = 1;
-export const WEASEL_BURROW_TIME = 1.2;
+// Foxes
+export const FOX_BASE_COUNT = 3;
+export const FOX_PER_NIGHT = 1;
+export const FOX_MAX = 10;
+export const FOX_SPEED = 3.2;
+export const FOX_EAT_TIME = 3;
+export const FOX_HP = 1;
+export const FOX_BURROW_TIME = 1.2;
 /** Foxes stop at the player’s edge instead of converging into the same point. */
-export const WEASEL_ATTACK_RADIUS = 1.25;
+export const FOX_ATTACK_RADIUS = 1.25;
 /** Minimum visual spacing between raid actors. */
-export const WEASEL_SEPARATION = 0.78;
+export const FOX_SEPARATION = 0.78;
 /** Additional radius between attack-ring slots. */
-export const WEASEL_ATTACK_SLOT_GAP = 0.28;
+export const FOX_ATTACK_SLOT_GAP = 0.28;
 export const NIBBLER_SPEED = 4.4;
 export const HAULER_SPEED = 3.6;
 

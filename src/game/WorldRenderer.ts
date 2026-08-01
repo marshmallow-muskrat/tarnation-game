@@ -42,7 +42,7 @@ export class WorldRenderer {
   heroLight!: THREE.PointLight;
 
   private overworldRoot = new THREE.Group();
-  /** Trenches, breeding beds and the older mushroom trap — dug structures. */
+  /** Trenches and breeding beds — dug structures. */
   private structureTiles!: THREE.InstancedMesh;
   private hoverGroup = new THREE.Group();
   private hoverOutline!: THREE.LineSegments;
@@ -318,10 +318,7 @@ export class WorldRenderer {
     for (let row = 0; row < GRID_H; row++) {
       for (let col = 0; col < GRID_W; col++) {
         const t = tiles[row]![col]!;
-        // Bear traps have their own real model. Do not also place a generic
-        // structure slab underneath them; that reads as a large brown box
-        // and makes the trap look like a placeholder.
-        if (t.state === 'grass' && !t.trap) continue;
+        if (t.state === 'grass') continue;
 
         const wx = col + 0.5;
         const wz = row + 0.5;
@@ -337,8 +334,6 @@ export class WorldRenderer {
           _color.set(FARM_COLORS.trench).lerp(new THREE.Color(FARM_COLORS.water), 0.45);
         } else if (t.state === 'breeding') {
           _color.set(0x8a5ab0);
-        } else if (t.trap) {
-          _color.set(0x9a5ac0);
         } else {
           continue;
         }

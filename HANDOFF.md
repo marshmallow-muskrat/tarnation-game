@@ -41,18 +41,18 @@ browser debugging.
 
 ## 4. Current quality work
 
-The next active work is Milestones 1–3 in `masterplan.md`:
+Milestones 0 and 1 are implemented in the current branch. The next active work is Milestones 2–3
+in `masterplan.md`:
 
-- Make the hand socket, item profiles, carry/action animation states, and tool contact moments
-  reliable for shotgun, shovel, axe, bow, and melee.
-- Remove the bear-trap footprint artifact, make trap states readable, and ensure only the selected
-  ranged tool can create projectiles or their shadows.
-- Improve toolbar icon framing, HUD message priority, fox separation, and interaction feedback.
+- Continue the hand socket, item profiles, carry/action animation states, and tool contact moments
+  pass for shotgun, shovel, axe, bow, and melee.
+- Add stronger contact feedback and player-facing range/target/invalid-state explanations.
+- Improve fox attack telegraphs, trap feedback, and interaction result messaging.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
-- Remove remaining obsolete terminology from active code and documentation while preserving safe
-  save migration behavior where practical.
+- Keep the active code and documentation vocabulary aligned with the accepted crop, wildlife, and
+  building assets; obsolete prototype entries have been removed while save loading remains safe.
 
 ## 5. Release procedure
 

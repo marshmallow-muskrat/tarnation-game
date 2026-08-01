@@ -2,7 +2,7 @@
  * Item registry — everything you gather is an item id.
  *
  * Ids are namespaced so a crop, a trophy and a raw material can never collide:
- *   wood · darkwood            raw materials
+ *   wood                       raw materials
  *   crop:<display name>        harvested crops, including hybrids
  *   trophy:<animal name>       dazed plains animals
  */
@@ -31,7 +31,6 @@ export interface ItemInfo {
  */
 
 export const ITEM_WOOD = 'wood';
-export const ITEM_DARKWOOD = 'darkwood';
 
 export function cropItem(displayName: string): ItemId {
   return `crop:${displayName}`;
@@ -58,10 +57,6 @@ export function itemInfo(id: ItemId): ItemInfo {
   if (id === ITEM_WOOD) {
     return { id, name: 'Wood', glyph: 'W', price: 1, blurb: 'Chopped from a tree. The base of every price.' };
   }
-  if (id === ITEM_DARKWOOD) {
-    return { id, name: 'Darkwood', glyph: 'DW', price: 10, blurb: 'Heartwood from somewhere darker.' };
-  }
-
   const crop = cropName(id);
   if (crop !== null) {
     const base = BASE_CROPS[crop];

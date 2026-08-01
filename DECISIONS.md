@@ -19,3 +19,10 @@ structure slab.
 The runtime also refuses to let an abandoned async mount survive React development cleanup. Two
 active runtimes were able to split input, HUD, and canvas state, which made a correct tool look like
 the wrong slot. The mount now exits after preload when it has been disposed.
+
+## 2026-08-01 — Keep the active manifest and vocabulary asset-led
+
+Crop rendering now selects the real species-and-stage model instead of a generic legacy crop key,
+and ambient wildlife instantiates the accepted animal models directly. Obsolete prototype manifest
+entries and unused interaction paths were removed; the Q boulder and B bear trap remain separate
+current abilities.

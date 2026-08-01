@@ -7,22 +7,21 @@ import {
   normalizeInventory,
   type Inventory,
 } from './inventory';
-import { cropItem, ITEM_DARKWOOD, ITEM_WOOD, trophyItem } from './items';
+import { cropItem, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 
 export interface GameStats {
   cropsHarvested: number;
   woodGathered: number;
-  darkwoodGathered: number;
   daysSurvived: number;
   trophies: number;
   hybridsDiscovered: number;
-  weaselsFelled: number;
+  foxesFelled: number;
 }
 
-export type WeaponId = 'rock' | 'shotgun' | 'bow' | 'axe';
+export type WeaponId = 'shotgun' | 'bow' | 'axe';
 
 export type BuildingId =
   | 'silo'
@@ -83,11 +82,10 @@ export function defaultStats(): GameStats {
   return {
     cropsHarvested: 0,
     woodGathered: 0,
-    darkwoodGathered: 0,
     daysSurvived: 1,
     trophies: 0,
     hybridsDiscovered: 0,
-    weaselsFelled: 0,
+    foxesFelled: 0,
   };
 }
 
@@ -95,19 +93,14 @@ export function serialize(data: SaveData): string {
   return JSON.stringify(data);
 }
 
-/**
- * v3 kept wood/darkwood as bare counters and the inventory as a name→count map.
- * v4 moved all of it into 24 slots. Fold either shape in on load.
- */
+/** v4 moved the old counters and bag map into the current 24-slot inventory. */
 function migrateInventory(data: Record<string, unknown>): Inventory {
   const raw = data.inventory;
   if (Array.isArray(raw)) return normalizeInventory(raw);
 
   const inv = createInventory();
   const wood = typeof data.wood === 'number' ? data.wood : 0;
-  const darkwood = typeof data.darkwood === 'number' ? data.darkwood : 0;
   if (wood > 0) addItem(inv, ITEM_WOOD, wood);
-  if (darkwood > 0) addItem(inv, ITEM_DARKWOOD, darkwood);
   if (raw && typeof raw === 'object') {
     for (const [name, count] of Object.entries(raw as Record<string, number>)) {
       if (typeof count === 'number' && count > 0) addItem(inv, cropItem(name), count);
@@ -122,12 +115,23 @@ function migrateInventory(data: Record<string, unknown>): Inventory {
 }
 
 function migrateWeapon(w: unknown): WeaponId {
-  // The old rock placeholder is now the Survival Pack shotgun. Keep rock in
-  // the type only so older serialized saves can be read safely.
   if (w === 'shotgun') return 'shotgun';
   if (w === 'bow' || w === 'axe') return w;
-  if (w === 'blunderbuss') return 'axe';
   return 'shotgun';
+}
+
+function migrateStats(raw: unknown): GameStats {
+  const stats = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const number = (key: keyof GameStats, fallback: number): number =>
+    typeof stats[key] === 'number' && Number.isFinite(stats[key]) ? (stats[key] as number) : fallback;
+  return {
+    cropsHarvested: number('cropsHarvested', 0),
+    woodGathered: number('woodGathered', 0),
+    daysSurvived: number('daysSurvived', 1),
+    trophies: number('trophies', 0),
+    hybridsDiscovered: number('hybridsDiscovered', 0),
+    foxesFelled: number('foxesFelled', 0),
+  };
 }
 
 function migrateBuildings(raw: unknown): PlacedBuilding[] {
@@ -206,8 +210,9 @@ export function deserialize(raw: string): SaveData | null {
       parsed.dropPity && typeof parsed.dropPity === 'object'
         ? (parsed.dropPity as PityState)
         : {};
-    // v4 used slot 0 for the fist. v5 introduced the ranged slot at index 0;
-    // that meaning remains stable now that the ranged asset is a shotgun.
+    data.stats = migrateStats(parsed.stats);
+    // v4 used slot 0 for the original unarmed action. v5 introduced the ranged
+    // slot at index 0; that meaning remains stable with the shotgun asset.
     const preV5 = incoming < 5;
     data.toolbarSlot =
       !preV5 && typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : preV5 ? 1 : 0;
