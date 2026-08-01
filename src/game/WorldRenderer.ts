@@ -57,6 +57,7 @@ export class WorldRenderer {
   private debugGridGroup: THREE.Group | null = null;
   private debugGridMaterials: THREE.Material[] = [];
   private debugGridGeometries: THREE.BufferGeometry[] = [];
+  private debugGridTextures: THREE.Texture[] = [];
   private buildPreviewMaterials: { material: THREE.Material; color: THREE.Color | null }[] = [];
 
   private terrain!: TerrainSystem;
@@ -601,8 +602,10 @@ export class WorldRenderer {
       this.debugGridGroup.removeFromParent();
       for (const material of this.debugGridMaterials) material.dispose();
       for (const geometry of this.debugGridGeometries) geometry.dispose();
+      for (const texture of this.debugGridTextures) texture.dispose();
       this.debugGridMaterials = [];
       this.debugGridGeometries = [];
+      this.debugGridTextures = [];
       this.debugGridGroup = null;
     }
     if (!enabled) return;
@@ -630,16 +633,55 @@ export class WorldRenderer {
     this.debugGridMaterials.push(material);
     this.debugGridGeometries.push(geometry);
 
-    // Labels use the requested A-00/B-00 sequence per axis. A label at every
-    // tile would overwhelm the scene; the axis labels plus the cursor label make
-    // the complete coordinate unambiguous while keeping F12 cheap enough to use.
-    const labelEvery = 10;
-    for (let i = 0; i < WORLD_SIZE; i += labelEvery) {
-      const label = this.gridLabel(i);
-      const xSprite = this.makeDebugLabel(label, i + 0.5, -0.25);
-      const zSprite = this.makeDebugLabel(label, -0.25, i + 0.5);
-      group.add(xSprite, zSprite);
+    // One texture plane carries a tiny coordinate pair in every tile. This
+    // keeps F12 at one extra draw call instead of creating 57,600 DOM or
+    // Sprite objects, while still making the requested A-00/B-00 sequence
+    // inspectable on both axes.
+    const labelCanvas = document.createElement('canvas');
+    const labelSize = 4096;
+    labelCanvas.width = labelSize;
+    labelCanvas.height = labelSize;
+    const ctx = labelCanvas.getContext('2d');
+    if (ctx) {
+      const cell = labelSize / WORLD_SIZE;
+      ctx.clearRect(0, 0, labelSize, labelSize);
+      ctx.font = 'bold 7px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let ty = 0; ty < WORLD_SIZE; ty++) {
+        for (let tx = 0; tx < WORLD_SIZE; tx++) {
+          const x = (tx + 0.5) * cell;
+          const y = (ty + 0.5) * cell;
+          ctx.fillStyle = 'rgba(12, 24, 17, 0.48)';
+          ctx.fillRect(tx * cell, ty * cell, cell, cell);
+          ctx.fillStyle = 'rgba(255, 235, 161, 0.86)';
+          ctx.fillText(this.gridLabel(tx), x, y - 3.3);
+          ctx.fillStyle = 'rgba(179, 231, 214, 0.72)';
+          ctx.fillText(this.gridLabel(ty), x, y + 3.3);
+        }
+      }
     }
+    const labelTexture = new THREE.CanvasTexture(labelCanvas);
+    labelTexture.colorSpace = THREE.SRGBColorSpace;
+    labelTexture.magFilter = THREE.LinearFilter;
+    labelTexture.minFilter = THREE.LinearFilter;
+    const labelMaterial = new THREE.MeshBasicMaterial({
+      map: labelTexture,
+      transparent: true,
+      opacity: 0.9,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      toneMapped: false,
+    });
+    const labelPlane = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE), labelMaterial);
+    labelPlane.rotation.x = -Math.PI / 2;
+    labelPlane.position.set(WORLD_SIZE / 2, 0.16, WORLD_SIZE / 2);
+    labelPlane.renderOrder = 21;
+    group.add(labelPlane);
+    this.debugGridMaterials.push(labelMaterial);
+    this.debugGridGeometries.push(labelPlane.geometry);
+    this.debugGridTextures.push(labelTexture);
     this.debugGridGroup = group;
     this.overworldRoot.add(group);
   }
@@ -647,38 +689,6 @@ export class WorldRenderer {
   private gridLabel(index: number): string {
     const block = String.fromCharCode(65 + Math.floor(index / 100));
     return `${block}-${String(index % 100).padStart(2, '0')}`;
-  }
-
-  private makeDebugLabel(text: string, x: number, z: number): THREE.Sprite {
-    const canvas = document.createElement('canvas');
-    canvas.width = 96;
-    canvas.height = 32;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(14, 28, 20, 0.82)';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = '#f7e39a';
-      ctx.font = 'bold 18px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-    }
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    const material = new THREE.SpriteMaterial({
-      map: texture,
-      transparent: true,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    const sprite = new THREE.Sprite(material);
-    sprite.position.set(x, 0.18, z);
-    sprite.scale.set(1.8, 0.6, 1);
-    sprite.renderOrder = 21;
-    this.debugGridMaterials.push(material);
-    return sprite;
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {

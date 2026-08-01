@@ -221,8 +221,8 @@ Each major deployment must have a clean `npx tsc --noEmit`, `npm run check`,
 - [x] Milestone 2 — catalog-backed toolbar/build data and catalog validation.
 - [x] Milestone 3 — stacked deeds, deed use branching, purchase checks, and generic deed returns.
 - [x] Milestone 4 — stationary Traveling Merchant, fixed central encampment, and four-tab shop UI.
-- [ ] Milestone 5 — placement mode QA and final placement polish.
-- [ ] Milestone 6 — demolish/context QA and final interaction polish.
+- [x] Milestone 5 — placement mode QA and final placement polish.
+- [x] Milestone 6 — demolish/context QA and final interaction polish.
 - [ ] Milestone 7 — gate/enclosure/fox QA and final pathing polish.
 - [ ] Milestone 8 — save/launch QA and migration messaging.
 - [ ] Milestone 9 — F12 debug QA, production smoke tests, and release record.

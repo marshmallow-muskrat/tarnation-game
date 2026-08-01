@@ -129,6 +129,7 @@ import {
 import { CENTRAL_CAMP, CENTRAL_CAMP_FIXTURES } from '../content/mapData';
 import {
   calculateEnclosedTiles,
+  GRID_DIRECTIONS_8,
   fixtureTiles,
   footprintTiles,
   normalizeOrientation,
@@ -279,6 +280,7 @@ export type HudSnapshot = {
   vendor: HudVendor;
   contextMenu: HudContextMenu;
   demolishMode: boolean;
+  paused: boolean;
   /** Screen-space bearing to the market stall, radians, 0 = straight up. */
   marketAngle: number;
   marketDistance: number;
@@ -313,6 +315,9 @@ type Fox = {
   attackAngle: number;
   trappedTx: number;
   trappedTy: number;
+  path: { tx: number; ty: number }[];
+  pathGoalKey: string;
+  pathTimer: number;
 };
 
 type FoxActions = {
@@ -636,6 +641,7 @@ export class GameRuntime {
   private placementAssetId: AssetId | null = null;
   private placementRotation = 0;
   private demolishMode = false;
+  private pauseOpen = false;
   private helpOpen = false;
   private reducedMotion = false;
   private placeableBuildingIndex = 0;
@@ -674,10 +680,13 @@ export class GameRuntime {
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
   private bearTrapRoots = new Map<string, THREE.Object3D>();
-  private gateCloseTimers = new Map<number, number>();
+  private gateCloseTimers = new Map<PlacedBuilding, number>();
   /** In-progress chops, keyed "tx,ty". */
   private treeChops = new Map<string, number>();
-  private fixtureReservations = fixtureTiles(CENTRAL_CAMP_FIXTURES);
+  private fixtureReservations = new Set([
+    ...fixtureTiles(CENTRAL_CAMP_FIXTURES),
+    tileKey(Math.floor(CENTRAL_CAMP.merchantX), Math.floor(CENTRAL_CAMP.merchantZ)),
+  ]);
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
 
@@ -740,7 +749,11 @@ export class GameRuntime {
     if (this.disposed) return;
 
     const raw = options.newAdventure ? null : localStorage.getItem(SAVE_KEY);
-    this.gs = raw ? loadFromString(raw) ?? createGameState() : createGameState();
+    const loaded = raw ? loadFromString(raw) : null;
+    if (raw && !loaded) {
+      throw new Error('This save could not be loaded. Choose New Adventure to start a clean save.');
+    }
+    this.gs = loaded ?? createGameState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -761,6 +774,9 @@ export class GameRuntime {
     this.spawnStall();
     this.spawnMerchantCamp();
     this.syncBuildings();
+    for (const placed of this.gs.placedBuildings) {
+      if (assetDefinition(placed.id)?.gate && placed.gateOpen) this.gateCloseTimers.set(placed, 3.5);
+    }
     this.syncBearTrapModels();
     this.seedPlainsAnimals();
     this.world.syncFarmTiles(this.gs.tiles);
@@ -818,6 +834,7 @@ export class GameRuntime {
   };
 
   private persist = (): void => {
+    if (!this.gs) return;
     try {
       localStorage.setItem(SAVE_KEY, saveToString(this.gs));
     } catch {
@@ -1399,7 +1416,23 @@ export class GameRuntime {
     if (this.helpOpen) {
       this.helpOpen = false;
       this.pushHud(true);
+      return;
     }
+    if (this.pauseOpen) {
+      this.pauseOpen = false;
+      this.pushHud(true);
+      return;
+    }
+    this.pauseOpen = true;
+    this.velX = 0;
+    this.velZ = 0;
+    this.pushHud(true);
+  }
+
+  resumeGame(): void {
+    if (!this.pauseOpen) return;
+    this.pauseOpen = false;
+    this.pushHud(true);
   }
 
   closeContextMenu(): void {
@@ -1421,7 +1454,7 @@ export class GameRuntime {
     for (let index = this.gs.placedBuildings.length - 1; index >= 0; index--) {
       const placed = this.gs.placedBuildings[index]!;
       const asset = assetDefinition(placed.id);
-      if (!asset) continue;
+      if (!asset || asset.fixture) continue;
       const origin = placedOrigin(placed, placed.rotation, asset);
       if (footprintTiles(asset, origin, placed.rotation).some((t) => t.tx === tile.tx && t.ty === tile.ty)) return index;
     }
@@ -1486,8 +1519,8 @@ export class GameRuntime {
     const asset = placed ? assetDefinition(placed.id) : null;
     if (!placed || !asset?.gate) return this.closeContextMenu();
     placed.gateOpen = placed.gateOpen !== true;
-    if (placed.gateOpen) this.gateCloseTimers.set(index, 3.5);
-    else this.gateCloseTimers.delete(index);
+    if (placed.gateOpen) this.gateCloseTimers.set(placed, 3.5);
+    else this.gateCloseTimers.delete(placed);
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -1514,6 +1547,7 @@ export class GameRuntime {
       setToast(this.gs, 'No inventory space for the returned deed', 1.8);
       return;
     }
+    this.gateCloseTimers.delete(placed);
     this.gs.placedBuildings.splice(index, 1);
     addToInventory(this.gs, deed, 1);
     this.syncBuildings();
@@ -1740,6 +1774,10 @@ export class GameRuntime {
   }
 
   private handleHotkeys(): void {
+    if (this.pauseOpen) {
+      if (this.input.justPressed('Escape')) this.cancelActiveState();
+      return;
+    }
     for (let i = 0; i < TOOLBAR_SLOTS; i++) {
       if (this.input.justPressed(`Digit${i + 1}`)) {
         this.selectSlot(i);
@@ -1826,14 +1864,19 @@ export class GameRuntime {
   }
 
   private update(dt: number): void {
-    const b = this.world.getWorldBounds();
-    this.movePlayer(dt, b.minX, b.maxX, b.minZ, b.maxZ);
     this.handleHotkeys();
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
       return;
     }
+    if (this.pauseOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
+    const b = this.world.getWorldBounds();
+    this.movePlayer(dt, b.minX, b.maxX, b.minZ, b.maxZ);
 
     this.saveTimer += dt;
     if (this.saveTimer >= 15) {
@@ -2024,7 +2067,7 @@ export class GameRuntime {
       };
       if (!footprintTiles(asset, origin, placed.rotation).some((tile) => tile.tx === tx && tile.ty === ty)) continue;
       placed.gateOpen = true;
-      this.gateCloseTimers.set(index, 3.5);
+      this.gateCloseTimers.set(placed, 3.5);
       this.syncBuildings();
       this.recalculateEnclosure();
       this.persist();
@@ -2039,11 +2082,10 @@ export class GameRuntime {
     if (this.gateCloseTimers.size === 0) return;
     const playerTile = this.worldToFarmTile(this.playerX, this.playerZ);
     let changed = false;
-    for (const [index, remaining] of [...this.gateCloseTimers.entries()]) {
-      const placed = this.gs.placedBuildings[index];
+    for (const [placed, remaining] of [...this.gateCloseTimers.entries()]) {
       const asset = placed ? assetDefinition(placed.id) : null;
-      if (!placed || !asset?.gate || placed.gateOpen !== true) {
-        this.gateCloseTimers.delete(index);
+      if (!this.gs.placedBuildings.includes(placed) || !asset?.gate || placed.gateOpen !== true) {
+        this.gateCloseTimers.delete(placed);
         continue;
       }
       const origin = placedOrigin(placed, placed.rotation, asset);
@@ -2053,16 +2095,16 @@ export class GameRuntime {
           )
         : false;
       if (playerStillInGate) {
-        this.gateCloseTimers.set(index, 3.5);
+        this.gateCloseTimers.set(placed, 3.5);
         continue;
       }
       const next = remaining - dt;
       if (next > 0) {
-        this.gateCloseTimers.set(index, next);
+        this.gateCloseTimers.set(placed, next);
         continue;
       }
       placed.gateOpen = false;
-      this.gateCloseTimers.delete(index);
+      this.gateCloseTimers.delete(placed);
       changed = true;
     }
     if (!changed) return;
@@ -2074,6 +2116,29 @@ export class GameRuntime {
 
   /** The grid only lights up for the shovel — the tool that actually works soil. */
   private updateHover(): void {
+    if (this.demolishMode) {
+      const index = this.placedIndexAtPointer();
+      const placed = index >= 0 ? this.gs.placedBuildings[index] : null;
+      const asset = placed ? assetDefinition(placed.id) : null;
+      if (!placed || !asset) {
+        this.world.setHover(null, null, false);
+        this.world.setBuildPreview(null);
+        return;
+      }
+      const size = orientedFootprint(asset, placed.rotation);
+      const origin = placedOrigin(placed, placed.rotation, asset);
+      const center = placedCenter(origin, placed.rotation, asset);
+      this.world.setHover(origin.tx, origin.ty, false);
+      this.world.setBuildPreview(
+        asset.modelKey,
+        center.x,
+        center.z,
+        normalizeOrientation(placed.rotation) * Math.PI / 2,
+        false,
+        size,
+      );
+      return;
+    }
     if (this.buildingMode) {
       const placement = this.buildingPlacementStatus();
       if (!placement.tile) {
@@ -3180,6 +3245,9 @@ export class GameRuntime {
           (this.gs.rng() - 0.5) * 0.22,
         trappedTx: -1,
         trappedTy: -1,
+        path: [],
+        pathGoalKey: '',
+        pathTimer: 0,
       });
     }
     this.world.markShadowsDirty();
@@ -3238,6 +3306,101 @@ export class GameRuntime {
       }
     }
     return best;
+  }
+
+  /**
+   * Move raid animals on the same 8-neighbour tile graph used by enclosure
+   * flood-fill. This is deliberately small and cached per fox: the map is
+   * static between placement/gate events, so a short-lived BFS is enough to
+   * keep foxes from visibly walking through a wall without pathfinding every
+   * frame.
+   */
+  private moveFoxTowardTile(
+    w: Fox,
+    goalTx: number,
+    goalTy: number,
+    speed: number,
+    dt: number,
+  ): { atGoal: boolean; hasPath: boolean } {
+    const goalKey = tileKey(goalTx, goalTy);
+    const current = this.worldToFarmTile(w.x, w.z);
+    if (!current) return { atGoal: false, hasPath: false };
+    const goalPosition = this.farmTileWorld(goalTx, goalTy);
+    if (
+      current.tx === goalTx &&
+      current.ty === goalTy &&
+      Math.hypot(goalPosition.x - w.x, goalPosition.z - w.z) < 0.46
+    ) {
+      return { atGoal: true, hasPath: true };
+    }
+    if (
+      w.pathGoalKey !== goalKey ||
+      w.pathTimer <= 0 ||
+      (w.path.length === 0 && (current.tx !== goalTx || current.ty !== goalTy))
+    ) {
+      const blocked = new Set(this.fixtureReservations);
+      for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) blocked.add(key);
+      blocked.delete(tileKey(current.tx, current.ty));
+      blocked.delete(goalKey);
+      const queue = [{ tx: current.tx, ty: current.ty }];
+      const parents = new Map<string, string | null>([[tileKey(current.tx, current.ty), null]]);
+      for (let index = 0; index < queue.length; index++) {
+        const node = queue[index]!;
+        if (node.tx === goalTx && node.ty === goalTy) break;
+        for (const [dx, dy] of GRID_DIRECTIONS_8) {
+          const tx = node.tx + dx;
+          const ty = node.ty + dy;
+          if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) continue;
+          const key = tileKey(tx, ty);
+          if (parents.has(key) || blocked.has(key)) continue;
+          parents.set(key, tileKey(node.tx, node.ty));
+          queue.push({ tx, ty });
+        }
+      }
+      if (!parents.has(goalKey)) {
+        w.path = [];
+        w.pathGoalKey = goalKey;
+        w.pathTimer = 0.45;
+        return { atGoal: false, hasPath: false };
+      }
+      const path: { tx: number; ty: number }[] = [];
+      let cursor: string | null = goalKey;
+      while (cursor !== null) {
+        const [tx, ty] = cursor.split(',').map(Number);
+        path.push({ tx, ty });
+        cursor = parents.get(cursor) ?? null;
+      }
+      path.reverse();
+      path.shift();
+      w.path = path;
+      w.pathGoalKey = goalKey;
+      w.pathTimer = 0.45;
+    } else {
+      w.pathTimer -= dt;
+    }
+
+    const next = w.path[0];
+    if (!next) {
+      const target = this.farmTileWorld(goalTx, goalTy);
+      if (Math.hypot(target.x - w.x, target.z - w.z) < 0.46) {
+        return { atGoal: true, hasPath: true };
+      }
+      return { atGoal: false, hasPath: false };
+    }
+    const target = this.farmTileWorld(next.tx, next.ty);
+    const dx = target.x - w.x;
+    const dz = target.z - w.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.22) {
+      w.path.shift();
+      if (w.path.length === 0) return { atGoal: true, hasPath: true };
+      return this.moveFoxTowardTile(w, goalTx, goalTy, speed, dt);
+    }
+    w.x += (dx / dist) * speed * dt;
+    w.z += (dz / dist) * speed * dt;
+    w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
+    w.root.rotation.y = Math.atan2(dx, dz);
+    return { atGoal: false, hasPath: true };
   }
 
   private stepFoxes(dt: number): void {
@@ -3340,27 +3503,27 @@ export class GameRuntime {
               w.state = 'flee';
               continue;
             }
+            w.path = [];
+            w.pathGoalKey = '';
+            w.pathTimer = 0;
           }
         } else if (crops.length === 0) {
-          // Give each fox a point on an attack ring. Without this, every raid
-          // actor seeks the exact player coordinate and the models stack into a
-          // single broken-looking pile.
+          // Give each fox a point on an attack ring. The path itself still ends
+          // on the player's tile graph, so a fence cannot be walked through.
           const radius = FOX_ATTACK_RADIUS + (w.attackSlot % 3) * FOX_ATTACK_SLOT_GAP;
           const targetX = this.playerX + Math.sin(w.attackAngle) * radius;
           const targetZ = this.playerZ + Math.cos(w.attackAngle) * radius;
-          const dx = targetX - w.x;
-          const dz = targetZ - w.z;
-          const len = Math.hypot(dx, dz) || 1;
-          if (len > 0.18) {
-            w.x += (dx / len) * this.foxSpeed(w) * 0.5 * dt;
-            w.z += (dz / len) * this.foxSpeed(w) * 0.5 * dt;
-          } else {
+          const playerTile = this.worldToFarmTile(this.playerX, this.playerZ);
+          const route = playerTile
+            ? this.moveFoxTowardTile(w, playerTile.tx, playerTile.ty, this.foxSpeed(w) * 0.5, dt)
+            : { atGoal: false, hasPath: false };
+          if (route.atGoal || Math.hypot(targetX - w.x, targetZ - w.z) < 0.28) {
             w.state = 'attack';
             w.timer = FOX_ATTACK_PERIOD;
             this.playFoxAction(w, 'attack');
+          } else if (!route.hasPath) {
+            w.state = 'flee';
           }
-          w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-          w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
           continue;
         } else if (w.targetTx < 0) {
           this.pickTarget(w, crops);
@@ -3370,11 +3533,12 @@ export class GameRuntime {
           }
         }
 
-        const wc = this.farmTileWorld(w.targetTx, w.targetTy);
-        const dx = wc.x - w.x;
-        const dz = wc.z - w.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist < 0.4) {
+        const route = this.moveFoxTowardTile(w, w.targetTx, w.targetTy, this.foxSpeed(w), dt);
+        if (!route.hasPath) {
+          w.state = 'flee';
+          continue;
+        }
+        if (route.atGoal) {
           if (w.kind === 'sapper') {
             const t = getTile(this.gs.tiles, w.targetTx, w.targetTy);
             if (t && t.state === 'trench') {
@@ -3404,12 +3568,6 @@ export class GameRuntime {
             w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.85, w.baseScale * 1.25);
             this.playFoxAction(w, 'attack');
           }
-        } else {
-          const sp = this.foxSpeed(w);
-          w.x += (dx / dist) * sp * dt;
-          w.z += (dz / dist) * sp * dt;
-          w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-          w.root.rotation.y = Math.atan2(dx, dz);
         }
         continue;
       }
@@ -3431,14 +3589,12 @@ export class GameRuntime {
       if (w.state === 'flee') {
         this.playFoxAction(w, 'walk');
         const edge = nearestEdgePoint(w.x, w.z);
-        const dx = edge.x - w.x;
-        const dz = edge.y - w.z;
-        const dist = Math.hypot(dx, dz) || 1;
         const sp = this.foxSpeed(w) * (w.haulSeed ? 1.15 : 1.3);
-        w.x += (dx / dist) * sp * dt;
-        w.z += (dz / dist) * sp * dt;
-        w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-        if (dist < 0.5) {
+        const edgeTx = THREE.MathUtils.clamp(Math.round(edge.x), 0, WORLD_SIZE - 1);
+        const edgeTy = THREE.MathUtils.clamp(Math.round(edge.y), 0, WORLD_SIZE - 1);
+        const route = this.moveFoxTowardTile(w, edgeTx, edgeTy, sp, dt);
+        const dist = Math.hypot(edge.x - w.x, edge.y - w.z);
+        if (route.atGoal || dist < 0.5) {
           w.dead = true;
           w.root.removeFromParent();
         }
@@ -3485,6 +3641,9 @@ export class GameRuntime {
     if (!exposed.length) {
       w.targetTx = -1;
       w.targetTy = -1;
+      w.path = [];
+      w.pathGoalKey = '';
+      w.pathTimer = 0;
       return;
     }
     let best = exposed[0]!;
@@ -3499,6 +3658,9 @@ export class GameRuntime {
     }
     w.targetTx = best.x;
     w.targetTy = best.y;
+    w.path = [];
+    w.pathGoalKey = '';
+    w.pathTimer = 0;
   }
 
   private rebuildCrops(): void {
@@ -3810,6 +3972,7 @@ export class GameRuntime {
       },
       contextMenu: { ...this.contextMenu },
       demolishMode: this.demolishMode,
+      paused: this.pauseOpen,
       marketAngle: this.world.screenAngleTo(this.playerX, this.playerZ, this.stallX, this.stallZ),
       marketDistance: Math.round(
         Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ),

@@ -82,15 +82,15 @@ export const MODELS = {
   donkey: { path: 'animals/donkey.glb', height: 0.95 },
   cow: { path: 'animals/cow.glb', height: 1.0 },
   bull: { path: 'animals/bull.glb', height: 1.05 },
-  // Foxes and horses share the same small-animal readability scale in this game.
-  horse: { path: 'animals/horse.glb', height: 0.58, animalScale: 1.18 },
+  // Foxes and horses share the same readable small-animal scale in this game.
+  horse: { path: 'animals/horse.glb', height: 0.75, animalScale: 1.3 },
   alpaca: { path: 'animals/alpaca.glb', height: 0.9 },
   deer: { path: 'animals/deer.glb', height: 1.0 },
   stag: { path: 'animals/stag.glb', height: 1.15 },
-  // The source fox is much longer than it is tall. 0.48 keeps its footprint
-  // below the player silhouette while making a fox readable at the normal
-  // camera distance (0.24 made raid attackers look like tiny sprites).
-  fox: { path: 'animals/fox.glb', height: 0.58, animalScale: 1.18 },
+  // The source fox is much longer than it is tall. This target keeps its
+  // footprint below the player silhouette while making the body readable at
+  // the normal camera distance.
+  fox: { path: 'animals/fox.glb', height: 0.75, animalScale: 1.3 },
   wolf: { path: 'animals/wolf.glb', height: 0.6 },
   husky: { path: 'animals/husky.glb', height: 0.5 },
 
@@ -101,26 +101,26 @@ export const MODELS = {
   // The first pass was physically plausible but visually lost from the
   // isometric camera. These slightly larger silhouettes preserve tile spacing
   // while making planted rows immediately legible.
-  beet_1: { path: 'crops/beet_1.glb', height: 0.28 },
-  beet_2: { path: 'crops/beet_2.glb', height: 0.45 },
-  beet_3: { path: 'crops/beet_3.glb', height: 0.63 },
-  beet_4: { path: 'crops/beet_4.glb', height: 0.78 },
-  carrot_1: { path: 'crops/carrot_1.glb', height: 0.28 },
-  carrot_2: { path: 'crops/carrot_2.glb', height: 0.45 },
-  carrot_3: { path: 'crops/carrot_3.glb', height: 0.63 },
-  carrot_4: { path: 'crops/carrot_4.glb', height: 0.78 },
-  lettuce_1: { path: 'crops/lettuce_1.glb', height: 0.28 },
-  lettuce_2: { path: 'crops/lettuce_2.glb', height: 0.46 },
-  lettuce_3: { path: 'crops/lettuce_3.glb', height: 0.66 },
-  lettuce_4: { path: 'crops/lettuce_4.glb', height: 0.82 },
-  dandelion_1: { path: 'crops/flower_1.glb', height: 0.24 },
-  dandelion_2: { path: 'crops/flower_2.glb', height: 0.38 },
-  dandelion_3: { path: 'crops/flower_3.glb', height: 0.55 },
-  dandelion_4: { path: 'crops/flower_4.glb', height: 0.68 },
-  grasscrop_1: { path: 'crops/grass_1.glb', height: 0.24 },
-  grasscrop_2: { path: 'crops/grass_2.glb', height: 0.38 },
-  grasscrop_3: { path: 'crops/grass_3.glb', height: 0.54 },
-  grasscrop_4: { path: 'crops/grass_4.glb', height: 0.68 },
+  beet_1: { path: 'crops/beet_1.glb', height: 0.38 },
+  beet_2: { path: 'crops/beet_2.glb', height: 0.58 },
+  beet_3: { path: 'crops/beet_3.glb', height: 0.8 },
+  beet_4: { path: 'crops/beet_4.glb', height: 0.96 },
+  carrot_1: { path: 'crops/carrot_1.glb', height: 0.38 },
+  carrot_2: { path: 'crops/carrot_2.glb', height: 0.58 },
+  carrot_3: { path: 'crops/carrot_3.glb', height: 0.8 },
+  carrot_4: { path: 'crops/carrot_4.glb', height: 0.96 },
+  lettuce_1: { path: 'crops/lettuce_1.glb', height: 0.4 },
+  lettuce_2: { path: 'crops/lettuce_2.glb', height: 0.6 },
+  lettuce_3: { path: 'crops/lettuce_3.glb', height: 0.84 },
+  lettuce_4: { path: 'crops/lettuce_4.glb', height: 1.0 },
+  dandelion_1: { path: 'crops/flower_1.glb', height: 0.34 },
+  dandelion_2: { path: 'crops/flower_2.glb', height: 0.54 },
+  dandelion_3: { path: 'crops/flower_3.glb', height: 0.76 },
+  dandelion_4: { path: 'crops/flower_4.glb', height: 0.92 },
+  grasscrop_1: { path: 'crops/grass_1.glb', height: 0.34 },
+  grasscrop_2: { path: 'crops/grass_2.glb', height: 0.54 },
+  grasscrop_3: { path: 'crops/grass_3.glb', height: 0.76 },
+  grasscrop_4: { path: 'crops/grass_4.glb', height: 0.92 },
   // Spare species, already converted and ready to wire up
   corn_4: { path: 'crops/corn_4.glb', height: 0.9 },
   wheat_4: { path: 'crops/wheat_4.glb', height: 0.7 },

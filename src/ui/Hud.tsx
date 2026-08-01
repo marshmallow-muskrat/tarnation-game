@@ -8,6 +8,7 @@ import type { AssetCategory, AssetId } from '../content/purchasables';
 type Props = {
   hud: HudSnapshot | null;
   onDismissWin: () => void;
+  onResume: () => void;
   onSelectSlot: (index: number) => void;
   onSelectToolSlot: () => void;
   onToggleBuild: () => void;
@@ -113,6 +114,7 @@ function ModelIcon({
 export function Hud({
   hud,
   onDismissWin,
+  onResume,
   onSelectSlot,
   onSelectToolSlot,
   onToggleBuild,
@@ -360,6 +362,18 @@ export function Hud({
         </div>
       )}
 
+      {hud.paused && (
+        <div className="pause-overlay">
+          <div className="panel pause-card">
+            <p className="label">Adventure paused</p>
+            <h2>Take a breath</h2>
+            <p>Nothing advances while the pause menu is open.</p>
+            <button type="button" onClick={onResume}>Resume</button>
+            <p className="pause-help">Esc resumes</p>
+          </div>
+        </div>
+      )}
+
       {hud.build.active && (
         <div className="panel build-panel">
           <div className="build-panel-heading">
@@ -442,12 +456,14 @@ export function Hud({
             </div>
             <div>
               <p className="label">Settlement</p>
-              <p><kbd>P</kbd> Open the building panel</p>
-              <p><kbd>N</kbd> Next building while placing</p>
+              <p><kbd>E</kbd> Open the merchant shop nearby</p>
+              <p><kbd>P</kbd> Shop nearby · legacy build with <kbd>?legacy</kbd></p>
+              <p><kbd>N</kbd> Next legacy building while placing</p>
+              <p><kbd>X</kbd> Demolish mode · <kbd>F12</kbd> Grid debug</p>
               <p><kbd>I</kbd> Inventory · <kbd>H</kbd> This guide</p>
               <p><kbd>+ −</kbd> Camera zoom · <kbd>M</kbd> Reduced motion</p>
               <p><kbd>V</kbd> Toggle synthesized sound feedback</p>
-              <p><kbd>Esc</kbd> Close the active panel</p>
+              <p><kbd>Esc</kbd> Cancel active mode · pause when idle</p>
             </div>
           </div>
           <p className="help-footer">Tip: crops take two days. Water them, protect them from foxes, then sell the harvest at the market stall.</p>

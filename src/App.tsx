@@ -34,6 +34,7 @@ export function App() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to start');
           setLoading(false);
+          setLaunchChoice(null);
         }
       });
 
@@ -78,6 +79,7 @@ export function App() {
             <p className="launch-note">
               {hasSave ? 'A saved adventure is available.' : 'No save yet — start a new adventure.'}
             </p>
+            {error && <p className="launch-error">{error}</p>}
           </div>
         </div>
       )}
@@ -90,6 +92,7 @@ export function App() {
       <Hud
         hud={hud}
         onDismissWin={() => runtimeRef.current?.dismissWin()}
+        onResume={() => runtimeRef.current?.resumeGame()}
         onSelectSlot={(i) => runtimeRef.current?.selectSlot(i)}
         onSelectToolSlot={() => runtimeRef.current?.selectToolSlot()}
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
