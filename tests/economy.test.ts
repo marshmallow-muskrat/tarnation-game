@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { HOMESTEAD_UPGRADE_WOOD } from '../src/content';
+import { HOMESTEAD_UPGRADE_WOOD, TOOLBAR_SLOTS } from '../src/content';
 import { getEconomyCapability } from '../src/game/EconomyCapability';
 import {
   assetDefinition,
   deedItemId,
   placeableAssets,
+  PURCHASABLE_ASSETS,
   shopAssets,
 } from '../src/content/purchasables';
 import { createGameState, sellEverything, sellItem } from '../src/sim/gameState';
@@ -76,16 +77,45 @@ describe('economy values and current purchasing inputs', () => {
     expect(game.inventory.every((slot) => slot === null)).toBe(true);
   });
 
-  it('exposes only shop assets for vendor rows and keeps fixture/debug assets out of purchases', () => {
+  it('exposes only explicitly merchant or upgrade assets for vendor rows', () => {
     const shop = shopAssets();
     const placeable = placeableAssets();
 
     expect(shop.length).toBeGreaterThan(0);
-    expect(shop.every((asset) => !asset.fixture && asset.availability !== 'debug' && asset.availability !== 'fixture')).toBe(true);
-    expect(placeable.every((asset) => asset.useType === 'place' && !asset.fixture)).toBe(true);
+    expect(shop.every((asset) => asset.availability === 'merchant' || asset.availability === 'upgrade')).toBe(true);
+    expect(placeable.every((asset) => asset.useType === 'place' && (asset.availability === 'merchant' || asset.availability === 'upgrade'))).toBe(true);
     expect(shop.some((asset) => asset.id === 'fixture:caravan')).toBe(false);
+    expect(shop.some((asset) => asset.availability === 'starter')).toBe(false);
+    expect(shop.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(shop.some((asset) => asset.id === 'housing:homestead:1')).toBe(false);
+    expect(placeable.some((asset) => asset.availability === 'unreleased')).toBe(false);
+    expect(TOOLBAR_SLOTS).toBe(3);
     expect(placeable.some((asset) => asset.id === 'gate')).toBe(true);
+  });
+
+  it('classifies every catalog entry explicitly and keeps unfinished buildings out of production surfaces', () => {
+    expect(PURCHASABLE_ASSETS.every((asset) => asset.availability)).toBe(true);
+    expect(PURCHASABLE_ASSETS.filter((asset) => asset.availability === 'starter').map((asset) => asset.id)).toEqual([
+      'tool:shotgun',
+      'tool:shovel',
+      'tool:axe',
+      'tool:bucket',
+      'ability:boulder',
+      'utility:bear-trap',
+    ]);
+    expect(PURCHASABLE_ASSETS.filter((asset) => asset.availability === 'unreleased').map((asset) => asset.id)).toEqual([
+      'well',
+      'chicken_coop',
+      'small_barn',
+      'open_barn',
+      'barn',
+      'silo',
+      'silo_house',
+      'windmill',
+      'tower_windmill',
+      'water_tower',
+      'big_barn',
+    ]);
   });
 
   it('uses both duckette and wood costs for a paid fence deed and requires a stackable inventory slot', () => {

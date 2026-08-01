@@ -3,7 +3,7 @@ import { DENSE_FARM_ORIGIN, DENSE_FARM_SIZE, denseFarmStressFixture, FIXTURE_SEE
 import { countItem } from '../src/sim/inventory';
 import { cropItem, ITEM_WOOD } from '../src/sim/items';
 import { loadFromSaveData, loadFromString, saveToString } from '../src/sim/gameState';
-import { deserialize, SAVE_SIZE_BUDGETS, SAVE_VERSION, serialize } from '../src/sim/save';
+import { createNewSave, deserialize, SAVE_SIZE_BUDGETS, SAVE_VERSION, serialize } from '../src/sim/save';
 
 describe('save serialization and fixture round-trips', () => {
   it('serializes a fixed-seed fresh game deterministically under the fresh-save budget', () => {
@@ -76,6 +76,15 @@ describe('save serialization and fixture round-trips', () => {
     expect(loaded!.tiles[DENSE_FARM_ORIGIN]![DENSE_FARM_ORIGIN]!.seed).not.toBeNull();
     expect(loaded!.tiles[DENSE_FARM_ORIGIN + DENSE_FARM_SIZE - 1]![DENSE_FARM_ORIGIN + DENSE_FARM_SIZE - 1]!.seed).not.toBeNull();
     expect(loaded!.tiles[0]![0]!.state).toBe('grass');
+  });
+
+  it('maps a saved selection of a removed empty toolbar slot to a supported starter tool', () => {
+    const save = createNewSave(FIXTURE_SEED);
+    save.toolbarSlot = 4;
+
+    const loaded = loadFromSaveData(save);
+
+    expect(loaded.toolbarSlot).toBe(2);
   });
 
   it('migrates the released v8 full-grid save into the compact current format', () => {

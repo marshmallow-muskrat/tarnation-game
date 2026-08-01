@@ -127,6 +127,7 @@ import {
   assetDefinition,
   deedAssetId,
   deedItemId,
+  isVendorAsset,
   shopAssets,
   type AssetCategory,
   type AssetId,
@@ -556,20 +557,9 @@ const HOMESTEAD_MODEL_KEYS = [
 ] as const;
 
 const PLACEABLE_BUILDING_IDS = [
-  'well',
-  'chicken_coop',
-  'silo',
-  'windmill',
-  'tower_windmill',
-  'water_tower',
   'fence',
   'fence2',
   'gate',
-  'small_barn',
-  'open_barn',
-  'barn',
-  'silo_house',
-  'big_barn',
 ] as const;
 
 const PLACEABLE_BUILDINGS: {
@@ -604,17 +594,17 @@ const TOOLBAR_ASSET_IDS = [
   'tool:shotgun',
   'tool:shovel',
   'tool:axe',
-  null,
-  null,
 ] as const;
 
+const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as const satisfies readonly AssetCategory[];
+
 const TOOLBAR = TOOLBAR_ASSET_IDS.map((id) => {
-  const asset = id ? assetDefinition(id) : null;
+  const asset = assetDefinition(id);
   return {
     name: asset?.displayName ?? '',
     glyph: '',
     model: asset?.modelKey ?? null,
-    empty: !asset,
+    empty: false,
   };
 });
 
@@ -1323,6 +1313,10 @@ export class GameRuntime {
     return new URLSearchParams(window.location.search).has('legacy');
   }
 
+  private availableVendorTabs(): AssetCategory[] {
+    return VENDOR_CATEGORIES.filter((category) => shopAssets(category).length > 0);
+  }
+
   openVendor(): void {
     if (!this.nearMerchant) {
       setToast(this.gs, 'Stand near the Traveling Merchant to shop', 1.8);
@@ -1347,7 +1341,7 @@ export class GameRuntime {
   }
 
   selectVendorTab(tab: AssetCategory): void {
-    if (!['Housing', 'Weapons', 'Buildings', 'Upgrades'].includes(tab)) return;
+    if (!this.availableVendorTabs().includes(tab)) return;
     this.vendorTab = tab;
     this.vendorMessage = '';
     this.pushHud(true);
@@ -1356,7 +1350,7 @@ export class GameRuntime {
   buyAsset(id: AssetId): void {
     if (!this.nearMerchant) return;
     const asset = assetDefinition(id);
-    if (!asset || asset.fixture || asset.availability === 'debug' || asset.availability === 'fixture') return;
+    if (!asset || !isVendorAsset(asset)) return;
     const result = purchaseAsset(this.gs, asset, this.economyCapability);
     if (!result.ok) {
       this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
@@ -4034,6 +4028,9 @@ export class GameRuntime {
       };
     });
 
+    const vendorTabs = this.availableVendorTabs();
+    if (!vendorTabs.includes(this.vendorTab)) this.vendorTab = vendorTabs[0] ?? 'Housing';
+
     const snap: HudSnapshot = {
       day: this.gs.clock.day,
       phase: this.gs.clock.phase,
@@ -4092,7 +4089,7 @@ export class GameRuntime {
       vendor: {
         open: this.vendorOpen,
         tab: this.vendorTab,
-        tabs: ['Housing', 'Weapons', 'Buildings', 'Upgrades'],
+        tabs: vendorTabs,
         economyLabel: this.economyCapability.label,
         items: shopAssets(this.vendorTab).map((asset) => {
           const quote = quotePurchase(this.gs, asset, this.economyCapability);
