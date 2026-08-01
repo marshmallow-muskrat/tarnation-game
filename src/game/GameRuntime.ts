@@ -23,6 +23,7 @@ import {
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
+  HOMESTEAD_UPGRADE_WOOD,
   INVENTORY_SLOTS,
   MARKET_RANGE,
   MELEE_COOLDOWN,
@@ -482,7 +483,6 @@ const PLACEABLE_BUILDINGS: {
 
 const HOMESTEAD_X = HOMESTEAD_MIN_X + 8;
 const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
-const HOMESTEAD_UPGRADE_WOOD = [0, 6, 12, 24, 48];
 
 /**
  * Bottom toolbar. Slot 1 is the brown shotgun, slot 2 the shovel you work the

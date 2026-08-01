@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
     "check": "tsx scripts/simcheck.ts",
-    "assetcheck": "tsx scripts/assetcheck.ts"
+    "assetcheck": "tsx scripts/assetcheck.ts",
+    "economyreport": "tsx scripts/economyreport.ts"
   },
   "dependencies": {
     "react": "^19.0.0",

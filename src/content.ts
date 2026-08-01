@@ -18,6 +18,9 @@ export const DAY_LENGTH = 180;
 export const NIGHT_LENGTH = 60;
 export const WIN_DAY = 5;
 
+/** Wood costs for homestead tiers 1 through 5; tier 1 is the starting state. */
+export const HOMESTEAD_UPGRADE_WOOD = [0, 6, 12, 24, 48] as const;
+
 // Player
 export const PLAYER_SPEED = 5.5;
 export const PLAYER_ACCEL = 28;

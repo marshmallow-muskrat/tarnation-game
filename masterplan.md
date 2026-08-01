@@ -20,6 +20,16 @@ Game simulation lives in `src/sim/` and stays renderer-independent. Models are d
 `src/content/models.ts`, loaded with the safe primitive fallback in `src/game/Assets.ts`, and
 instanced wherever the scene contains many copies.
 
+### Calibration baseline
+
+The supplied `tarnation_economy_base.xlsx` is a reference hypothesis, not a runtime specification.
+Its useful anchors are approximately 300 actions per day, two-day crops, and no income path above
+roughly 1.5× the baseline chopper. The current runtime baseline is intentionally narrower and is
+printed by `npm run economyreport`: 240 seconds per in-game day, five axe swings for two wood,
+6–14₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood homestead upgrades. The
+workbook’s fish, quadrant tiers, bosses, and seed-purchase rows stay documented future targets
+until matching game systems and accepted assets exist.
+
 ## Simulated IGN-style review of the current build
 
 This is an internal review, not a real IGN score or quote.

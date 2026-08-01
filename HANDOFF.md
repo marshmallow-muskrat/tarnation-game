@@ -11,8 +11,9 @@ non-linear progression and future maps/challenge spaces, but the current work is
 existing loop.
 
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
-asset preview grid. Run `npx tsc --noEmit` for the typecheck and `npm run assetcheck` to verify the
-manifest paths. `window.tarn` exposes the runtime for browser debugging.
+asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
+manifest paths, and `npm run economyreport` to print the current tuning baseline. `window.tarn`
+exposes the runtime for browser debugging.
 
 ## 2. Current implementation
 
@@ -62,6 +63,9 @@ The next active work is Milestone 3 in
   day progression to calibrate the first-session economy.
 - Continue fox/trap telegraphs and audio hooks, then calibrate the first-session economy against
   measured play.
+- The current baseline is reproducible with `npm run economyreport`: 240 seconds per day, 5 axe
+  swings for 2 wood, 6–14₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood
+  homestead upgrades. Workbook-only fish, boss, quadrant, and seed-cost rows remain future targets.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
