@@ -18,7 +18,8 @@ npm run dev
 - Asset preview: <http://localhost:5173/picker.html>
 - Typecheck: `npx tsc --noEmit`
 - Production build: `npm run build`
-- Deploy: `npm run deploy`
+- Production deploy: automatic after a verified push to `main`
+- Manual recovery deploy: `npm run deploy`
 
 ## Controls
 
@@ -64,6 +65,9 @@ public/basis/  Required KTX2 transcoder files
 Read [`HANDOFF.md`](HANDOFF.md) before changing the game. The active product, technical, quality,
 and release plan is [`masterplan-v2.md`](masterplan-v2.md). Superseded plans are preserved in
 [`docs/history/`](docs/history/) for provenance, not implementation.
+
+The GitHub Actions production workflow runs simulation checks, asset validation, and the production
+build before deploying `main` to Cloudflare Pages. A failed verification step prevents deployment.
 
 ## Asset safety
 
