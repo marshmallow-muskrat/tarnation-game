@@ -43,6 +43,8 @@ import {
   WATER_COLLECT_RANGE,
   FOX_ATTACK_RADIUS,
   FOX_ATTACK_SLOT_GAP,
+  FOX_ATTACK_LUNGE,
+  FOX_ATTACK_PERIOD,
   FOX_BURROW_TIME,
   FOX_SEPARATION,
   FOX_EAT_TIME,
@@ -196,11 +198,12 @@ export type HudSnapshot = {
   };
 };
 
-type FoxState = 'burrow' | 'seek' | 'eat' | 'flee' | 'trapped';
+type FoxState = 'burrow' | 'seek' | 'attack' | 'eat' | 'flee' | 'trapped';
 
 type Fox = {
   root: THREE.Object3D;
   baseScale: number;
+  actions: FoxActions;
   x: number;
   z: number;
   state: FoxState;
@@ -214,6 +217,14 @@ type Fox = {
   haulSeed: boolean;
   attackSlot: number;
   attackAngle: number;
+};
+
+type FoxActions = {
+  mixer: THREE.AnimationMixer | null;
+  idle?: THREE.AnimationAction;
+  walk?: THREE.AnimationAction;
+  attack?: THREE.AnimationAction;
+  active?: THREE.AnimationAction;
 };
 
 type Shot = {
@@ -840,6 +851,7 @@ export class GameRuntime {
           w.z = this.playerZ + (this.gs.rng() - 0.5) * 5;
           w.root.scale.setScalar(w.baseScale);
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
+          this.playFoxAction(w, 'walk');
         }
         return this.foxes.length;
       },
@@ -1775,6 +1787,7 @@ export class GameRuntime {
     if (w.hp > 0) {
       w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
       w.state = 'flee';
+      this.playFoxAction(w, 'walk');
       return;
     }
     w.dead = true;
@@ -1831,15 +1844,24 @@ export class GameRuntime {
       const baseScale = root.scale.x;
       root.position.set(x, this.world.heightAt(x, z), z);
       root.scale.setScalar(baseScale * 0.15);
+      const foxActions: FoxActions = { mixer: null };
       if (animations.length) {
         const mixer = new THREE.AnimationMixer(root);
-        mixer.clipAction(animations[0]!).play();
-        root.userData.mixer = mixer;
+        foxActions.mixer = mixer;
+        foxActions.idle = mixer.clipAction(
+          animations.find((clip) => /idle/i.test(clip.name)) ?? animations[0]!,
+        );
+        const walkClip = animations.find((clip) => /walk|run|gallop/i.test(clip.name));
+        const attackClip = animations.find((clip) => /attack|bite|snap/i.test(clip.name));
+        foxActions.walk = walkClip ? mixer.clipAction(walkClip) : foxActions.idle;
+        foxActions.attack = attackClip ? mixer.clipAction(attackClip) : foxActions.idle;
+        foxActions.idle.play();
       }
       this.world.getFarmActors().add(root);
       this.foxes.push({
         root,
         baseScale,
+        actions: foxActions,
         x,
         z,
         state: 'burrow',
@@ -1866,6 +1888,14 @@ export class GameRuntime {
   private clearFoxes(): void {
     for (const w of this.foxes) w.root.removeFromParent();
     this.foxes = [];
+  }
+
+  private playFoxAction(w: Fox, action: 'idle' | 'walk' | 'attack'): void {
+    const next = w.actions[action] ?? w.actions.idle ?? w.actions.walk;
+    if (!next || w.actions.active === next) return;
+    w.actions.active?.fadeOut(0.12);
+    next.reset().fadeIn(0.12).play();
+    w.actions.active = next;
   }
 
   private foxSpeed(w: Fox): number {
@@ -1899,7 +1929,7 @@ export class GameRuntime {
     const crops = findCropTiles(this.gs.tiles);
     for (const w of [...this.foxes]) {
       if (w.dead) continue;
-      (w.root.userData.mixer as THREE.AnimationMixer | undefined)?.update(dt);
+      w.actions.mixer?.update(dt);
 
       if (w.state !== 'burrow' && w.state !== 'trapped') {
         const bearTrap = this.nearestOpenBearTrap(w.x, w.z);
@@ -1910,6 +1940,7 @@ export class GameRuntime {
           w.timer = 5;
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
+          this.playFoxAction(w, 'idle');
           this.world.syncFarmTiles(this.gs.tiles);
           this.syncBearTrapModels();
           setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
@@ -1921,8 +1952,12 @@ export class GameRuntime {
       if (tpos && hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, 3)) w.state = 'flee';
 
       if (w.state === 'trapped') {
+        this.playFoxAction(w, 'idle');
         w.timer -= dt;
-        if (w.timer <= 0) w.state = 'flee';
+        if (w.timer <= 0) {
+          w.state = 'flee';
+          this.playFoxAction(w, 'walk');
+        }
         continue;
       }
 
@@ -1933,12 +1968,40 @@ export class GameRuntime {
         if (w.timer <= 0) {
           w.state = 'seek';
           w.root.scale.setScalar(w.baseScale);
+          this.playFoxAction(w, 'walk');
           this.pickTarget(w, crops);
         }
         continue;
       }
 
+      if (w.state === 'attack') {
+        w.timer -= dt;
+        const phase = 1 - Math.max(0, w.timer) / FOX_ATTACK_PERIOD;
+        const directionX = Math.sin(w.attackAngle);
+        const directionZ = Math.cos(w.attackAngle);
+        const lunge = Math.max(0, Math.sin(phase * Math.PI * 2)) * FOX_ATTACK_LUNGE;
+        const radius = FOX_ATTACK_RADIUS + (w.attackSlot % 3) * FOX_ATTACK_SLOT_GAP - lunge;
+        w.x = this.playerX + directionX * radius;
+        w.z = this.playerZ + directionZ * radius;
+        w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
+        w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
+        const pulse = Math.sin(phase * Math.PI * 2);
+        w.root.scale.set(
+          w.baseScale * (1 + pulse * 0.05),
+          w.baseScale * (1 - pulse * 0.08),
+          w.baseScale * (1 + pulse * 0.05),
+        );
+        this.playFoxAction(w, 'attack');
+        if (w.timer <= 0) {
+          w.state = 'seek';
+          w.root.scale.setScalar(w.baseScale);
+          this.playFoxAction(w, 'walk');
+        }
+        continue;
+      }
+
       if (w.state === 'seek') {
+        this.playFoxAction(w, 'walk');
         if (w.kind === 'sapper') {
           if (w.targetTx < 0) {
             let found = false;
@@ -1970,6 +2033,10 @@ export class GameRuntime {
           if (len > 0.18) {
             w.x += (dx / len) * this.foxSpeed(w) * 0.5 * dt;
             w.z += (dz / len) * this.foxSpeed(w) * 0.5 * dt;
+          } else {
+            w.state = 'attack';
+            w.timer = FOX_ATTACK_PERIOD;
+            this.playFoxAction(w, 'attack');
           }
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
@@ -2008,6 +2075,7 @@ export class GameRuntime {
             w.state = 'eat';
             w.eatTimer = FOX_EAT_TIME;
             w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.85, w.baseScale * 1.25);
+            this.playFoxAction(w, 'attack');
           }
         } else {
           const sp = this.foxSpeed(w);
@@ -2020,6 +2088,7 @@ export class GameRuntime {
       }
 
       if (w.state === 'eat') {
+        this.playFoxAction(w, 'attack');
         w.eatTimer -= dt;
         w.root.scale.y = w.baseScale * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
         if (w.eatTimer <= 0) {
@@ -2033,6 +2102,7 @@ export class GameRuntime {
       }
 
       if (w.state === 'flee') {
+        this.playFoxAction(w, 'walk');
         const edge = nearestEdgePoint(w.x, w.z);
         const dx = edge.x - w.x;
         const dz = edge.y - w.z;

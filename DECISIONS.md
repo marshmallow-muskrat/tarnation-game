@@ -33,3 +33,10 @@ Animated foxes, crops, and ambient animals now keep the manifest-derived base sc
 burrow, breathe, react to hits, or show a growth pulse. Raid actors also use an evenly distributed
 attack ring with wider spacing, so the long fox silhouette stays readable when several arrive at
 once.
+
+## 2026-08-01 — Give fox attacks a readable action state
+
+When a fox reaches its assigned ring position, it now enters a short attack state with an optional
+pack attack clip, a small inward lunge, and a restrained scale pulse before returning to the ring.
+The motion makes simultaneous attackers feel intentional without adding player damage to a system
+that does not yet expose player health.
