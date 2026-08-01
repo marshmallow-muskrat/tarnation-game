@@ -76,10 +76,11 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now implemented locally with Vitest: 63 deterministic pure tests,
+- BASE-02 characterization is now integrated with Vitest: 63 deterministic pure tests,
   compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
-  released save versions 3 through 7. `npm run test:ci` is part of the main deployment verification
-  workflow before asset validation and build.
+  released save versions 3 through 7. PR #3 merged into the integration branch as `5ff922b`.
+  `npm run test:ci` is part of the main deployment verification workflow before asset validation
+  and build.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
