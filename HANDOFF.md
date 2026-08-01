@@ -82,5 +82,5 @@ Before each commit: check `git status`, run `npx tsc --noEmit`, and build when t
 production. Deploy after every major masterplan milestone with `npm run deploy`, then smoke-test
 the live site and record the URL/commit here.
 
-Last known production target: <https://tarnation.pages.dev/> (deterministic-feedback release
-`8de90f6`; preview <https://e176b9f6.tarnation.pages.dev/>).
+Last known production target: <https://tarnation.pages.dev/> (audio-feedback release `cbac5ba`;
+preview <https://25e8c4e8.tarnation.pages.dev/>).
