@@ -8,6 +8,9 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
+    "test": "vitest run",
+    "test:ci": "vitest run --reporter=dot",
+    "test:watch": "vitest",
     "check": "tsx scripts/simcheck.ts",
     "assetcheck": "tsx scripts/assetcheck.ts",
     "economyreport": "tsx scripts/economyreport.ts"
@@ -26,6 +29,7 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
+    "vitest": "^4.1.10",
     "wrangler": "^3.99.0"
   }
 }

@@ -36,6 +36,9 @@ jobs:
       - name: Run simulation checks
         run: npm run check
 
+      - name: Run deterministic unit characterization suite
+        run: npm run test:ci
+
       - name: Validate assets and catalog
         run: npm run assetcheck
 
