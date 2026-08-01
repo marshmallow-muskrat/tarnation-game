@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, build-panel, placement-ghost, and field-guide polish shipped; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, action-feedback, build-panel, placement-ghost, and field-guide polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
@@ -141,7 +141,9 @@ the shotgun can fire; shovel and axe actions visibly contact the intended target
 **Goal:** make ordinary work and fox encounters satisfying and legible.
 
 - Add a shared action-feedback vocabulary: contact flash, small particles, sound hook, subtle camera
-  response, and a short cooldown indicator where appropriate.
+  response, and a short cooldown indicator where appropriate. The current burst layer covers hits,
+  defeats, chopping, farming, watering, traps, construction, and rewards; audio hooks remain a
+  later pass once the interaction events are stable.
 - Make trees, crops, water, traps, buildings, and foxes expose range, target, invalid state, and
   result without relying on a debug console.
 - Give foxes approach, attack, hit, caught, retreat, and defeat states with separation so multiple

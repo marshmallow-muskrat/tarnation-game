@@ -327,6 +327,22 @@ type LootMarker = {
   z: number;
 };
 
+type FeedbackParticle = {
+  mesh: THREE.Mesh;
+  velocity: THREE.Vector3;
+  spin: THREE.Vector3;
+  size: number;
+};
+
+type FeedbackBurst = {
+  root: THREE.Group;
+  age: number;
+  lifetime: number;
+  geometry: THREE.BufferGeometry;
+  material: THREE.MeshBasicMaterial;
+  particles: FeedbackParticle[];
+};
+
 type BuildingPlacement = {
   tile: { tx: number; ty: number } | null;
   x: number;
@@ -538,6 +554,7 @@ export class GameRuntime {
   private foxes: Fox[] = [];
   private deathMarkers: DeathMarker[] = [];
   private lootMarkers: LootMarker[] = [];
+  private feedbackBursts: FeedbackBurst[] = [];
   private shots: Shot[] = [];
   private boulders: Boulder[] = [];
   private shotCd = 0;
@@ -645,6 +662,7 @@ export class GameRuntime {
     cancelAnimationFrame(this.raf);
     this.clearDeathMarkers();
     this.clearLootMarkers();
+    this.clearFeedbackBursts();
     this.input.dispose();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
@@ -1073,6 +1091,7 @@ export class GameRuntime {
         const res = onNewDay(this.gs);
         this.clearDeathMarkers();
         this.clearLootMarkers();
+        this.clearFeedbackBursts();
         this.world.getFarmTrees()?.rebuildAll();
         this.world.syncFarmTiles(this.gs.tiles);
         this.pushHud(true);
@@ -1143,6 +1162,7 @@ export class GameRuntime {
     this.stepPopups(dt);
     this.stepDeathMarkers(dt);
     this.stepLootMarkers(dt);
+    this.stepFeedbackBursts(dt);
 
     const moving = Math.hypot(this.velX, this.velZ) > 0.4;
     this.updateAnim(moving);
@@ -1361,6 +1381,7 @@ export class GameRuntime {
       this.clearFoxes();
       this.clearDeathMarkers();
       this.clearLootMarkers();
+      this.clearFeedbackBursts();
       const { lostTilth, regrown } = onNewDay(this.gs);
       setToast(
         this.gs,
@@ -1562,6 +1583,7 @@ export class GameRuntime {
     const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
     this.syncBuildings();
     this.persist();
+    this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
     setToast(
       this.gs,
       unlocked
@@ -1585,6 +1607,7 @@ export class GameRuntime {
     this.playPlayerAction('pickUp');
     this.syncBuildings();
     this.persist();
+    this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
     setToast(this.gs, `Built ${selected.name}`, 1.6);
   }
 
@@ -1592,6 +1615,7 @@ export class GameRuntime {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
+      this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
       return;
     }
@@ -1658,6 +1682,7 @@ export class GameRuntime {
           }
         }
         this.world.syncFarmTiles(this.gs.tiles);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
       }
       return;
     }
@@ -1667,6 +1692,7 @@ export class GameRuntime {
       if (makeBreedingBed(this.gs.tiles, tx, ty)) {
         this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
         const parents = clearBreedingParents(this.gs.tiles, tx, ty);
@@ -1676,6 +1702,7 @@ export class GameRuntime {
           addSeedToInventory(this.gs, child);
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.world.syncFarmTiles(this.gs.tiles);
+          this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
           setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
         }
       }
@@ -1692,6 +1719,7 @@ export class GameRuntime {
         this.recordAction('till');
         this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
       if (this.meleeCd > 0) return;
@@ -1706,6 +1734,7 @@ export class GameRuntime {
         this.beginMeleeAction('pickUp');
         this.rebuildCrops();
         this.world.syncFarmTiles(this.gs.tiles);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
       }
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
@@ -1723,6 +1752,7 @@ export class GameRuntime {
         this.rebuildCrops();
         this.world.syncFarmTiles(this.gs.tiles);
         this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
       }
     }
   }
@@ -1743,6 +1773,8 @@ export class GameRuntime {
     if (waterTile(this.gs.tiles, tx, ty, this.gs.simTime)) {
       this.recordAction('water');
       this.world.syncFarmTiles(this.gs.tiles);
+      const wc = this.farmTileWorld(tx, ty);
+      this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 4, 0.2);
     }
   }
 
@@ -1763,6 +1795,7 @@ export class GameRuntime {
       if (swings < STUMP_CHOPS) {
         this.treeChops.set(key, swings);
         this.recordAction('chop');
+        this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
         return true;
       }
       this.treeChops.delete(key);
@@ -1770,6 +1803,7 @@ export class GameRuntime {
       clearStump(this.gs, tx, ty);
       trees.invalidateTile(tx, ty);
       this.world.markShadowsDirty();
+      this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
       setToast(this.gs, 'Stump cleared', 1.2);
       return true;
     }
@@ -1780,6 +1814,7 @@ export class GameRuntime {
     this.recordAction('chop');
     this.treeChops.set(key, chops);
     this.world.shake(0.05, 0.04);
+    this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
 
     if (chops < FARM_TREE_CHOPS) {
       setToast(this.gs, `Chopping… ${chops}/${FARM_TREE_CHOPS}`, 0.8);
@@ -1794,6 +1829,7 @@ export class GameRuntime {
     this.gs.stats.woodGathered += FARM_TREE_WOOD;
     this.economyMetrics.treesFelled++;
     this.world.shake(0.14, 0.12);
+    this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 8, 0.32);
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
     return true;
   }
@@ -2044,6 +2080,7 @@ export class GameRuntime {
     this.world.syncFarmTiles(this.gs.tiles);
     this.syncBearTrapModels();
     this.persist();
+    this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
     setToast(this.gs, 'Bear trap set', 1.4);
   }
 
@@ -2106,6 +2143,7 @@ export class GameRuntime {
       w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
+      this.spawnFeedbackBurst(w.x, w.z, 0xffb45c, 4, 0.2);
       return;
     }
     w.dead = true;
@@ -2115,6 +2153,7 @@ export class GameRuntime {
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
+    this.spawnFeedbackBurst(w.x, w.z, 0xef7561, 8, 0.32);
     w.actions.mixer?.stopAllAction();
     this.spawnDeathMarker(w.root, w.baseScale, w.x, w.z, w.root.rotation.y, 'fox');
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
@@ -2128,9 +2167,11 @@ export class GameRuntime {
     a.timer = 1.2;
     if (a.hp > 0) {
       a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
+      this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
       return;
     }
     a.mixer?.stopAllAction();
+    this.spawnFeedbackBurst(a.x, a.z, 0xef7561, 8, 0.32);
     this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
     this.animals = this.animals.filter((o) => o !== a);
     this.rollTrophy(`animal:${a.name}`, a.name, a.x, a.z);
@@ -2272,6 +2313,92 @@ export class GameRuntime {
     }
   }
 
+  /** Small, shared low-poly contact feedback for actions that changed the world. */
+  private spawnFeedbackBurst(
+    x: number,
+    z: number,
+    color: number,
+    count = 5,
+    spread = 0.16,
+  ): void {
+    const root = new THREE.Group();
+    root.name = 'action_feedback_burst';
+    root.position.set(x, this.world.heightAt(x, z) + 0.22, z);
+    const geometry = new THREE.OctahedronGeometry(0.07, 0);
+    const material = new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    const particles: FeedbackParticle[] = [];
+    for (let i = 0; i < count; i++) {
+      const mesh = new THREE.Mesh(geometry, material);
+      const size = 0.65 + this.gs.rng() * 0.65;
+      mesh.position.set(
+        (this.gs.rng() - 0.5) * spread,
+        this.gs.rng() * 0.12,
+        (this.gs.rng() - 0.5) * spread,
+      );
+      mesh.scale.setScalar(size);
+      mesh.renderOrder = 6;
+      root.add(mesh);
+      particles.push({
+        mesh,
+        size,
+        velocity: new THREE.Vector3(
+          (this.gs.rng() - 0.5) * 1.45,
+          0.72 + this.gs.rng() * 1.15,
+          (this.gs.rng() - 0.5) * 1.45,
+        ),
+        spin: new THREE.Vector3(
+          (this.gs.rng() - 0.5) * 8,
+          (this.gs.rng() - 0.5) * 8,
+          (this.gs.rng() - 0.5) * 8,
+        ),
+      });
+    }
+    this.world.getFarmActors().add(root);
+    this.feedbackBursts.push({ root, age: 0, lifetime: 0.46, geometry, material, particles });
+    while (this.feedbackBursts.length > 24) {
+      this.removeFeedbackBurst(this.feedbackBursts[0]!);
+      this.feedbackBursts.shift();
+    }
+  }
+
+  private removeFeedbackBurst(burst: FeedbackBurst): void {
+    burst.root.removeFromParent();
+    burst.geometry.dispose();
+    burst.material.dispose();
+  }
+
+  private clearFeedbackBursts(): void {
+    for (const burst of this.feedbackBursts) this.removeFeedbackBurst(burst);
+    this.feedbackBursts = [];
+  }
+
+  private stepFeedbackBursts(dt: number): void {
+    for (let i = this.feedbackBursts.length - 1; i >= 0; i--) {
+      const burst = this.feedbackBursts[i]!;
+      burst.age += dt;
+      if (burst.age >= burst.lifetime) {
+        this.removeFeedbackBurst(burst);
+        this.feedbackBursts.splice(i, 1);
+        continue;
+      }
+      const progress = burst.age / burst.lifetime;
+      burst.material.opacity = 0.95 * (1 - progress);
+      for (const particle of burst.particles) {
+        particle.velocity.y -= 4.1 * dt;
+        particle.mesh.position.addScaledVector(particle.velocity, dt);
+        particle.mesh.rotation.x += particle.spin.x * dt;
+        particle.mesh.rotation.y += particle.spin.y * dt;
+        particle.mesh.rotation.z += particle.spin.z * dt;
+        particle.mesh.scale.setScalar(particle.size * (1 - progress * 0.55));
+      }
+    }
+  }
+
   /**
    * Trophies drop on death only, at 1% — with bad-luck protection, so every kill
    * of that same creature that comes up empty adds another point of chance.
@@ -2293,6 +2420,7 @@ export class GameRuntime {
     this.clearFoxes();
     this.clearDeathMarkers();
     this.clearLootMarkers();
+    this.clearFeedbackBursts();
     const spawns = generateWave(
       this.gs.clock.day,
       this.gs.seed,
@@ -2425,6 +2553,7 @@ export class GameRuntime {
           this.playFoxAction(w, 'idle');
           this.world.syncFarmTiles(this.gs.tiles);
           this.syncBearTrapModels();
+          this.spawnFeedbackBurst(w.x, w.z, 0xd2a86a, 8, 0.3);
           setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
           continue;
         }

@@ -33,6 +33,8 @@ browser debugging.
   stance, and the build workflow has a dedicated structure-selection panel.
 - Building mode now previews the selected model over the hovered tile with valid/blocked colour and a
   specific placement reason; `H` opens a pausing field guide for movement, tools, combat, and building.
+- Shared short-lived low-poly feedback bursts now mark hits, defeats, chopping, farming, watering,
+  trap catches, construction, and rewards without adding permanent scene clutter.
 
 ## 3. Asset rules that save time
 
@@ -54,8 +56,8 @@ The next active work is Milestone 3 in
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
-- Add stronger contact feedback and player-facing range/target/invalid-state explanations as the
-  next interaction polish layer.
+- Continue player-facing range/target/invalid-state explanations, then calibrate the first-session
+  economy against measured play.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
@@ -68,5 +70,5 @@ Before each commit: check `git status`, run `npx tsc --noEmit`, and build when t
 production. Deploy after every major masterplan milestone with `npm run deploy`, then smoke-test
 the live site and record the URL/commit here.
 
-Last known production target: <https://tarnation.pages.dev/> (polish release `5dd3774`; preview
-<https://c662196b.tarnation.pages.dev/>).
+Last known production target: <https://tarnation.pages.dev/> (placement and field-guide release
+`6a72fec`; preview <https://dcd036e3.tarnation.pages.dev/>).
