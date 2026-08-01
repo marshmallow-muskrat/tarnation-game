@@ -32,7 +32,7 @@ type IconView = {
 const ICON_VIEWS: Partial<Record<ModelKey, IconView>> = {
   axe: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.28 },
   shovel: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.12 },
-  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48, zoom: 1.12 },
+  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48, zoom: 0.68 },
   bow_wooden: { rotationY: 0, camera: [0, 1.05, 2.8], targetY: 0.5 },
 };
 
