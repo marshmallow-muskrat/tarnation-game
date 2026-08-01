@@ -31,6 +31,8 @@ browser debugging.
   defeats leave short-lived grounded remains markers; rare trophies also show a floating world marker.
 - Held shotgun and shovel poses use a support-hand solve, stationary tools stay in a deliberate carry
   stance, and the build workflow has a dedicated structure-selection panel.
+- Building mode now previews the selected model over the hovered tile with valid/blocked colour and a
+  specific placement reason; `H` opens a pausing field guide for movement, tools, combat, and building.
 
 ## 3. Asset rules that save time
 

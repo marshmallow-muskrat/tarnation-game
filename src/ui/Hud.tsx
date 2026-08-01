@@ -11,6 +11,7 @@ type Props = {
   onSelectToolSlot: () => void;
   onToggleBuild: () => void;
   onSelectBuild: (index: number) => void;
+  onToggleHelp: () => void;
   onUltimate: () => void;
   onBearTrap: () => void;
   onToggleInventory: () => void;
@@ -106,6 +107,7 @@ export function Hud({
   onSelectToolSlot,
   onToggleBuild,
   onSelectBuild,
+  onToggleHelp,
   onUltimate,
   onBearTrap,
   onToggleInventory,
@@ -134,6 +136,9 @@ export function Hud({
           Duckettes
         </p>
         <p className="value amber">₫ {hud.duckettes}</p>
+        <button type="button" className="help-toggle" onClick={onToggleHelp}>
+          Help <span>H</span>
+        </button>
       </div>
 
       {/* Compass to the market stall */}
@@ -270,7 +275,9 @@ export function Hud({
                   <p className={`build-cost ${selected.canAfford ? '' : 'short'}`}>
                     {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
                   </p>
-                  <p className="build-selected-help">Click a clear tile to place</p>
+                  <p className={`build-selected-help ${hud.build.placement.valid ? 'ready' : 'blocked'}`}>
+                    {hud.build.placement.valid ? 'Ready · click a tile to place' : hud.build.placement.reason}
+                  </p>
                 </div>
               </div>
             );
@@ -292,6 +299,48 @@ export function Hud({
             ))}
           </div>
           <p className="build-panel-help">P / Esc close · N next · click ground to place</p>
+        </div>
+      )}
+
+      {hud.helpOpen && (
+        <div className="panel help-panel">
+          <div className="help-heading">
+            <div>
+              <p className="label">Field guide</p>
+              <h2>How to work the homestead</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onToggleHelp}>
+              Close
+            </button>
+          </div>
+          <p className="help-intro">
+            Choose a tool, point at the ground, and use the left mouse button. Right click is for
+            combat. Every action works from the fixed isometric camera.
+          </p>
+          <div className="help-grid">
+            <div>
+              <p className="label">Move & work</p>
+              <p><kbd>W A S D</kbd> Move</p>
+              <p><kbd>1</kbd> Shotgun · <kbd>2</kbd> Shovel · <kbd>3</kbd> Axe</p>
+              <p><kbd>6</kbd> Bucket · <kbd>[ ]</kbd> Choose seed</p>
+              <p><kbd>Left click</kbd> Use selected tool</p>
+            </div>
+            <div>
+              <p className="label">Defend & grow</p>
+              <p><kbd>Right click</kbd> Attack</p>
+              <p><kbd>Q</kbd> Boulder · <kbd>B</kbd> Bear trap</p>
+              <p><kbd>R</kbd> Cycle unlocked weapon</p>
+              <p><kbd>U</kbd> Upgrade near the homestead</p>
+            </div>
+            <div>
+              <p className="label">Settlement</p>
+              <p><kbd>P</kbd> Open the building panel</p>
+              <p><kbd>N</kbd> Next building while placing</p>
+              <p><kbd>I</kbd> Inventory · <kbd>H</kbd> This guide</p>
+              <p><kbd>Esc</kbd> Close the active panel</p>
+            </div>
+          </div>
+          <p className="help-footer">Tip: crops take two days. Water them, protect them from foxes, then sell the harvest at the market stall.</p>
         </div>
       )}
 

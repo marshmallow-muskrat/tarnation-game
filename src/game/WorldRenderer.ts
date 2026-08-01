@@ -49,6 +49,9 @@ export class WorldRenderer {
   private hoverTargetAlpha = 0;
   private hoverAlpha = 0;
   private toolHoverActive = false;
+  private buildPreviewRoot: THREE.Object3D | null = null;
+  private buildPreviewKey: ModelKey | null = null;
+  private buildPreviewMaterials: { material: THREE.Material; color: THREE.Color | null }[] = [];
 
   private terrain!: TerrainSystem;
   private scatter!: ScatterChunks;
@@ -395,6 +398,80 @@ export class WorldRenderer {
     (this.hoverOutline.material as THREE.LineBasicMaterial).color.set(
       inRange ? 0xf4ffc0 : 0xe07060,
     );
+  }
+
+  /**
+   * Ghost the selected building over the hovered tile. The footprint stays
+   * lightweight (one tile) while the model and colour communicate what will be
+   * placed; invalid targets tint red instead of silently accepting a click.
+   */
+  setBuildPreview(
+    key: ModelKey | null,
+    x = 0,
+    z = 0,
+    rotation = 0,
+    valid = false,
+  ): void {
+    if (!key) {
+      this.removeBuildPreview();
+      return;
+    }
+    if (!this.buildPreviewRoot || this.buildPreviewKey !== key) {
+      this.removeBuildPreview();
+      const { root } = cloneModel(key);
+      root.name = `build_preview_${key}`;
+      root.renderOrder = 4;
+      root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        obj.castShadow = false;
+        obj.receiveShadow = false;
+        obj.renderOrder = 4;
+        const source = Array.isArray(obj.material) ? obj.material : [obj.material];
+        const copies = source.map((material) => {
+          const copy = material.clone();
+          copy.transparent = true;
+          copy.opacity = 0.46;
+          copy.depthWrite = false;
+          const color =
+            copy instanceof THREE.MeshStandardMaterial ||
+            copy instanceof THREE.MeshBasicMaterial ||
+            copy instanceof THREE.MeshPhongMaterial
+              ? copy.color.clone()
+              : null;
+          this.buildPreviewMaterials.push({ material: copy, color });
+          return copy;
+        });
+        obj.material = copies.length === 1 ? copies[0]! : copies;
+      });
+      this.buildPreviewRoot = root;
+      this.buildPreviewKey = key;
+      this.farmActors.add(root);
+    }
+    const invalidTint = new THREE.Color(0xe07060);
+    for (const entry of this.buildPreviewMaterials) {
+      entry.material.opacity = 0.46;
+      if (entry.color) {
+        const color = entry.color.clone();
+        if (!valid) color.lerp(invalidTint, 0.42);
+        if (
+          entry.material instanceof THREE.MeshStandardMaterial ||
+          entry.material instanceof THREE.MeshBasicMaterial ||
+          entry.material instanceof THREE.MeshPhongMaterial
+        ) entry.material.color.copy(color);
+      }
+    }
+    this.buildPreviewRoot.visible = true;
+    this.buildPreviewRoot.position.set(x, this.terrain.heightAt(x, z) + 0.025, z);
+    this.buildPreviewRoot.rotation.y = rotation;
+  }
+
+  private removeBuildPreview(): void {
+    if (!this.buildPreviewRoot) return;
+    this.buildPreviewRoot.removeFromParent();
+    for (const entry of this.buildPreviewMaterials) entry.material.dispose();
+    this.buildPreviewMaterials = [];
+    this.buildPreviewRoot = null;
+    this.buildPreviewKey = null;
   }
 
   heightAt(x: number, z: number): number {

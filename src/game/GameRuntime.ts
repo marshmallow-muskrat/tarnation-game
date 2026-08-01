@@ -189,7 +189,12 @@ export type HudSnapshot = {
     selectedIndex: number;
     wood: number;
     options: HudBuildOption[];
+    placement: {
+      valid: boolean;
+      reason: string;
+    };
   };
+  helpOpen: boolean;
   toolSlot: {
     name: string;
     glyph: string;
@@ -320,6 +325,14 @@ type LootMarker = {
   lifetime: number;
   x: number;
   z: number;
+};
+
+type BuildingPlacement = {
+  tile: { tx: number; ty: number } | null;
+  x: number;
+  z: number;
+  valid: boolean;
+  reason: string;
 };
 
 type ToolMode = 'farm' | 'trench' | 'breed';
@@ -519,6 +532,7 @@ export class GameRuntime {
   private nearWater = false;
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
+  private helpOpen = false;
   private placeableBuildingIndex = 0;
 
   private foxes: Fox[] = [];
@@ -998,6 +1012,16 @@ export class GameRuntime {
     this.pushHud(true);
   }
 
+  toggleHelp(): void {
+    this.helpOpen = !this.helpOpen;
+    if (this.helpOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.cancelPlayerAction();
+    }
+    this.pushHud(true);
+  }
+
   toggleInventory(): void {
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
     this.pushHud(true);
@@ -1232,6 +1256,7 @@ export class GameRuntime {
     if (this.input.justPressed('KeyQ')) this.tryBoulderRoll();
     if (this.input.justPressed('KeyB')) this.tryBearTrap();
     if (this.input.justPressed('KeyI')) this.toggleInventory();
+    if (this.input.justPressed('KeyH')) this.toggleHelp();
     if (this.input.justPressed('KeyR')) {
       cycleWeapon(this.gs);
       this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
@@ -1278,6 +1303,11 @@ export class GameRuntime {
     const b = this.world.getWorldBounds();
     this.movePlayer(dt, b.minX, b.maxX, b.minZ, b.maxZ);
     this.handleHotkeys();
+    if (this.helpOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
 
     if (this.shotCd > 0) this.shotCd -= dt;
     if (this.meleeCd > 0) this.meleeCd -= dt;
@@ -1396,19 +1426,24 @@ export class GameRuntime {
   /** The grid only lights up for the shovel — the tool that actually works soil. */
   private updateHover(): void {
     if (this.buildingMode) {
-      const tile = this.pointerTile();
-      if (!tile) {
+      const placement = this.buildingPlacementStatus();
+      if (!placement.tile) {
         this.world.setHover(null, null, false);
+        this.world.setBuildPreview(null);
         return;
       }
-      const wc = this.farmTileWorld(tile.tx, tile.ty);
-      const usable =
-        Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) <= BEAR_TRAP_PLACE_RANGE &&
-        !this.tileBlockedForTilling(tile.tx, tile.ty) &&
-        this.world.distToWater(wc.x, wc.z) >= 2.5;
-      this.world.setHover(tile.tx, tile.ty, usable);
+      this.world.setHover(placement.tile.tx, placement.tile.ty, placement.valid);
+      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
+      this.world.setBuildPreview(
+        selected.model,
+        placement.x,
+        placement.z,
+        this.headingTarget,
+        placement.valid,
+      );
       return;
     }
+    this.world.setBuildPreview(null);
     if (this.gs.toolSlotActive || this.gs.toolbarSlot !== SLOT_SHOVEL) {
       this.world.setHover(null, null, false);
       return;
@@ -1422,6 +1457,44 @@ export class GameRuntime {
     const dist = Math.hypot(this.playerX - wc.x, this.playerZ - wc.z);
     const usable = dist <= TOOL_RANGE && !this.tileBlockedForTilling(tile.tx, tile.ty);
     this.world.setHover(tile.tx, tile.ty, usable);
+  }
+
+  private buildingPlacementStatus(): BuildingPlacement {
+    const tile = this.pointerTile();
+    if (!tile) {
+      return { tile: null, x: this.playerX, z: this.playerZ, valid: false, reason: 'Point at a ground tile' };
+    }
+    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
+    const wc = this.farmTileWorld(tile.tx, tile.ty);
+    const targetTile = getTile(this.gs.tiles, tile.tx, tile.ty);
+    if (!targetTile || targetTile.state !== 'grass') {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Choose clear grass' };
+    }
+    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > BEAR_TRAP_PLACE_RANGE) {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Move closer to place' };
+    }
+    if (this.tileBlockedForTilling(tile.tx, tile.ty)) {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Tree or boulder occupies this tile' };
+    }
+    if (this.world.distToWater(wc.x, wc.z) < 2.5) {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave a dry bank around buildings' };
+    }
+    if (Math.hypot(wc.x - HOMESTEAD_X, wc.z - HOMESTEAD_Z) < 5) {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave room around the homestead' };
+    }
+    if (this.gs.placedBuildings.some((b) => Math.hypot(b.x - wc.x, b.z - wc.z) < 2.2)) {
+      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave room around existing buildings' };
+    }
+    if (woodCount(this.gs) < selected.cost) {
+      return {
+        tile,
+        x: wc.x,
+        z: wc.z,
+        valid: false,
+        reason: `Need ${selected.cost} Wood for ${selected.name}`,
+      };
+    }
+    return { tile, x: wc.x, z: wc.z, valid: true, reason: 'Ready to place' };
   }
 
   private pointerTile(): { tx: number; ty: number } | null {
@@ -1500,36 +1573,14 @@ export class GameRuntime {
 
   private placeSelectedBuilding(): void {
     const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
-    const tilePos = this.pointerTile();
-    if (!tilePos) return;
-    const tile = getTile(this.gs.tiles, tilePos.tx, tilePos.ty);
-    const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
-    if (!tile || tile.state !== 'grass') {
-      setToast(this.gs, 'Buildings need clear grass', 1.4);
-      return;
-    }
-    if (
-      Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > BEAR_TRAP_PLACE_RANGE ||
-      this.tileBlockedForTilling(tilePos.tx, tilePos.ty) ||
-      this.world.distToWater(wc.x, wc.z) < 2.5
-    ) {
-      setToast(this.gs, 'That ground is not suitable for a building', 1.6);
-      return;
-    }
-    if (
-      Math.hypot(wc.x - HOMESTEAD_X, wc.z - HOMESTEAD_Z) < 5 ||
-      this.gs.placedBuildings.some((b) => Math.hypot(b.x - wc.x, b.z - wc.z) < 2.2)
-    ) {
-      setToast(this.gs, 'Leave room around existing buildings', 1.6);
-      return;
-    }
-    if (woodCount(this.gs) < selected.cost) {
-      setToast(this.gs, `${selected.name}: need ${selected.cost} Wood`, 1.6);
+    const placement = this.buildingPlacementStatus();
+    if (!placement.valid || !placement.tile) {
+      setToast(this.gs, placement.reason, 1.6);
       return;
     }
     takeFromInventory(this.gs, ITEM_WOOD, selected.cost);
     this.recordAction('build');
-    placeBuilding(this.gs, selected.id, wc.x, wc.z, this.headingTarget);
+    placeBuilding(this.gs, selected.id, placement.x, placement.z, this.headingTarget);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
     this.syncBuildings();
@@ -2766,6 +2817,10 @@ export class GameRuntime {
       inventory.push({ id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' });
     }
 
+    const buildPlacement = this.buildingMode
+      ? this.buildingPlacementStatus()
+      : { valid: false, reason: 'Open build mode to preview a structure' };
+
     const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
       index: i,
       name: t.name,
@@ -2807,6 +2862,10 @@ export class GameRuntime {
           cost: entry.cost,
           canAfford: woodCount(this.gs) >= entry.cost,
         })),
+        placement: {
+          valid: buildPlacement.valid,
+          reason: buildPlacement.reason,
+        },
       },
       toolSlot: {
         name: 'Bucket',
@@ -2832,6 +2891,7 @@ export class GameRuntime {
         cooldown: Math.ceil(this.gs.bearTrapCooldown),
         max: BEAR_TRAP_COOLDOWN,
       },
+      helpOpen: this.helpOpen,
       market: {
         open: this.nearMarket,
         items: marketItems,
