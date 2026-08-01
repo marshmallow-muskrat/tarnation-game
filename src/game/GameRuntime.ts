@@ -354,12 +354,16 @@ const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
   },
   shotgun_2: {
     scale: 0.4,
-    carryPosition: [0.05, -0.42, 0.12],
-    carryRotation: [0, 0, 0],
-    actionPosition: [0.05, -0.42, 0.12],
-    actionRotation: [0, 0, 0],
+    // The Survival shotgun's source origin is at the rear of the stock. A
+    // neutral hand attachment leaves it hanging at the knees and reads upside
+    // down during the carry clips. Raise it into the hand/chest silhouette and
+    // roll it across the body so the barrel, receiver, and stock stay legible.
+    carryPosition: [0.02, 0.12, 0.08],
+    carryRotation: [0, 0, 0.7],
+    actionPosition: [0.02, 0.12, 0.08],
+    actionRotation: [0, 0, 0.7],
     actionScale: 1,
-    runClip: 'walkCarry',
+    runClip: 'runCarry',
   },
   shovel: {
     // Carry it across the body so the blade and shaft stay readable while
@@ -1369,7 +1373,7 @@ export class GameRuntime {
   private useShovel(): void {
     const tilePos = this.pointerTile();
     if (!tilePos) {
-      this.meleeSwing(FIST_DAMAGE, 'swordSlash');
+      this.meleeSwing(FIST_DAMAGE, 'pickUp');
       return;
     }
     const { tx, ty } = tilePos;
@@ -1377,7 +1381,7 @@ export class GameRuntime {
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
-      this.meleeSwing(FIST_DAMAGE, 'swordSlash');
+      this.meleeSwing(FIST_DAMAGE, 'pickUp');
       return;
     }
 
@@ -1398,7 +1402,7 @@ export class GameRuntime {
     if (this.toolMode === 'trench') {
       if (this.meleeCd > 0) return;
       if (digTrench(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('swordSlash');
+        this.beginMeleeAction('pickUp');
         for (const [dx, dy] of [
           [0, 0],
           [1, 0],
@@ -1419,7 +1423,7 @@ export class GameRuntime {
     if (this.toolMode === 'breed') {
       if (this.meleeCd > 0) return;
       if (makeBreedingBed(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('swordSlash');
+        this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
@@ -1443,7 +1447,7 @@ export class GameRuntime {
         return;
       }
       if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
-        this.beginMeleeAction('swordSlash');
+        this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
@@ -1654,6 +1658,10 @@ export class GameRuntime {
 
   private beginMeleeAction(clip: PlayerClip): boolean {
     if (this.meleeCd > 0) return false;
+    // Do not restart a one-shot halfway through its authored motion when the
+    // player holds the mouse down. That turns a readable chop/dig into a
+    // jittering pose; let the current swing finish before accepting the next.
+    if (this.oneShotAction?.isRunning()) return false;
     this.meleeCd = MELEE_COOLDOWN;
     this.playPlayerAction(clip);
     return true;

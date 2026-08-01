@@ -73,11 +73,6 @@ export const MODELS = {
     height: 1.6,
     note: 'Cowboy_Male, Quaternius Ultimate Animated Character Pack. Replaces KayKit thorn-ranger.',
   },
-  merchant: {
-    path: 'characters/merchant.glb',
-    height: 1.6,
-    note: 'Runs the market stall.',
-  },
 
   // ── Animals ───────────────────────────────────────────────────────────────
   // Crop raiders use the actual fox model supplied by the animal pack.
@@ -93,11 +88,6 @@ export const MODELS = {
   fox: { path: 'animals/fox.glb', height: 0.24 },
   wolf: { path: 'animals/wolf.glb', height: 0.6 },
   husky: { path: 'animals/husky.glb', height: 0.5 },
-
-  // ── Fish — ambient only, see ASSETS.md ───────────────────────────────────
-  fish_a: { path: 'fish/fish_a.glb', height: 0.25, note: 'Ambient river/lake life. Not catchable.' },
-  fish_b: { path: 'fish/fish_b.glb', height: 0.3 },
-  fish_c: { path: 'fish/fish_c.glb', height: 0.2 },
 
   // ── Crops — one entry per species per stage ──────────────────────────────
   // 4 stages per species (_1.._4), named for the models that exist. The crop roster
@@ -192,7 +182,6 @@ export const MODELS = {
   // ── Items & tools ─────────────────────────────────────────────────────────
   shotgun_2: { path: 'items/shotgun_2.glb', height: 0.85, note: 'Brown Survival Pack shotgun.' },
   shovel: { path: 'items/shovel.glb', height: 1.1, note: 'Survival Pack shovel.' },
-  bow: { path: 'items/bow.glb', height: 1.0 },
   bow_wooden: { path: 'items/bow_wooden.glb', height: 0.85 },
   arrow: { path: 'items/arrow.glb', height: 0.55 },
   axe: { path: 'items/axe.glb', height: 0.8 },
@@ -209,13 +198,11 @@ export const MODELS = {
   trophy: { path: 'items/crown.glb', height: 0.45 },
   bear_trap_open: { path: 'items/bear_trap_open.glb', height: 0.35 },
   bear_trap_closed: { path: 'items/bear_trap_closed.glb', height: 0.35 },
-  bucket: { path: 'items/bucket.glb', height: 0.35 },
 
   // ── Zone entities — bosses, challenge zones, guardians ───────────────────
   // Quaternius Ultimate Monsters. Silhouette treatment is per-zone: full black for
   // anything meant to read as a threat you can't resolve, normal for a fair fight.
   guardian_a: { path: 'monsters/guardian_a.glb', height: 2.2 },
-  guardian_b: { path: 'monsters/guardian_b.glb', height: 2.6 },
 
 } satisfies Record<string, ModelDef>;
 
