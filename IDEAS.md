@@ -312,6 +312,18 @@ Everything else waits.
 
 ---
 
+## 5b. Parked — agreed, not now
+
+**Avatar selector.** Let the player choose their character (male/female, and probably outfit) at
+the start. The Quaternius Ultimate Animated Character Pack has 52 models sharing one rig and one
+animation set, so the models are already free — the work is a selection screen plus storing the
+choice in the save. Cheap, but not before the economy loop is proven. Player is Cowboy_Male for now.
+
+**Weasels, donkeys and specific creatures.** Don't force a species the packs don't have. The crop
+raider is a **fox**, because the animated pack ships one and a tinted fox pretending to be a weasel
+looks worse than a fox. Donkey does exist in the pack and is available whenever the mount system
+lands. Anything genuinely missing gets solved later — cohesion beats a wishlist.
+
 ## 6. Open questions for the next pass
 
 1. **Is there money in this game, and how much per day?** Four sheets depend on the answer.
