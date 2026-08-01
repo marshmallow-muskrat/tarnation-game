@@ -61,8 +61,9 @@ public/models/ Accepted, game-ready .glb assets
 public/basis/  Required KTX2 transcoder files
 ```
 
-Read [`HANDOFF.md`](HANDOFF.md) before changing the game. The active product direction and quality
-bar live in [`masterplan.md`](masterplan.md).
+Read [`HANDOFF.md`](HANDOFF.md) before changing the game. The active product, technical, quality,
+and release plan is [`masterplan-v2.md`](masterplan-v2.md). Superseded plans are preserved in
+[`docs/history/`](docs/history/) for provenance, not implementation.
 
 ## Asset safety
 

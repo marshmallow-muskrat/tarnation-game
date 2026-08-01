@@ -32,6 +32,8 @@ import { hash2, smoothstep, valueNoise2D } from '../src/game/noise';
 import { assetDefinition, deedItemId, validatePurchasableCatalog } from '../src/content/purchasables';
 import {
   calculateEnclosedTiles,
+  fixtureObstacleTiles,
+  fixtureTiles,
   orientedFootprint,
   occupiedPlacedTiles,
   placementStatus,
@@ -115,6 +117,11 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
     const openGate = occupiedPlacedTiles([{ id: 'gate', x: 60.5, z: 60.5, rotation: 0, gateOpen: true }]);
     ok('closed gates block movement tiles', closedGate.has(tileKey(60, 60)));
     ok('open gates leave a walkable hole', !openGate.has(tileKey(60, 60)));
+    const campReservation = fixtureTiles();
+    const campObstacles = fixtureObstacleTiles();
+    ok('merchant camp reserves its open ground for placement', campReservation.has(tileKey(120, 120)));
+    ok('merchant camp open ground remains walkable', !campObstacles.has(tileKey(120, 120)));
+    ok('merchant caravan footprint still blocks movement', campObstacles.has(tileKey(117, 118)));
     const boundary = new Set<string>();
     for (let x = 40; x <= 44; x++) {
       boundary.add(tileKey(x, 40));

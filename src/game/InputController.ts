@@ -26,8 +26,9 @@ export class InputController {
     this.canvas = canvas;
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointercancel', this.onPointerCancel);
     canvas.addEventListener('pointermove', this.onPointerMove);
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('contextmenu', this.onContextMenu);
   }
 
   setGestureHandler(handler: (() => void) | null): void {
@@ -41,7 +42,9 @@ export class InputController {
     if (this.canvas) {
       this.canvas.removeEventListener('pointerdown', this.onPointerDown);
       this.canvas.removeEventListener('pointerup', this.onPointerUp);
+      this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
       this.canvas.removeEventListener('pointermove', this.onPointerMove);
+      this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     }
   }
 
@@ -110,7 +113,13 @@ export class InputController {
   private onBlur = (): void => {
     this.held.clear();
     this.pressed.clear();
+    this.lmb = false;
+    this.rmb = false;
+    this.lmbPressed = false;
+    this.rmbPressed = false;
   };
+
+  private onContextMenu = (e: MouseEvent): void => e.preventDefault();
 
   private onPointerDown = (e: PointerEvent): void => {
     this.onGesture?.();
@@ -128,6 +137,11 @@ export class InputController {
   private onPointerUp = (e: PointerEvent): void => {
     if (e.button === 0) this.lmb = false;
     if (e.button === 2) this.rmb = false;
+  };
+
+  private onPointerCancel = (): void => {
+    this.lmb = false;
+    this.rmb = false;
   };
 
   private onPointerMove = (e: PointerEvent): void => {

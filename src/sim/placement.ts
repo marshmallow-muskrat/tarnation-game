@@ -68,15 +68,25 @@ export function placedCenter(origin: GridTile, rotation: number, asset: Purchasa
   };
 }
 
-export function fixtureTiles(fixtures: readonly FixedFixture[] = CENTRAL_CAMP_FIXTURES): Set<string> {
+/** Physical fixture footprints. Unlike fixtureTiles(), this does not reserve the
+ * empty ground between props and is therefore safe for actor collision/pathing. */
+export function fixtureObstacleTiles(
+  fixtures: readonly FixedFixture[] = CENTRAL_CAMP_FIXTURES,
+): Set<string> {
   const out = new Set<string>();
   for (const fixture of fixtures) {
     const asset = assetDefinition(fixture.id);
-    if (!asset) continue;
+    if (!asset?.blocksMovement) continue;
     for (const tile of footprintTiles(asset, { tx: fixture.tx, ty: fixture.ty }, fixture.rotation)) {
       out.add(tileKey(tile.tx, tile.ty));
     }
   }
+  return out;
+}
+
+/** Land reserved against tilling and player construction. */
+export function fixtureTiles(fixtures: readonly FixedFixture[] = CENTRAL_CAMP_FIXTURES): Set<string> {
+  const out = fixtureObstacleTiles(fixtures);
   // The whole camp reservation is intentionally larger than the visible props:
   // it keeps players from planting between fixtures and preserves the approach.
   for (let ty = 0; ty < GRID_H; ty++) {
