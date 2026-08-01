@@ -63,12 +63,14 @@ exposes the runtime for browser debugging.
 
 The completed vendor/deed sequence is preserved as
 [`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The runtime
-exposes development economy metrics through `window.tarn.debug().economy()`, including first-upgrade
-timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
+exposes local-only economy metrics through `window.tarnation.debug().economy()`, including four-way
+attempted/rejected/cancelled/completed outcome counts and first-completion game times for planting,
+harvest, sale, purchase, building, fox defense, and the settlement goal. The 2026-08-01 audit found
+that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Instrument and tune the honest economy (ECON-03–04).
+- Tune the honest economy after instrumentation (ECON-04).
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
@@ -107,7 +109,11 @@ The characterization baseline intentionally preserves current behavior for later
   deduction and atomic failed purchases. ECON-02 now requires explicit starter, merchant, upgrade,
   debug, unreleased, and fixture availability; starter tools and empty toolbar slots no longer
   appear as merchant/build choices, and nonfunctional building entries remain loadable for legacy
-  save rendering/use without appearing as new choices. The integrated branch is ready for ECON-03.
+  save rendering/use without appearing as new choices. ECON-03 adds local-only outcome counters and
+  a pure fixed-seed diagnostic cohort: 16 seeds × 30 days, with current crop, wood, sale, and paid
+  purchase rules. The cohort reports resource starvation in 16/16 runs, runaway growth in 1/16, and
+  `housing:homestead:5` as a dead purchase in 16/16 because its catalog price is non-finite. The
+  integrated baseline is now 96 deterministic tests across 12 files; ECON-04 is next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -123,6 +129,10 @@ The characterization baseline intentionally preserves current behavior for later
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
 - Keep the active code and documentation vocabulary aligned with the accepted crop, wildlife, and
   building assets; obsolete prototype entries have been removed while save loading remains safe.
+- ECON-03 intentionally quarantines the malformed `housing:homestead:5` catalog cost instead of
+  correcting it in an instrumentation task. Its tier-five price currently evaluates to `undefined`
+  at runtime, which can make a paid purchase produce `NaN` currency; this is a deferred
+  catalog/economy follow-up for ECON-04 or a later scoped task.
 
 ## 5. Release procedure
 

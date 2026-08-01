@@ -102,6 +102,15 @@ import { crossbreed } from '../sim/genetics';
 import { hasRoomFor, occupiedSlots } from '../sim/inventory';
 import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
 import { purchaseAsset, quotePurchase } from '../sim/economy';
+import {
+  cloneOutcomeMetrics,
+  createOutcomeMetrics,
+  firstOutcomeCompletionTimes,
+  recordOutcomeMetric,
+  type OutcomeKind,
+  type OutcomeMetrics,
+  type OutcomeStatus,
+} from '../sim/outcomes';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
@@ -232,6 +241,7 @@ type EconomyMetrics = {
   sessionStartedAt: number;
   actions: number;
   actionKinds: Record<string, number>;
+  outcomes: OutcomeMetrics;
   saleTransactions: number;
   duckettesEarned: number;
   upgrades: number;
@@ -736,6 +746,7 @@ export class GameRuntime {
     sessionStartedAt: performance.now(),
     actions: 0,
     actionKinds: {},
+    outcomes: createOutcomeMetrics(),
     saleTransactions: 0,
     duckettesEarned: 0,
     upgrades: 0,
@@ -1195,33 +1206,47 @@ export class GameRuntime {
   // ---------------------------------------------------------------- HUD API
 
   sellOne(id: ItemId): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellItem(this.gs, id, false);
     if (earned > 0) this.afterSale(id, earned);
+    else this.recordOutcome('sale', 'rejected');
   }
 
   sellStack(id: ItemId): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellItem(this.gs, id, true);
     if (earned > 0) this.afterSale(id, earned);
+    else this.recordOutcome('sale', 'rejected');
   }
 
   sellAll(): void {
-    if (!this.nearMarket) return;
+    this.recordOutcome('sale', 'attempted');
+    if (!this.nearMarket) {
+      this.recordOutcome('sale', 'rejected');
+      return;
+    }
     const earned = sellEverything(this.gs);
     if (earned > 0) {
-      this.recordAction('sale');
+      this.recordOutcome('sale', 'completed');
       this.economyMetrics.saleTransactions++;
       this.economyMetrics.duckettesEarned += earned;
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
       this.popup(`+${earned}₫`, this.playerX, this.playerZ);
       this.persist();
       this.pushHud(true);
-    }
+    } else this.recordOutcome('sale', 'rejected');
   }
 
   private afterSale(id: ItemId, earned: number): void {
-    this.recordAction('sale');
+    this.recordOutcome('sale', 'completed');
     this.economyMetrics.saleTransactions++;
     this.economyMetrics.duckettesEarned += earned;
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
@@ -1348,11 +1373,19 @@ export class GameRuntime {
   }
 
   buyAsset(id: AssetId): void {
-    if (!this.nearMerchant) return;
+    this.recordOutcome('purchase', 'attempted');
+    if (!this.nearMerchant) {
+      this.recordOutcome('purchase', 'rejected');
+      return;
+    }
     const asset = assetDefinition(id);
-    if (!asset || !isVendorAsset(asset)) return;
+    if (!asset || !isVendorAsset(asset)) {
+      this.recordOutcome('purchase', 'rejected');
+      return;
+    }
     const result = purchaseAsset(this.gs, asset, this.economyCapability);
     if (!result.ok) {
+      this.recordOutcome('purchase', 'rejected');
       this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
       setToast(this.gs, this.vendorMessage, 2.2);
       this.pushHud(true);
@@ -1367,7 +1400,7 @@ export class GameRuntime {
         ? ' · no currency cost in this sandbox'
         : ' · no duckette or material cost';
     this.vendorMessage = `${asset.displayName} deed added to inventory${spentSummary}`;
-    this.recordAction('purchase');
+    this.recordOutcome('purchase', 'completed');
     this.persist();
     this.pushHud(true);
   }
@@ -1477,6 +1510,7 @@ export class GameRuntime {
       return;
     }
     if (this.buildingMode || this.placementAssetId) {
+      this.recordOutcome('building', 'cancelled');
       this.buildingMode = false;
       this.placementAssetId = null;
       this.world.setBuildPreview(null);
@@ -1717,13 +1751,29 @@ export class GameRuntime {
     this.economyMetrics.actionKinds[kind] = (this.economyMetrics.actionKinds[kind] ?? 0) + 1;
   }
 
-  private economySnapshot(): EconomyMetrics & { sessionSeconds: number; inGameSeconds: number; day: number } {
+  private recordOutcome(
+    kind: OutcomeKind,
+    status: OutcomeStatus,
+    legacyActionKind: string = kind,
+  ): void {
+    recordOutcomeMetric(this.economyMetrics.outcomes, kind, status, this.gs.simTime);
+    if (status === 'completed') this.recordAction(legacyActionKind);
+  }
+
+  private economySnapshot(): EconomyMetrics & {
+    sessionSeconds: number;
+    inGameSeconds: number;
+    day: number;
+    timeToFirst: Record<OutcomeKind, number | null>;
+  } {
     return {
       ...this.economyMetrics,
       actionKinds: { ...this.economyMetrics.actionKinds },
+      outcomes: cloneOutcomeMetrics(this.economyMetrics.outcomes),
       sessionSeconds: (performance.now() - this.economyMetrics.sessionStartedAt) / 1000,
       inGameSeconds: this.gs.simTime,
       day: this.gs.clock.day,
+      timeToFirst: firstOutcomeCompletionTimes(this.economyMetrics.outcomes),
     };
   }
 
@@ -2054,7 +2104,12 @@ export class GameRuntime {
       }
       this.world.syncFarmTiles(this.gs.tiles);
       this.persist();
-      if (checkWin(this.gs) && !this.gs.winShown) this.winShownLocal = false;
+      if (checkWin(this.gs) && !this.gs.winShown) {
+        if (this.economyMetrics.outcomes.settlement_goal.completed === 0) {
+          this.recordOutcome('settlement_goal', 'completed');
+        }
+        this.winShownLocal = false;
+      }
     }
   }
 
@@ -2417,19 +2472,22 @@ export class GameRuntime {
   }
 
   private placeSelectedBuilding(): void {
+    this.recordOutcome('building', 'attempted');
     const placement = this.buildingPlacementStatus();
     const selected = placement.asset;
     if (!selected || !placement.valid || !placement.tile) {
+      this.recordOutcome('building', 'rejected');
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
     const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
     if (!this.placementAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
     else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+      this.recordOutcome('building', 'rejected');
       setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
       return;
     }
-    this.recordAction('build');
+    this.recordOutcome('building', 'completed', 'build');
     placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
@@ -2567,14 +2625,19 @@ export class GameRuntime {
         this.persist();
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
-      if (this.meleeCd > 0) return;
+      this.recordOutcome('plant', 'attempted');
+      if (this.meleeCd > 0) {
+        this.recordOutcome('plant', 'rejected');
+        return;
+      }
       const seed = selectedSeed(this.gs);
       if (!seed) {
+        this.recordOutcome('plant', 'rejected');
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
       if (plantTile(this.gs.tiles, tx, ty, seed)) {
-        this.recordAction('plant');
+        this.recordOutcome('plant', 'completed');
         this.economyMetrics.cropsPlanted++;
         this.beginMeleeAction('pickUp');
         this.rebuildCrops();
@@ -2582,17 +2645,24 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
-      }
+      } else this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
     } else if (tile.state === 'mature') {
-      if (this.meleeCd > 0) return;
+      this.recordOutcome('harvest', 'attempted');
+      if (this.meleeCd > 0) {
+        this.recordOutcome('harvest', 'rejected');
+        return;
+      }
       const res = harvestTile(this.gs.tiles, tx, ty);
       if (res.ok && res.seed) {
         this.beginMeleeAction('pickUp');
         const id = cropItem(res.seed.displayName);
-        if (!addToInventory(this.gs, id, res.count)) return;
-        this.recordAction('harvest');
+        if (!addToInventory(this.gs, id, res.count)) {
+          this.recordOutcome('harvest', 'rejected');
+          return;
+        }
+        this.recordOutcome('harvest', 'completed');
         this.economyMetrics.cropsHarvested += res.count;
         this.gs.stats.cropsHarvested += res.count;
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
@@ -2602,7 +2672,7 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
         this.audio.play('reward');
         this.persist();
-      }
+      } else this.recordOutcome('harvest', 'rejected');
     }
   }
 
@@ -3004,6 +3074,7 @@ export class GameRuntime {
 
   private damageFox(w: Fox, amount: number): void {
     if (w.dead) return;
+    this.recordOutcome('fox_defense', 'attempted');
     w.hp -= amount;
     if (w.hp > 0) {
       w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
@@ -3015,7 +3086,7 @@ export class GameRuntime {
     }
     w.dead = true;
     this.resetFoxTrap(w);
-    this.recordAction('fox_felled');
+    this.recordOutcome('fox_defense', 'completed', 'fox_felled');
     this.gs.stats.foxesFelled += 1;
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);

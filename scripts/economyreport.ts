@@ -11,6 +11,11 @@ import {
   TROPHY_PITY_STEP,
 } from '../src/content';
 import { cropItem, ITEM_WOOD, itemInfo } from '../src/sim/items';
+import {
+  DEFAULT_ECONOMY_SIMULATION_DAYS,
+  DEFAULT_ECONOMY_SIMULATION_SEEDS,
+  simulateEconomyAcrossSeeds,
+} from '../src/sim/economySimulation';
 
 const workbookActionsPerDay = 300;
 const woodValue = itemInfo(ITEM_WOOD).price;
@@ -32,5 +37,25 @@ for (const def of Object.values(CROP_DEFS)) {
 console.log(
   `Fox trophy: ${itemInfo('trophy:Thicket Fox').price}₫ base value, ` +
     `${TROPHY_DROP_CHANCE * 100}% base drop chance + ${TROPHY_PITY_STEP * 100}% pity per dry kill.`,
+);
+const simulation = simulateEconomyAcrossSeeds();
+console.log(
+  `Seeded simulation: ${DEFAULT_ECONOMY_SIMULATION_SEEDS.length} seeds × ` +
+    `${DEFAULT_ECONOMY_SIMULATION_DAYS} days; ` +
+    `${simulation.totalSales} sales and ${simulation.totalCompletedPurchases} completed purchases.`,
+);
+console.log(
+  `Resource starvation: ${simulation.starvationRuns}/${simulation.reports.length} runs; ` +
+    `runaway growth: ${simulation.runawayRuns}/${simulation.reports.length} runs.`,
+);
+const deadPurchases = Object.entries(simulation.deadPurchaseCounts)
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([id, count]) => `${id} (${count}/${simulation.reports.length})`);
+console.log(`Dead purchases: ${deadPurchases.length ? deadPurchases.join(', ') : 'none'}.`);
+console.log(
+  `Malformed catalog costs observed: ${simulation.reports
+    .flatMap((report) => report.malformedPurchases)
+    .filter((id, index, all) => all.indexOf(id) === index)
+    .join(', ') || 'none'}.`,
 );
 console.log('Future workbook-only rows: fish, quadrant tiers, bosses, and seed purchase costs.');
