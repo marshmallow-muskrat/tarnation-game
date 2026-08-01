@@ -92,8 +92,9 @@ The characterization baseline intentionally preserves current behavior for later
   warning threshold; v8 full-grid saves remain readable and migrate explicitly. PR #5 is integrated
   on `agent/masterplan-v2-implementation`. SAVE-02 now routes runtime persistence through a checksummed
   atomic two-slot SaveService with structured failure statuses, legacy migration, recovery, and JSON
-  import/export; production-build smoke confirmed validated Continue after reload. SAVE-03 save timing
-  and player-visible saving/saved/failed state remains.
+  import/export; production-build smoke confirmed validated Continue after reload. PR #6 is integrated
+  on `agent/masterplan-v2-implementation`. SAVE-03 save timing and player-visible saving/saved/failed
+  state remains.
 - Purchases remain free by default unless the existing `paid` URL capability is present; honest
   production purchasing is ECON-01, not part of BASE-02.
 
