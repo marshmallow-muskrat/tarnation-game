@@ -11,8 +11,8 @@ non-linear progression and future maps/challenge spaces, but the current work is
 existing loop.
 
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
-asset preview grid. Run `npx tsc --noEmit` for the typecheck. `window.tarn` exposes the runtime for
-browser debugging.
+asset preview grid. Run `npx tsc --noEmit` for the typecheck and `npm run assetcheck` to verify the
+manifest paths. `window.tarn` exposes the runtime for browser debugging.
 
 ## 2. Current implementation
 

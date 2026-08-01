@@ -8,7 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
-    "check": "tsx scripts/simcheck.ts"
+    "check": "tsx scripts/simcheck.ts",
+    "assetcheck": "tsx scripts/assetcheck.ts"
   },
   "dependencies": {
     "react": "^19.0.0",

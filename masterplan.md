@@ -224,7 +224,8 @@ two income paths are competitive; the measured first-session curve is documented
 - Keep scatter batched and profile frame time with full chunk density, many crops, several foxes,
   placed buildings, and active water.
 - Add asset-load diagnostics that identify a missing model without breaking the scene; verify all
-  accepted manifest entries in a build smoke test.
+  accepted manifest entries in a build smoke test. The manifest check now verifies all committed
+  model paths while allowing intentional aliases such as homestead tiers sharing building files.
 - Test save/load, day rollover, tool swaps, trap persistence, building persistence, crop growth,
   and schema migration from every supported prior save version.
 - Add a repeatable browser smoke route for fresh game, farming, combat, trap, building, save/load,
