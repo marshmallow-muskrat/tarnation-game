@@ -26,3 +26,10 @@ Crop rendering now selects the real species-and-stage model instead of a generic
 and ambient wildlife instantiates the accepted animal models directly. Obsolete prototype manifest
 entries and unused interaction paths were removed; the Q boulder and B bear trap remain separate
 current abilities.
+
+## 2026-08-01 — Preserve normalized scales through animation
+
+Animated foxes, crops, and ambient animals now keep the manifest-derived base scale while they
+burrow, breathe, react to hits, or show a growth pulse. Raid actors also use an evenly distributed
+attack ring with wider spacing, so the long fox silhouette stays readable when several arrive at
+once.

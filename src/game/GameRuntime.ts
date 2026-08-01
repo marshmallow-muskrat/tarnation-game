@@ -200,6 +200,7 @@ type FoxState = 'burrow' | 'seek' | 'eat' | 'flee' | 'trapped';
 
 type Fox = {
   root: THREE.Object3D;
+  baseScale: number;
   x: number;
   z: number;
   state: FoxState;
@@ -239,6 +240,7 @@ type Boulder = {
 
 type CropActor = {
   root: THREE.Object3D;
+  baseScale: number;
   tx: number;
   ty: number;
   stage: number;
@@ -246,6 +248,7 @@ type CropActor = {
 
 type PlainsAnimal = {
   root: THREE.Object3D;
+  baseScale: number;
   mixer: THREE.AnimationMixer | null;
   x: number;
   z: number;
@@ -835,7 +838,7 @@ export class GameRuntime {
           w.timer = 0;
           w.x = this.playerX + (this.gs.rng() - 0.5) * 5;
           w.z = this.playerZ + (this.gs.rng() - 0.5) * 5;
-          w.root.scale.setScalar(1);
+          w.root.scale.setScalar(w.baseScale);
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
         }
         return this.foxes.length;
@@ -1055,13 +1058,14 @@ export class GameRuntime {
       this.world.syncFarmTiles(this.gs.tiles);
       for (const m of clock.matured) {
         const c = this.crops.find((x) => x.tx === m.x && x.ty === m.y);
-        if (c) c.root.scale.setScalar(1.3);
+        if (c) c.root.scale.setScalar(c.baseScale * 1.3);
       }
     }
     for (const c of this.crops) {
       const s = c.root.scale.x;
+      const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
       c.root.scale.setScalar(
-        THREE.MathUtils.lerp(s, 1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015, 0.08),
+        THREE.MathUtils.lerp(s, target, 0.08),
       );
     }
 
@@ -1769,7 +1773,7 @@ export class GameRuntime {
     if (w.dead) return;
     w.hp -= amount;
     if (w.hp > 0) {
-      w.root.scale.set(1.25, 0.8, 1.25);
+      w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
       w.state = 'flee';
       return;
     }
@@ -1788,7 +1792,7 @@ export class GameRuntime {
     a.state = 'hurt';
     a.timer = 1.2;
     if (a.hp > 0) {
-      a.root.scale.set(1.1, 0.9, 1.1);
+      a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
       return;
     }
     a.root.removeFromParent();
@@ -1824,8 +1828,9 @@ export class GameRuntime {
       const { root, animations } = cloneModel('fox');
       const x = sp.x;
       const z = sp.y;
+      const baseScale = root.scale.x;
       root.position.set(x, this.world.heightAt(x, z), z);
-      root.scale.setScalar(0.15);
+      root.scale.setScalar(baseScale * 0.15);
       if (animations.length) {
         const mixer = new THREE.AnimationMixer(root);
         mixer.clipAction(animations[0]!).play();
@@ -1834,6 +1839,7 @@ export class GameRuntime {
       this.world.getFarmActors().add(root);
       this.foxes.push({
         root,
+        baseScale,
         x,
         z,
         state: 'burrow',
@@ -1846,7 +1852,12 @@ export class GameRuntime {
         dead: false,
         haulSeed: false,
         attackSlot: this.foxes.length,
-        attackAngle: this.gs.rng() * Math.PI * 2,
+        // Spread a player attack around the full ring. Random angles let two
+        // actors share the same approach lane and makes the long fox silhouette
+        // read as one tangled pile even when their centres are separated.
+        attackAngle:
+          (this.foxes.length / Math.max(1, spawns.length)) * Math.PI * 2 +
+          (this.gs.rng() - 0.5) * 0.22,
       });
     }
     this.world.markShadowsDirty();
@@ -1907,11 +1918,6 @@ export class GameRuntime {
       }
 
       const tpos = this.worldToFarmTile(w.x, w.z);
-      if (tpos && w.state !== 'burrow' && w.state !== 'trapped') {
-      // Bear traps are the only placeable wildlife trap. Their trigger and
-      // closed-model swap are handled above so the interaction stays readable.
-      }
-
       if (tpos && hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, 3)) w.state = 'flee';
 
       if (w.state === 'trapped') {
@@ -1923,10 +1929,10 @@ export class GameRuntime {
       if (w.state === 'burrow') {
         w.timer -= dt;
         const t = 1 - w.timer / FOX_BURROW_TIME;
-        w.root.scale.setScalar(0.15 + 0.85 * Math.min(1, t));
+        w.root.scale.setScalar(w.baseScale * (0.15 + 0.85 * Math.min(1, t)));
         if (w.timer <= 0) {
           w.state = 'seek';
-          w.root.scale.setScalar(1);
+          w.root.scale.setScalar(w.baseScale);
           this.pickTarget(w, crops);
         }
         continue;
@@ -2001,7 +2007,7 @@ export class GameRuntime {
           } else {
             w.state = 'eat';
             w.eatTimer = FOX_EAT_TIME;
-            w.root.scale.set(1.25, 0.85, 1.25);
+            w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.85, w.baseScale * 1.25);
           }
         } else {
           const sp = this.foxSpeed(w);
@@ -2015,13 +2021,13 @@ export class GameRuntime {
 
       if (w.state === 'eat') {
         w.eatTimer -= dt;
-        w.root.scale.y = 1 + Math.sin(this.gs.simTime * 12) * 0.08;
+        w.root.scale.y = w.baseScale * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
         if (w.eatTimer <= 0) {
           destroyCrop(this.gs.tiles, w.targetTx, w.targetTy);
           this.world.syncFarmTiles(this.gs.tiles);
           this.rebuildCrops();
           w.state = 'flee';
-          w.root.scale.set(1, 1, 1);
+          w.root.scale.setScalar(w.baseScale);
         }
         continue;
       }
@@ -2111,6 +2117,7 @@ export class GameRuntime {
         const suffix = stage === 2 ? 4 : stage + 1;
         const key = `${base}_${suffix}` as ModelKey;
         const { root } = cloneModel(key);
+        const baseScale = root.scale.x;
         const wc = this.farmTileWorld(tx, ty);
         root.position.set(wc.x, this.world.heightAt(wc.x, wc.z), wc.z);
         const col = t.seed ? CROP_DEFS[t.seed.species]?.color : undefined;
@@ -2123,7 +2130,7 @@ export class GameRuntime {
           });
         }
         this.world.getFarmActors().add(root);
-        this.crops.push({ root, tx, ty, stage });
+        this.crops.push({ root, baseScale, tx, ty, stage });
         n++;
       }
     }
@@ -2144,6 +2151,7 @@ export class GameRuntime {
         tries++;
       } while (tries < 40 && this.world.distToWater(x, z) < 4);
       const { root, animations } = cloneModel(animal.model);
+      const baseScale = root.scale.x;
       root.position.set(x, this.world.heightAt(x, z), z);
       this.world.getFarmActors().add(root);
       let mixer: THREE.AnimationMixer | null = null;
@@ -2153,6 +2161,7 @@ export class GameRuntime {
       }
       this.animals.push({
         root,
+        baseScale,
         mixer,
         x,
         z,
@@ -2170,7 +2179,7 @@ export class GameRuntime {
   private stepAnimals(dt: number): void {
     for (const a of this.animals) {
       a.timer -= dt;
-      a.root.scale.lerp(new THREE.Vector3(1, 1, 1), 0.1);
+      a.root.scale.lerp(new THREE.Vector3(a.baseScale, a.baseScale, a.baseScale), 0.1);
       if (a.state === 'hurt') {
         const dx = a.x - this.playerX;
         const dz = a.z - this.playerZ;

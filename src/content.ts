@@ -44,11 +44,11 @@ export const FOX_EAT_TIME = 3;
 export const FOX_HP = 1;
 export const FOX_BURROW_TIME = 1.2;
 /** Foxes stop at the player’s edge instead of converging into the same point. */
-export const FOX_ATTACK_RADIUS = 1.25;
+export const FOX_ATTACK_RADIUS = 1.55;
 /** Minimum visual spacing between raid actors. */
-export const FOX_SEPARATION = 0.78;
+export const FOX_SEPARATION = 1.05;
 /** Additional radius between attack-ring slots. */
-export const FOX_ATTACK_SLOT_GAP = 0.28;
+export const FOX_ATTACK_SLOT_GAP = 0.55;
 export const NIBBLER_SPEED = 4.4;
 export const HAULER_SPEED = 3.6;
 

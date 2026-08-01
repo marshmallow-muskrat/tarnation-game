@@ -88,7 +88,9 @@ export const MODELS = {
   alpaca: { path: 'animals/alpaca.glb', height: 0.9 },
   deer: { path: 'animals/deer.glb', height: 1.0 },
   stag: { path: 'animals/stag.glb', height: 1.15 },
-  fox: { path: 'animals/fox.glb', height: 0.38 },
+  // The source fox is much longer than it is tall; keep its footprint below the
+  // player silhouette so a full raid reads as separate attackers.
+  fox: { path: 'animals/fox.glb', height: 0.24 },
   wolf: { path: 'animals/wolf.glb', height: 0.6 },
   husky: { path: 'animals/husky.glb', height: 0.5 },
 
