@@ -4,7 +4,7 @@ import { addItem, createInventory } from '../src/sim/inventory';
 import { cropItem, ITEM_WOOD } from '../src/sim/items';
 import { createGameState, type GameState } from '../src/sim/gameState';
 import { mulberry32 } from '../src/sim/rng';
-import { createNewSave, type SaveData } from '../src/sim/save';
+import { createNewSave, SAVE_VERSION, type SaveData } from '../src/sim/save';
 
 export const FIXTURE_SEED = 0x5eed_0202;
 export const MIDGAME_SEED = 0x4d1d_6a0e;
@@ -79,6 +79,8 @@ export function midgameSaveFixture(): SaveData {
     breedA: cloneSeed(beet),
     breedB: cloneSeed(carrot),
   };
+  save.tiles[25]![20] = { ...emptyTile(), bearTrap: true };
+  save.tiles[26]![20] = { ...emptyTile(), bearTrapClosed: true };
 
   save.day = 3;
   save.phase = 'night';
@@ -123,6 +125,13 @@ export function midgameSaveFixture(): SaveData {
   save.winShown = false;
   save.trophies = ['Thicket Fox', 'Marsh Stag'];
   return save;
+}
+
+/** The last released full-grid shape, used to prove the v8 → v9 codec migration. */
+export function legacyV8SaveFixture(): string {
+  const save = midgameSaveFixture();
+  save.version = 8;
+  return JSON.stringify(save);
 }
 
 /** Dense worked area generated from typed state, rather than a checked-in JSON blob. */
@@ -347,6 +356,6 @@ export function malformedSaveFixtures(): readonly { label: string; raw: string }
 export function futureSaveFixture(): string {
   return JSON.stringify({
     ...JSON.parse(priorVersionSaveFixture(7)),
-    version: 9,
+    version: SAVE_VERSION + 1,
   });
 }

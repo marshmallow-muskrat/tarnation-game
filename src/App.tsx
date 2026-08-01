@@ -1,22 +1,31 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { GameRuntime, type HudSnapshot } from './game/GameRuntime';
+import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
-import { SAVE_KEY } from './content';
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<GameRuntime | null>(null);
+  const saveServiceRef = useRef<SaveService | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  if (saveServiceRef.current === null) saveServiceRef.current = new SaveService(browserSaveStorage());
+  const saveService = saveServiceRef.current;
   const [hud, setHud] = useState<HudSnapshot | null>(null);
   const [launchChoice, setLaunchChoice] = useState<null | 'continue' | 'new'>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasSave = typeof window !== 'undefined' && localStorage.getItem(SAVE_KEY) !== null;
+  const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
+  const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
+
+  useEffect(() => {
+    setSaveRead(saveService.read());
+  }, [saveService]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !launchChoice) return;
 
-    const runtime = new GameRuntime();
+    const runtime = new GameRuntime(saveService);
     runtimeRef.current = runtime;
     // Console handle for debugging: window.tarn.teleport(x, z), .state, .world
     (window as unknown as { tarn?: unknown }).tarn = runtime;
@@ -55,6 +64,40 @@ export function App() {
     setLaunchChoice(choice);
   };
 
+  const recoverSave = () => {
+    const result = saveService.recover();
+    setSaveRead(result);
+    setError(result.status === 'ok' ? null : result.message ?? 'Save recovery failed.');
+  };
+
+  const exportSave = () => {
+    const result = saveService.exportJson();
+    if (result.status !== 'ok' || !result.json) {
+      setError(result.message ?? 'No validated save is available to export.');
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([result.json], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'tarnation-save.json';
+    link.click();
+    URL.revokeObjectURL(url);
+    setError(null);
+  };
+
+  const importSave = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = '';
+    if (!file) return;
+    const result = saveService.importJson(await file.text());
+    if (result.status !== 'ok') {
+      setError(result.message ?? 'The selected save could not be imported.');
+      return;
+    }
+    setSaveRead(saveService.read());
+    setError(null);
+  };
+
   return (
     <div className="app-shell">
       <div className="game-mount">
@@ -76,8 +119,35 @@ export function App() {
                 New Adventure
               </button>
             </div>
+            <div className="launch-actions launch-save-actions">
+              {saveRead.status === 'ok' && saveRead.recovered && (
+                <button type="button" onClick={recoverSave}>
+                  Recover Save
+                </button>
+              )}
+              <button type="button" onClick={exportSave} disabled={!hasSave}>
+                Export JSON
+              </button>
+              <button type="button" onClick={() => importInputRef.current?.click()}>
+                Import JSON
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                aria-label="Import save JSON"
+                hidden
+                onChange={(event) => void importSave(event)}
+              />
+            </div>
             <p className="launch-note">
-              {hasSave ? 'A saved adventure is available.' : 'No save yet — start a new adventure.'}
+              {saveRead.status !== 'ok'
+                ? saveRead.message ?? 'Save storage is unavailable.'
+                : hasSave
+                  ? saveRead.recovered
+                    ? 'A backup save is available; recover it before continuing.'
+                    : 'A saved adventure is available.'
+                  : 'No save yet — start a new adventure.'}
             </p>
             {error && <p className="launch-error">{error}</p>}
           </div>

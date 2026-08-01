@@ -32,7 +32,6 @@ import {
   PLAYER_ACCEL,
   PLAYER_DAMP,
   PLAYER_SPEED,
-  SAVE_KEY,
   SHOT_LIFETIME,
   SHOTGUN_COOLDOWN,
   SHOTGUN_PELLETS,
@@ -64,12 +63,10 @@ import {
   fillBucket,
   isStumpCleared,
   isTreeChopped,
-  loadFromString,
   markTreeChopped,
   markWinShown,
   onNewDay,
   placeBuilding,
-  saveToString,
   selectedSeed,
   sellEverything,
   sellItem,
@@ -115,6 +112,14 @@ import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Asset
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
+import { browserSaveStorage, SaveService } from './SaveService';
+import {
+  advanceSaveTimer,
+  completedSaveFeedback,
+  savingFeedback,
+  type SaveFeedback,
+  type SaveFeedbackState,
+} from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
@@ -287,6 +292,10 @@ export type HudSnapshot = {
   marketDistance: number;
   popups: HudPopup[];
   toast: string;
+  save: {
+    state: SaveFeedbackState;
+    message: string;
+  };
   win: null | {
     daysSurvived: number;
     cropsHarvested: number;
@@ -623,6 +632,8 @@ function itemIconModel(id: ItemId): ModelKey | null {
 }
 
 export class GameRuntime {
+  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+
   private gs!: GameState;
   private world!: WorldRenderer;
   private input = new InputController();
@@ -711,6 +722,7 @@ export class GameRuntime {
   ]);
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
+  private saveFeedback: SaveFeedback = { state: 'saved', message: 'Save ready' };
 
   private animals: PlainsAnimal[] = [];
   private animalsSeeded = false;
@@ -774,16 +786,23 @@ export class GameRuntime {
     // attach input handlers or render over the replacement runtime.
     if (this.disposed) return;
 
-    const raw = options.newAdventure ? null : localStorage.getItem(SAVE_KEY);
-    const loaded = raw ? loadFromString(raw) : null;
-    if (raw && !loaded) {
-      throw new Error('This save could not be loaded. Choose New Adventure to start a clean save.');
+    if (options.newAdventure) {
+      this.gs = createGameState();
+    } else {
+      const loaded = this.saveService.read();
+      if (loaded.status !== 'ok') {
+        throw new Error(loaded.message ?? 'This save could not be loaded. Choose New Adventure to start a clean save.');
+      }
+      if (!loaded.state) {
+        throw new Error('No valid save was found. Choose New Adventure to start a clean save.');
+      }
+      this.gs = loaded.state;
     }
-    this.gs = loaded ?? createGameState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
     window.addEventListener('beforeunload', this.persist);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
 
     this.playerX = this.gs.playerX;
     this.playerZ = this.gs.playerZ;
@@ -836,6 +855,7 @@ export class GameRuntime {
     this.merchantMixer?.stopAllAction();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.persist();
     const handles = window as unknown as {
       tarnation?: GameRuntime;
@@ -863,11 +883,19 @@ export class GameRuntime {
 
   private persist = (): void => {
     if (!this.gs) return;
-    try {
-      localStorage.setItem(SAVE_KEY, saveToString(this.gs));
-    } catch {
-      // ignore
+    this.saveFeedback = savingFeedback();
+    this.pushHud(true);
+    const result = this.saveService.save(this.gs);
+    if (result.status === 'ok') this.saveTimer = 0;
+    this.saveFeedback = completedSaveFeedback(result);
+    if (result.status !== 'ok') {
+      console.error(`[Save] ${result.status}: ${result.message ?? 'save was not written'}`);
     }
+    this.pushHud(true);
+  };
+
+  private handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'hidden') this.persist();
   };
 
   private spawnPlayer(): void {
@@ -1357,7 +1385,10 @@ export class GameRuntime {
     if (!asset || !this.gs.inventory.some((slot) => slot?.id === id)) return;
     if (asset.id === 'utility:bear-trap') {
       this.gs.bearTrapCooldown = 0;
-      if (this.tryBearTrap()) takeFromInventory(this.gs, id, 1);
+      if (this.tryBearTrap()) {
+        takeFromInventory(this.gs, id, 1);
+        this.persist();
+      }
       this.pushHud(true);
       return;
     }
@@ -1367,7 +1398,10 @@ export class GameRuntime {
     }
     if (asset.useType === 'equip') {
       const equipped = this.equipCatalogAsset(asset);
-      if (equipped) takeFromInventory(this.gs, id, 1);
+      if (equipped) {
+        takeFromInventory(this.gs, id, 1);
+        this.persist();
+      }
       this.pushHud(true);
       return;
     }
@@ -1385,11 +1419,10 @@ export class GameRuntime {
       return;
     }
     if (asset.id === 'ability:boulder') {
-      const before = this.gs.boulderCooldown;
-      this.tryBoulderRoll();
-      if (before === this.gs.boulderCooldown) return;
+      if (!this.tryBoulderRoll()) return;
     }
-    takeFromInventory(this.gs, id, 1);
+    if (!takeFromInventory(this.gs, id, 1)) return;
+    this.persist();
     this.pushHud(true);
   }
 
@@ -1613,12 +1646,12 @@ export class GameRuntime {
 
   useUltimate(): void {
     this.recordAction('boulder');
-    this.tryBoulderRoll();
+    if (this.tryBoulderRoll()) this.persist();
   }
 
   useBearTrap(): void {
     this.recordAction('bear_trap');
-    this.tryBearTrap();
+    if (this.tryBearTrap()) this.persist();
   }
 
   /** Console helpers — teleport, hand out items, jump the clock. */
@@ -1848,8 +1881,8 @@ export class GameRuntime {
       this.selectToolSlot();
       setToast(this.gs, `Bucket · ${this.gs.bucketFill}/${BUCKET_CAPACITY}`, 1.2);
     }
-    if (this.input.justPressed('KeyQ')) this.tryBoulderRoll();
-    if (this.input.justPressed('KeyB')) this.tryBearTrap();
+    if (this.input.justPressed('KeyQ')) this.useUltimate();
+    if (this.input.justPressed('KeyB')) this.useBearTrap();
     if (this.input.justPressed('KeyI')) this.toggleInventory();
     if (this.input.justPressed('KeyH')) this.toggleHelp();
     if (this.input.justPressed('KeyR')) {
@@ -1937,11 +1970,9 @@ export class GameRuntime {
     const b = this.world.getWorldBounds();
     this.movePlayer(dt, b.minX, b.maxX, b.minZ, b.maxZ);
 
-    this.saveTimer += dt;
-    if (this.saveTimer >= 15) {
-      this.saveTimer = 0;
-      this.persist();
-    }
+    const saveStep = advanceSaveTimer(this.saveTimer, dt);
+    this.saveTimer = saveStep.elapsed;
+    if (saveStep.due) this.persist();
 
     if (this.shotCd > 0) this.shotCd -= dt;
     if (this.meleeCd > 0) this.meleeCd -= dt;
@@ -2426,6 +2457,7 @@ export class GameRuntime {
       this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
       this.audio.play('water');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
+      this.persist();
       return;
     }
     const tilePos = this.pointerTile();
@@ -2495,6 +2527,7 @@ export class GameRuntime {
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
         this.audio.play('tool');
+        this.persist();
       }
       return;
     }
@@ -2507,6 +2540,7 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
         this.audio.play('build');
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
+        this.persist();
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
         const parents = clearBreedingParents(this.gs.tiles, tx, ty);
         if (parents) {
@@ -2518,6 +2552,7 @@ export class GameRuntime {
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
           this.audio.play('reward');
           setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
+          this.persist();
         }
       }
       return;
@@ -2535,6 +2570,7 @@ export class GameRuntime {
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
         this.audio.play('tool');
+        this.persist();
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
       if (this.meleeCd > 0) return;
@@ -2551,6 +2587,7 @@ export class GameRuntime {
         this.world.syncFarmTiles(this.gs.tiles);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
+        this.persist();
       }
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
@@ -2570,6 +2607,7 @@ export class GameRuntime {
         this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
         this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
         this.audio.play('reward');
+        this.persist();
       }
     }
   }
@@ -2593,6 +2631,7 @@ export class GameRuntime {
       const wc = this.farmTileWorld(tx, ty);
       this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 4, 0.2);
       this.audio.play('water');
+      this.persist();
     }
   }
 
@@ -2630,6 +2669,7 @@ export class GameRuntime {
       this.audio.play('tool');
       this.popup('+1 Wood', wc.x, wc.z);
       setToast(this.gs, 'Stump cleared · +1 Wood', 1.2);
+      this.persist();
       return true;
     }
 
@@ -2658,6 +2698,7 @@ export class GameRuntime {
     this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 8, 0.32);
     this.audio.play('reward');
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
+    this.persist();
     return true;
   }
 
@@ -2809,10 +2850,10 @@ export class GameRuntime {
     this.applyMeleeDamage(damage);
   }
 
-  private tryBoulderRoll(): void {
+  private tryBoulderRoll(): boolean {
     if (this.gs.boulderCooldown > 0) {
       setToast(this.gs, `Boulder ready in ${Math.ceil(this.gs.boulderCooldown)}s`, 1.2);
-      return;
+      return false;
     }
     const { dx, dz } = this.aimDirection();
     const mesh = new THREE.Mesh(
@@ -2838,6 +2879,7 @@ export class GameRuntime {
     this.gs.boulderCooldown = BOULDER_COOLDOWN;
     this.world.shake(0.2, 0.18);
     setToast(this.gs, 'Boulder Roll!', 1.2);
+    return true;
   }
 
   private stepBoulders(dt: number): void {
@@ -2908,7 +2950,6 @@ export class GameRuntime {
     this.playPlayerAction('pickUp');
     this.world.syncFarmTiles(this.gs.tiles);
     this.syncBearTrapModels();
-    this.persist();
     this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
     this.audio.play('trap');
     setToast(this.gs, 'Bear trap set', 1.4);
@@ -4076,6 +4117,7 @@ export class GameRuntime {
       ),
       popups: this.popups.map((p) => ({ ...p })),
       toast: this.gs.toast,
+      save: { ...this.saveFeedback },
       win:
         this.gs.clock.day >= WIN_DAY && !this.gs.winShown && !this.winShownLocal
           ? {

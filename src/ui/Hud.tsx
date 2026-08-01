@@ -158,6 +158,14 @@ export function Hud({
           Duckettes
         </p>
         <p className="value amber">₫ {hud.duckettes}</p>
+        <p
+          className={`save-status ${hud.save.state === 'failed' ? 'failed' : ''}`}
+          role={hud.save.state === 'failed' ? 'alert' : 'status'}
+          aria-live={hud.save.state === 'failed' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+        >
+          {hud.save.message}
+        </p>
         <button type="button" className="help-toggle" onClick={onToggleHelp}>
           Help <span>H</span>
         </button>

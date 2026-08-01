@@ -1,22 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { DENSE_FARM_ORIGIN, DENSE_FARM_SIZE, denseFarmStressFixture, FIXTURE_SEED, freshGameFixture, malformedSaveFixtures, midgameSaveFixture, priorVersionSaveFixture, type PriorSaveVersion } from './fixtures';
+import { DENSE_FARM_ORIGIN, DENSE_FARM_SIZE, denseFarmStressFixture, FIXTURE_SEED, freshGameFixture, legacyV8SaveFixture, malformedSaveFixtures, midgameSaveFixture, priorVersionSaveFixture, type PriorSaveVersion } from './fixtures';
 import { countItem } from '../src/sim/inventory';
 import { cropItem, ITEM_WOOD } from '../src/sim/items';
 import { loadFromSaveData, loadFromString, saveToString } from '../src/sim/gameState';
-import { deserialize, SAVE_VERSION, serialize } from '../src/sim/save';
+import { deserialize, SAVE_SIZE_BUDGETS, SAVE_VERSION, serialize } from '../src/sim/save';
 
 describe('save serialization and fixture round-trips', () => {
-  it('serializes a fixed-seed fresh game deterministically and loads its full grid back', () => {
+  it('serializes a fixed-seed fresh game deterministically under the fresh-save budget', () => {
     const first = saveToString(freshGameFixture(FIXTURE_SEED));
     const second = saveToString(freshGameFixture(FIXTURE_SEED));
 
     expect(first).toBe(second);
-    expect(first.length).toBeGreaterThan(10_000_000);
+    expect(first.length).toBeLessThan(SAVE_SIZE_BUDGETS.fresh);
+    const wire = JSON.parse(first) as { version: number; tiles: { w: number; h: number; r: unknown[] }; seeds: unknown[] };
+    expect(wire.version).toBe(SAVE_VERSION);
+    expect(wire.tiles).toMatchObject({ w: 240, h: 240 });
+    expect(wire.tiles.r).toHaveLength(0);
+    expect(wire.seeds).toHaveLength(5);
     const loaded = loadFromString(first);
     expect(loaded).not.toBeNull();
     expect(loaded).toMatchObject({ seed: FIXTURE_SEED, clock: { day: 1, phase: 'day', elapsed: 0 }, inventoryOpen: true });
     expect(loaded!.tiles).toHaveLength(240);
     expect(loaded!.tiles[0]).toHaveLength(240);
+  });
+
+  it('stores only changed tiles and deduplicates seed genotypes in a typical save', () => {
+    const raw = serialize(midgameSaveFixture());
+    const wire = JSON.parse(raw) as {
+      tiles: { r: { a?: number; b?: number; c?: number }[] };
+      seeds: unknown[];
+    };
+
+    expect(raw.length).toBeLessThan(SAVE_SIZE_BUDGETS.typical);
+    expect(wire.tiles.r.length).toBeGreaterThan(0);
+    expect(wire.tiles.r.length).toBeLessThan(10);
+    expect(wire.seeds).toHaveLength(3);
   });
 
   it('round-trips a representative midgame without losing crops, inventory, buildings, or Codex data', () => {
@@ -39,6 +57,8 @@ describe('save serialization and fixture round-trips', () => {
     expect(countItem(loaded!.inventory, cropItem('Beet'))).toBe(4);
     expect(loaded!.tiles[20]![20]!.state).toBe('mature');
     expect(loaded!.tiles[20]![21]!.state).toBe('planted');
+    expect(loaded!.tiles[25]![20]!.bearTrap).toBe(true);
+    expect(loaded!.tiles[26]![20]!.bearTrapClosed).toBe(true);
     expect(loaded!.placedBuildings).toHaveLength(2);
     expect(loaded!.placedBuildings[1]).toMatchObject({ id: 'gate', gateOpen: true });
     expect(loaded!.codex).toHaveLength(2);
@@ -50,11 +70,48 @@ describe('save serialization and fixture round-trips', () => {
     const parsed = deserialize(raw);
     const loaded = parsed ? loadFromSaveData(parsed) : null;
 
+    expect(raw.length).toBeLessThan(SAVE_SIZE_BUDGETS.typical);
     expect(loaded).not.toBeNull();
     expect(loaded!.stats.cropsHarvested).toBe(DENSE_FARM_SIZE * DENSE_FARM_SIZE);
     expect(loaded!.tiles[DENSE_FARM_ORIGIN]![DENSE_FARM_ORIGIN]!.seed).not.toBeNull();
     expect(loaded!.tiles[DENSE_FARM_ORIGIN + DENSE_FARM_SIZE - 1]![DENSE_FARM_ORIGIN + DENSE_FARM_SIZE - 1]!.seed).not.toBeNull();
     expect(loaded!.tiles[0]![0]!.state).toBe('grass');
+  });
+
+  it('migrates the released v8 full-grid save into the compact current format', () => {
+    const parsed = deserialize(legacyV8SaveFixture());
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.version).toBe(SAVE_VERSION);
+    expect(parsed!.tiles[20]![20]!.state).toBe('mature');
+    expect(countItem(parsed!.inventory, ITEM_WOOD)).toBe(37);
+
+    const compact = serialize(parsed!);
+    expect(compact.length).toBeLessThan(SAVE_SIZE_BUDGETS.typical);
+    expect((JSON.parse(compact) as { tiles: { r: unknown[] } }).tiles.r.length).toBeGreaterThan(0);
+  });
+
+  it('rejects compact tile records with invalid coordinates or seed references', () => {
+    const wire = JSON.parse(serialize(midgameSaveFixture())) as {
+      tiles: { r: Record<string, unknown>[] };
+      [key: string]: unknown;
+    };
+    const invalidCoordinate = {
+      ...wire,
+      tiles: { ...wire.tiles, r: [...wire.tiles.r, { x: 240, y: 0, s: 'tilled' }] },
+    };
+    expect(deserialize(JSON.stringify(invalidCoordinate))).toBeNull();
+
+    const seededIndex = wire.tiles.r.findIndex((record) => 'a' in record || 'b' in record || 'c' in record);
+    expect(seededIndex).toBeGreaterThanOrEqual(0);
+    const invalidSeed = {
+      ...wire,
+      tiles: {
+        ...wire.tiles,
+        r: wire.tiles.r.map((record, index) => (index === seededIndex ? { ...record, a: 999 } : record)),
+      },
+    };
+    expect(deserialize(JSON.stringify(invalidSeed))).toBeNull();
   });
 
   it('rejects malformed save envelopes without creating a partial game state', () => {

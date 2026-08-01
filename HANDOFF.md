@@ -68,8 +68,6 @@ timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundat
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Replace the roughly 10.4 MB fresh-save format and silent `localStorage` failure path with compact,
-  validated, recoverable persistence.
 - Make paid economy the production default; free purchases are development-only.
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
@@ -86,8 +84,20 @@ The characterization baseline intentionally preserves current behavior for later
 
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
-- A fresh serialized game remains the audited roughly 10.4 MB full-grid save; compact persistence is
-  SAVE-01, not part of this test-only slice.
+- SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
+  fresh fixture is 1,084 bytes, the representative midgame fixture is about 1.5 KB, and the dense
+  48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
+  warning threshold; v8 full-grid saves remain readable and migrate explicitly. PR #5 is integrated
+  on `agent/masterplan-v2-implementation`. SAVE-02 now routes runtime persistence through a checksummed
+  atomic two-slot SaveService with structured failure statuses, legacy migration, recovery, and JSON
+  import/export; production-build smoke confirmed validated Continue after reload. PR #6 is integrated
+  on `agent/masterplan-v2-implementation`. PR #7 adds boundary and 15-second fallback timing,
+  best-effort visibility/unload flushes, and accessible persistent save feedback. The integrated M1
+  gate has 83 deterministic tests; representative midgame round-trip measured 4.48 ms average and
+  11.64 ms maximum over 24 samples. Local browser smoke passed fresh New Adventure, reload/Continue,
+  HUD Saved status, and a visible v7 Import JSON flow preserving Day 4/night, resources, buildings,
+  and inventory crops. Corrupt-slot recovery remains covered by the deterministic service fixtures;
+  local storage was not manipulated from the browser.
 - Purchases remain free by default unless the existing `paid` URL capability is present; honest
   production purchasing is ECON-01, not part of BASE-02.
 
@@ -130,3 +140,9 @@ Deployment record:
   <https://8adc4535.tarnation.pages.dev>
 - `9c71e65` — completed vendor/deed plan, final QA, and release documentation —
   <https://174a94e2.tarnation.pages.dev>
+- `b84d1fb` — M0 trusted baseline: BASE-02 characterization suite and deployment gate —
+  <https://tarnation.pages.dev/>; GitHub Actions run
+  [30719858155](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30719858155)
+  passed all verification and deployment steps. Fresh production smoke test passed New Adventure,
+  Day 1 startup, keyboard movement before and after the field guide, and produced no console
+  warnings or errors.

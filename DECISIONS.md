@@ -58,3 +58,11 @@ that does not yet expose player health.
 Bear traps re-arm after their capture window ends, and also recover if the caught fox is defeated or
 the raid is cleared at dawn. The cooldown and the model state therefore describe the same reusable
 ability instead of leaving a permanently closed prop behind.
+
+## 2026-08-01 — Save only complete transactions and keep failures visible
+
+The compact SaveService remains synchronous and atomic. Runtime saves happen after completed player
+actions and meaningful clock boundaries, with a fixed-step 15-second fallback for other progress;
+visibility and unload flushes are best-effort only. The HUD exposes Saving, Saved, and Save failed
+states through an accessible live region, and a failure has no timeout: it stays visible until a
+later successful save resolves it.

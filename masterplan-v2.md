@@ -912,8 +912,8 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 
 | Milestone | Tasks | Depends on | Status |
 |---|---|---|---|
-| M0 Trusted baseline | BASE-01, BASE-02 | — | BASE-01 and BASE-02 integrated on `agent/masterplan-v2-implementation`; M0 release pending |
-| M1 Save safety | SAVE-01–03 | M0 | Not started |
+| M0 Trusted baseline | BASE-01, BASE-02 | — | Complete: PR #4 merged as `b84d1fb`; verified deployment and live smoke test passed |
+| M1 Save safety | SAVE-01–03 | M0 | SAVE-01/02/03 integrated as PR #5 (`37c5e32`), PR #6 (`31e54c0`), and PR #7 (`5c8816f`); deterministic and browser migration gates passed, recovery fixture and performance gates passed, release PR pending |
 | M2 Honest economy | ECON-01–04 | M0, save transaction boundary | Not started |
 | M3 Runtime health | PERF-01–05 | M0 | Not started |
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Tool fix baseline complete; full phase not started |
