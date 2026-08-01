@@ -50,6 +50,7 @@ npm run deploy   # Cloudflare Pages → tarnation.pages.dev
 
 | Doc | What |
 |---|---|
+| [`ASSETS.md`](ASSETS.md) | The Quaternius asset plan — which packs, where files live, the manifest system, order of work |
 | [`IDEAS.md`](IDEAS.md) | The 78-entry idea sheet, triaged into build-now / later / defer / against, with implementation notes and a suggested order |
 | [`masterplans/`](masterplans/) | Full design history. `masterplan.md` is the whole game; `masterplan_alpha_v4.md` is the current build spec |
 | [`docs/AI_3D_ASSETS.md`](docs/AI_3D_ASSETS.md) | Getting 3D models for free — download → primitives → AI-generate |
