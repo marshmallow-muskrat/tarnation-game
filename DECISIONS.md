@@ -82,3 +82,13 @@ starter tools remain available through their authored controls, while nonfunctio
 loadable and usable for existing saves but are hidden from new production choices. Removing the two empty
 toolbar slots remaps a legacy empty-slot selection to the last supported starter tool without
 changing the save wire shape.
+
+## 2026-08-01 — Keep economy outcome metrics local and deterministic
+
+ECON-03 records attempted, rejected, cancelled, and completed outcomes plus first-completion game time
+for planting, harvest, sale, purchase, building, fox defense, and the settlement goal. The counters are
+runtime debug data only: they are not part of the save schema and no telemetry or network transport is
+introduced. The seeded economy diagnostic uses a fixed 16-seed cohort and a 30-day policy, with explicit
+observation thresholds for starvation, runaway accumulation, and inventory pressure. Malformed catalog
+costs are reported as dead purchases and quarantined by the diagnostic rather than silently repaired in
+the instrumentation task.
