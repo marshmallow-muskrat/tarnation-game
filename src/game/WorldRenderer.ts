@@ -52,6 +52,11 @@ export class WorldRenderer {
   private toolHoverActive = false;
   private buildPreviewRoot: THREE.Object3D | null = null;
   private buildPreviewKey: ModelKey | null = null;
+  private buildPreviewFootprint: THREE.Mesh | null = null;
+  private buildPreviewFootprintSize = '';
+  private debugGridGroup: THREE.Group | null = null;
+  private debugGridMaterials: THREE.Material[] = [];
+  private debugGridGeometries: THREE.BufferGeometry[] = [];
   private buildPreviewMaterials: { material: THREE.Material; color: THREE.Color | null }[] = [];
 
   private terrain!: TerrainSystem;
@@ -412,6 +417,7 @@ export class WorldRenderer {
     z = 0,
     rotation = 0,
     valid = false,
+    footprint: { width: number; height: number } = { width: 1, height: 1 },
   ): void {
     if (!key) {
       this.removeBuildPreview();
@@ -447,7 +453,25 @@ export class WorldRenderer {
       this.buildPreviewRoot = root;
       this.buildPreviewKey = key;
       this.farmActors.add(root);
+      const footprintMaterial = new THREE.MeshBasicMaterial({
+        color: 0x76d88a,
+        transparent: true,
+        opacity: 0.16,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      this.buildPreviewFootprint = new THREE.Mesh(
+        new THREE.PlaneGeometry(footprint.width, footprint.height),
+        footprintMaterial,
+      );
+      this.buildPreviewFootprint.rotation.x = -Math.PI / 2;
+      this.buildPreviewFootprint.renderOrder = 3;
+      this.farmActors.add(this.buildPreviewFootprint);
+    } else if (this.buildPreviewFootprint && this.buildPreviewFootprintSize !== `${footprint.width}x${footprint.height}`) {
+      this.buildPreviewFootprint.geometry.dispose();
+      this.buildPreviewFootprint.geometry = new THREE.PlaneGeometry(footprint.width, footprint.height);
     }
+    this.buildPreviewFootprintSize = `${footprint.width}x${footprint.height}`;
     const invalidTint = new THREE.Color(0xe07060);
     for (const entry of this.buildPreviewMaterials) {
       entry.material.opacity = 0.46;
@@ -464,6 +488,14 @@ export class WorldRenderer {
     this.buildPreviewRoot.visible = true;
     this.buildPreviewRoot.position.set(x, this.terrain.heightAt(x, z) + 0.025, z);
     this.buildPreviewRoot.rotation.y = rotation;
+    if (this.buildPreviewFootprint) {
+      this.buildPreviewFootprint.visible = true;
+      this.buildPreviewFootprint.position.set(x, this.terrain.heightAt(x, z) + 0.018, z);
+      this.buildPreviewFootprint.rotation.y = rotation;
+      (this.buildPreviewFootprint.material as THREE.MeshBasicMaterial).color.set(
+        valid ? 0x76d88a : 0xe07060,
+      );
+    }
   }
 
   private removeBuildPreview(): void {
@@ -473,6 +505,13 @@ export class WorldRenderer {
     this.buildPreviewMaterials = [];
     this.buildPreviewRoot = null;
     this.buildPreviewKey = null;
+    if (this.buildPreviewFootprint) {
+      this.buildPreviewFootprint.removeFromParent();
+      this.buildPreviewFootprint.geometry.dispose();
+      (this.buildPreviewFootprint.material as THREE.Material).dispose();
+      this.buildPreviewFootprint = null;
+      this.buildPreviewFootprintSize = '';
+    }
   }
 
   heightAt(x: number, z: number): number {
@@ -554,6 +593,92 @@ export class WorldRenderer {
       this.shakeTime = 0;
       this.shakeAmp = 0;
     }
+  }
+
+  /** Debug-only grid and coordinate labels. The normal scene never creates these. */
+  setGridDebug(enabled: boolean): void {
+    if (this.debugGridGroup) {
+      this.debugGridGroup.removeFromParent();
+      for (const material of this.debugGridMaterials) material.dispose();
+      for (const geometry of this.debugGridGeometries) geometry.dispose();
+      this.debugGridMaterials = [];
+      this.debugGridGeometries = [];
+      this.debugGridGroup = null;
+    }
+    if (!enabled) return;
+
+    const group = new THREE.Group();
+    group.name = 'debug_grid_f12';
+    const positions: number[] = [];
+    for (let i = 0; i <= WORLD_SIZE; i++) {
+      positions.push(i, 0.08, 0, i, 0.08, WORLD_SIZE);
+      positions.push(0, 0.08, i, WORLD_SIZE, 0.08, i);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    const material = new THREE.LineBasicMaterial({
+      color: 0xf7e39a,
+      transparent: true,
+      opacity: 0.25,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const lines = new THREE.LineSegments(geometry, material);
+    lines.renderOrder = 20;
+    group.add(lines);
+    this.debugGridMaterials.push(material);
+    this.debugGridGeometries.push(geometry);
+
+    // Labels use the requested A-00/B-00 sequence per axis. A label at every
+    // tile would overwhelm the scene; the axis labels plus the cursor label make
+    // the complete coordinate unambiguous while keeping F12 cheap enough to use.
+    const labelEvery = 10;
+    for (let i = 0; i < WORLD_SIZE; i += labelEvery) {
+      const label = this.gridLabel(i);
+      const xSprite = this.makeDebugLabel(label, i + 0.5, -0.25);
+      const zSprite = this.makeDebugLabel(label, -0.25, i + 0.5);
+      group.add(xSprite, zSprite);
+    }
+    this.debugGridGroup = group;
+    this.overworldRoot.add(group);
+  }
+
+  private gridLabel(index: number): string {
+    const block = String.fromCharCode(65 + Math.floor(index / 100));
+    return `${block}-${String(index % 100).padStart(2, '0')}`;
+  }
+
+  private makeDebugLabel(text: string, x: number, z: number): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 96;
+    canvas.height = 32;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = 'rgba(14, 28, 20, 0.82)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#f7e39a';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+    }
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.position.set(x, 0.18, z);
+    sprite.scale.set(1.8, 0.6, 1);
+    sprite.renderOrder = 21;
+    this.debugGridMaterials.push(material);
+    return sprite;
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {
@@ -652,6 +777,10 @@ export class WorldRenderer {
       return { x: hit.x, z: hit.z };
     }
     return null;
+  }
+
+  raycastTree(ndcX: number, ndcY: number): { tx: number; ty: number } | null {
+    return this.farmTrees?.pickTree(ndcX, ndcY, this.camera) ?? null;
   }
 
   markShadowsDirty(): void {

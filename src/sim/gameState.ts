@@ -1,7 +1,7 @@
 /**
  * Shared mutable game state — pure, no renderer/DOM.
  */
-import { BUCKET_CAPACITY, GRID_H, GRID_W, TOOLBAR_SLOTS, TREE_RESPAWN_DAYS, WIN_DAY } from '../content';
+import { BUCKET_CAPACITY, GRID_H, GRID_W, TOOLBAR_SLOTS, TREE_RESPAWN_DAYS, WIN_DAY, WORLD_SIZE } from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
 import {
   cloneGrid,
@@ -38,12 +38,15 @@ import {
   serialize,
   deserialize,
 } from './save';
+import type { AssetId } from '../content/purchasables';
 
 export interface GameState {
   seed: number;
   rng: Rng;
   clock: ClockState;
   tiles: Tile[][];
+  playerX: number;
+  playerZ: number;
   weapon: WeaponId;
   unlockedWeapons: WeaponId[];
   irrigationTier: number;
@@ -97,6 +100,8 @@ export function createGameState(seed?: number): GameState {
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
+    playerX: WORLD_SIZE / 2,
+    playerZ: WORLD_SIZE / 2,
     weapon: 'shotgun',
     unlockedWeapons: ['shotgun'],
     homesteadTier: 1,
@@ -138,6 +143,8 @@ export function loadFromSaveData(data: SaveData): GameState {
     ...base,
     clock: createClock(data.day, data.phase, data.elapsed),
     tiles,
+    playerX: Number.isFinite(data.playerX) ? data.playerX : base.playerX,
+    playerZ: Number.isFinite(data.playerZ) ? data.playerZ : base.playerZ,
     weapon: data.weapon ?? 'shotgun',
     unlockedWeapons: data.unlockedWeapons ?? ['shotgun'],
     homesteadTier: Math.min(Math.max(data.homesteadTier ?? 1, 1), 5),
@@ -170,6 +177,8 @@ export function toSaveData(gs: GameState): SaveData {
     phase: gs.clock.phase,
     elapsed: gs.clock.elapsed,
     tiles: cloneGrid(gs.tiles),
+    playerX: gs.playerX,
+    playerZ: gs.playerZ,
     weapon: gs.weapon,
     unlockedWeapons: [...gs.unlockedWeapons],
     homesteadTier: gs.homesteadTier,
@@ -305,8 +314,10 @@ export function markTreeChopped(gs: GameState, tx: number, ty: number): void {
   delete gs.clearedStumps[treeKey(tx, ty)];
 }
 
-export function clearStump(gs: GameState, tx: number, ty: number): void {
+export function clearStump(gs: GameState, tx: number, ty: number): boolean {
+  if (isStumpCleared(gs, tx, ty)) return false;
   gs.clearedStumps[treeKey(tx, ty)] = true;
+  return true;
 }
 
 /**
@@ -395,12 +406,13 @@ export function unlockWeapon(gs: GameState, weapon: WeaponId): boolean {
 
 export function placeBuilding(
   gs: GameState,
-  id: BuildingId,
+  id: BuildingId | AssetId,
   x: number,
   z: number,
   rotation = 0,
+  gateOpen = false,
 ): void {
-  gs.placedBuildings.push({ id, x, z, rotation });
+  gs.placedBuildings.push({ id, x, z, rotation, gateOpen });
 }
 
 export function newGameFromSeed(seed: number): GameState {

@@ -9,8 +9,9 @@ import {
 } from './inventory';
 import { cropItem, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
+import { assetDefinition, type AssetId } from '../content/purchasables';
 
-export const SAVE_VERSION = 7;
+export const SAVE_VERSION = 8;
 
 export interface GameStats {
   cropsHarvested: number;
@@ -23,26 +24,15 @@ export interface GameStats {
 
 export type WeaponId = 'shotgun' | 'bow' | 'axe';
 
-export type BuildingId =
-  | 'silo'
-  | 'windmill'
-  | 'tower_windmill'
-  | 'water_tower'
-  | 'well'
-  | 'chicken_coop'
-  | 'fence'
-  | 'fence2'
-  | 'small_barn'
-  | 'open_barn'
-  | 'barn'
-  | 'silo_house'
-  | 'big_barn';
+/** Stable gameplay IDs from the purchasable asset catalog. */
+export type BuildingId = AssetId;
 
 export interface PlacedBuilding {
   id: BuildingId;
   x: number;
   z: number;
   rotation: number;
+  gateOpen?: boolean;
 }
 
 /** Chopped trees: "tx,ty" → day it was felled. */
@@ -55,6 +45,8 @@ export interface SaveData {
   phase: Phase;
   elapsed: number;
   tiles: Tile[][];
+  playerX: number;
+  playerZ: number;
   weapon: WeaponId;
   unlockedWeapons: WeaponId[];
   homesteadTier: number;
@@ -146,32 +138,21 @@ function migrateStats(raw: unknown): GameStats {
 
 function migrateBuildings(raw: unknown): PlacedBuilding[] {
   if (!Array.isArray(raw)) return [];
-  const ids = new Set<BuildingId>([
-    'silo',
-    'windmill',
-    'tower_windmill',
-    'water_tower',
-    'well',
-    'chicken_coop',
-    'fence',
-    'fence2',
-    'small_barn',
-    'open_barn',
-    'barn',
-    'silo_house',
-    'big_barn',
-  ]);
   return raw.flatMap((entry) => {
     if (!entry || typeof entry !== 'object') return [];
     const e = entry as Record<string, unknown>;
-    if (!ids.has(e.id as BuildingId)) return [];
+    if (typeof e.id !== 'string' || !assetDefinition(e.id)) {
+      console.warn(`[Save] Skipping unknown placed asset id: ${String(e.id)}`);
+      return [];
+    }
     if (typeof e.x !== 'number' || typeof e.z !== 'number') return [];
     return [
       {
-        id: e.id as BuildingId,
+        id: e.id,
         x: e.x,
         z: e.z,
         rotation: typeof e.rotation === 'number' ? e.rotation : 0,
+        gateOpen: e.gateOpen === true,
       },
     ];
   });
@@ -200,6 +181,8 @@ export function deserialize(raw: string): SaveData | null {
     const savedTier = typeof parsed.homesteadTier === 'number' ? parsed.homesteadTier : 1;
     data.homesteadTier = Math.min(Math.max(savedTier, 1), 5);
     data.placedBuildings = migrateBuildings(parsed.placedBuildings);
+    data.playerX = typeof parsed.playerX === 'number' ? parsed.playerX : 120;
+    data.playerZ = typeof parsed.playerZ === 'number' ? parsed.playerZ : 120;
     // "Ducketts" was a typo — v5 spells it duckettes.
     data.duckettes =
       typeof parsed.duckettes === 'number'
@@ -241,6 +224,8 @@ export function createNewSave(seed: number): SaveData {
     phase: 'day',
     elapsed: 0,
     tiles: [],
+    playerX: 120,
+    playerZ: 120,
     weapon: 'shotgun',
     unlockedWeapons: ['shotgun'],
     homesteadTier: 1,

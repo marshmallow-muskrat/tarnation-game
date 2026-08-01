@@ -9,6 +9,8 @@
 
 export type ItemId = string;
 
+import { assetDefinition, deedAssetId } from '../content/purchasables';
+
 export interface ItemInfo {
   id: ItemId;
   /** Human label shown in the inventory / market. */
@@ -54,6 +56,17 @@ const BASE_CROPS: Record<string, { glyph: string; price: number; blurb: string }
 };
 
 export function itemInfo(id: ItemId): ItemInfo {
+  const deed = deedAssetId(id);
+  if (deed) {
+    const asset = assetDefinition(deed);
+    return {
+      id,
+      name: asset ? `${asset.displayName} Deed` : 'Unknown Deed',
+      glyph: 'D',
+      price: 0,
+      blurb: asset?.description ?? 'A deed for an unknown asset.',
+    };
+  }
   if (id === ITEM_WOOD) {
     return { id, name: 'Wood', glyph: 'W', price: 1, blurb: 'Chopped from a tree. The base of every price.' };
   }

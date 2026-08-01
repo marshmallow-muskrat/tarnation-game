@@ -103,6 +103,7 @@ import {
 } from '../sim/farm';
 import { crossbreed } from '../sim/genetics';
 import { occupiedSlots } from '../sim/inventory';
+import { hasRoomFor } from '../sim/inventory';
 import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
@@ -116,6 +117,29 @@ import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
 import { WorldRenderer } from './WorldRenderer';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
+import {
+  assetDefinition,
+  deedAssetId,
+  deedItemId,
+  shopAssets,
+  type AssetCategory,
+  type AssetId,
+  type PurchasableAsset,
+} from '../content/purchasables';
+import { CENTRAL_CAMP, CENTRAL_CAMP_FIXTURES } from '../content/mapData';
+import {
+  calculateEnclosedTiles,
+  fixtureTiles,
+  footprintTiles,
+  normalizeOrientation,
+  orientedFootprint,
+  occupiedPlacedTiles,
+  placedCenter,
+  placedOrigin,
+  placementStatus,
+  tileIsEnclosed,
+  tileKey,
+} from '../sim/placement';
 
 export type HudSlot = {
   id: ItemId | null;
@@ -148,6 +172,32 @@ export type HudMarket = {
   open: boolean;
   items: { id: ItemId; name: string; glyph: string; model: ModelKey | null; count: number; price: number }[];
   total: number;
+};
+
+export type HudVendorAsset = {
+  id: AssetId;
+  name: string;
+  description: string;
+  footprint: string;
+  model: ModelKey;
+  price: number;
+  material: string;
+};
+
+export type HudVendor = {
+  open: boolean;
+  tab: AssetCategory;
+  tabs: AssetCategory[];
+  items: HudVendorAsset[];
+  message: string;
+};
+
+export type HudContextMenu = {
+  open: boolean;
+  x: number;
+  y: number;
+  name: string;
+  placedIndex: number;
 };
 
 /** Floating "+3 Wood" that rises off whatever you just gathered. */
@@ -222,6 +272,9 @@ export type HudSnapshot = {
     max: number;
   };
   market: HudMarket;
+  vendor: HudVendor;
+  contextMenu: HudContextMenu;
+  demolishMode: boolean;
   /** Screen-space bearing to the market stall, radians, 0 = straight up. */
   marketAngle: number;
   marketDistance: number;
@@ -351,6 +404,8 @@ type BuildingPlacement = {
   z: number;
   valid: boolean;
   reason: string;
+  asset: PurchasableAsset | null;
+  rotation: number;
 };
 
 type ToolMode = 'farm' | 'trench' | 'breed';
@@ -512,6 +567,8 @@ const CROP_ICON_MODELS: Record<string, ModelKey> = {
 
 function itemIconModel(id: ItemId): ModelKey | null {
   if (id === ITEM_WOOD) return 'wood_log';
+  const deed = deedAssetId(id);
+  if (deed) return assetDefinition(deed)?.modelKey ?? null;
   const crop = cropName(id);
   if (crop !== null) return CROP_ICON_MODELS[crop] ?? null;
   if (id.startsWith('trophy:')) return 'trophy';
@@ -550,9 +607,17 @@ export class GameRuntime {
   private nearWater = false;
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
+  private placementAssetId: AssetId | null = null;
+  private placementRotation = 0;
+  private demolishMode = false;
   private helpOpen = false;
   private reducedMotion = false;
   private placeableBuildingIndex = 0;
+  private debugGrid = false;
+  private vendorOpen = false;
+  private vendorTab: AssetCategory = 'Housing';
+  private vendorMessage = '';
+  private contextMenu: HudContextMenu = { open: false, x: 0, y: 0, name: '', placedIndex: -1 };
 
   private foxes: Fox[] = [];
   private deathMarkers: DeathMarker[] = [];
@@ -567,11 +632,19 @@ export class GameRuntime {
   private stallX = 0;
   private stallZ = 0;
   private nearMarket = false;
+  private merchantRoot: THREE.Object3D | null = null;
+  private merchantX = CENTRAL_CAMP.merchantX;
+  private merchantZ = CENTRAL_CAMP.merchantZ;
+  private nearMerchant = false;
+  private fixtureRoots: THREE.Object3D[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
   private bearTrapRoots = new Map<string, THREE.Object3D>();
   /** In-progress chops, keyed "tx,ty". */
   private treeChops = new Map<string, number>();
+  private fixtureReservations = fixtureTiles(CENTRAL_CAMP_FIXTURES);
+  private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
+  private saveTimer = 0;
 
   private animals: PlainsAnimal[] = [];
   private animalsSeeded = false;
@@ -610,7 +683,11 @@ export class GameRuntime {
   private readonly supportParentQuaternion = new THREE.Quaternion();
   private readonly supportLocalQuaternion = new THREE.Quaternion();
 
-  async mount(canvas: HTMLCanvasElement, onHud: (s: HudSnapshot) => void): Promise<void> {
+  async mount(
+    canvas: HTMLCanvasElement,
+    onHud: (s: HudSnapshot) => void,
+    options: { newAdventure?: boolean } = {},
+  ): Promise<void> {
     this.disposed = false;
     this.canvas = canvas;
     this.onHud = onHud;
@@ -627,15 +704,15 @@ export class GameRuntime {
     // attach input handlers or render over the replacement runtime.
     if (this.disposed) return;
 
-    const raw = localStorage.getItem(SAVE_KEY);
+    const raw = options.newAdventure ? null : localStorage.getItem(SAVE_KEY);
     this.gs = raw ? loadFromString(raw) ?? createGameState() : createGameState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
     window.addEventListener('beforeunload', this.persist);
 
-    this.playerX = HOMESTEAD_MIN_X + HOMESTEAD_SIZE / 2;
-    this.playerZ = HOMESTEAD_MIN_Z + HOMESTEAD_SIZE / 2;
+    this.playerX = this.gs.playerX;
+    this.playerZ = this.gs.playerZ;
 
     this.world.initFarmTrees({
       heightAt: (x, z) => this.world.heightAt(x, z),
@@ -647,16 +724,20 @@ export class GameRuntime {
 
     this.spawnPlayer();
     this.spawnStall();
+    this.spawnMerchantCamp();
     this.syncBuildings();
     this.syncBearTrapModels();
     this.seedPlainsAnimals();
     this.world.syncFarmTiles(this.gs.tiles);
     this.rebuildCrops();
+    this.recalculateEnclosure();
     this.world.snapCamera(this.playerX, this.playerZ);
 
     if (this.gs.clock.phase === 'night') this.spawnRaid();
 
     this.running = true;
+    this.saveTimer = 0;
+    this.persist();
     this.loop(performance.now());
     this.pushHud(true);
 
@@ -891,7 +972,7 @@ export class GameRuntime {
     joint.updateMatrixWorld(true);
   }
 
-  /** The market stall is the only structure on the map. */
+  /** The legacy selling stall remains separate from the traveling merchant. */
   private spawnStall(): void {
     if (this.stallRoot) return;
     const root = buildMarketStall();
@@ -901,6 +982,33 @@ export class GameRuntime {
     root.rotation.y = -0.5;
     this.stallRoot = root;
     this.world.getFarmActors().add(root);
+    this.world.markShadowsDirty();
+  }
+
+  private spawnMerchantCamp(): void {
+    for (const root of this.fixtureRoots) root.removeFromParent();
+    this.fixtureRoots = [];
+    for (const fixture of CENTRAL_CAMP_FIXTURES) {
+      const asset = assetDefinition(fixture.id);
+      if (!asset) continue;
+      const { root } = cloneModel(asset.modelKey);
+      const center = placedCenter({ tx: fixture.tx, ty: fixture.ty }, fixture.rotation, asset);
+      root.name = `fixture_${fixture.id}`;
+      root.position.set(center.x, this.world.heightAt(center.x, center.z), center.z);
+      root.rotation.y = normalizeOrientation(fixture.rotation) * Math.PI / 2;
+      this.world.getFarmActors().add(root);
+      this.fixtureRoots.push(root);
+    }
+
+    if (!this.merchantRoot) {
+      const { root } = cloneModel('player');
+      root.name = 'traveling_merchant';
+      root.scale.multiplyScalar(0.92);
+      root.position.set(this.merchantX, this.world.heightAt(this.merchantX, this.merchantZ), this.merchantZ);
+      root.rotation.y = Math.PI;
+      this.merchantRoot = root;
+      this.world.getFarmActors().add(root);
+    }
     this.world.markShadowsDirty();
   }
 
@@ -919,12 +1027,13 @@ export class GameRuntime {
     this.homesteadRoot = homestead;
 
     this.gs.placedBuildings.forEach((placed: PlacedBuilding, index) => {
-      const def = PLACEABLE_BUILDINGS.find((entry) => entry.id === placed.id);
+      const def = assetDefinition(placed.id);
       if (!def) return;
-      const root = cloneModel(def.model).root;
+      const root = cloneModel(def.modelKey).root;
       root.name = `placed_${placed.id}_${index}`;
       root.position.set(placed.x, this.world.heightAt(placed.x, placed.z), placed.z);
-      root.rotation.y = placed.rotation;
+      root.rotation.y = normalizeOrientation(placed.rotation) * Math.PI / 2;
+      if (def.gate && placed.gateOpen) root.rotation.y += Math.PI / 2;
       this.world.getFarmActors().add(root);
       this.buildingRoots.set(`${index}:${placed.id}`, root);
     });
@@ -993,6 +1102,9 @@ export class GameRuntime {
   selectSlot(index: number): void {
     if (index < 0 || index >= TOOLBAR_SLOTS) return;
     this.buildingMode = false;
+    this.placementAssetId = null;
+    this.demolishMode = false;
+    this.closeContextMenu();
     this.cancelPlayerAction();
     if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
@@ -1006,6 +1118,8 @@ export class GameRuntime {
 
   selectToolSlot(): void {
     this.buildingMode = false;
+    this.placementAssetId = null;
+    this.demolishMode = false;
     this.cancelPlayerAction();
     this.clearShots();
     this.gs.toolSlotActive = true;
@@ -1015,6 +1129,14 @@ export class GameRuntime {
   }
 
   toggleBuildMode(): void {
+    if (!this.buildingMode && !this.legacyBuildEnabled() && !this.nearMerchant && !this.placementAssetId) {
+      setToast(this.gs, 'Visit the Traveling Merchant to buy building deeds', 2);
+      return;
+    }
+    if (!this.buildingMode && !this.legacyBuildEnabled() && this.nearMerchant && !this.placementAssetId) {
+      this.openVendor();
+      return;
+    }
     this.buildingMode = !this.buildingMode;
     this.toolMode = 'farm';
     this.cancelPlayerAction();
@@ -1052,6 +1174,277 @@ export class GameRuntime {
 
   toggleInventory(): void {
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
+    this.pushHud(true);
+  }
+
+  private legacyBuildEnabled(): boolean {
+    return new URLSearchParams(window.location.search).has('legacy');
+  }
+
+  openVendor(): void {
+    if (!this.nearMerchant) {
+      setToast(this.gs, 'Stand near the Traveling Merchant to shop', 1.8);
+      return;
+    }
+    this.vendorOpen = true;
+    this.vendorMessage = '';
+    this.buildingMode = false;
+    this.placementAssetId = null;
+    this.demolishMode = false;
+    this.closeContextMenu();
+    this.velX = 0;
+    this.velZ = 0;
+    this.pushHud(true);
+  }
+
+  closeVendor(): void {
+    this.vendorOpen = false;
+    this.vendorMessage = '';
+    this.pushHud(true);
+  }
+
+  selectVendorTab(tab: AssetCategory): void {
+    if (!['Housing', 'Weapons', 'Buildings', 'Upgrades'].includes(tab)) return;
+    this.vendorTab = tab;
+    this.vendorMessage = '';
+    this.pushHud(true);
+  }
+
+  buyAsset(id: AssetId): void {
+    if (!this.nearMerchant) return;
+    const asset = assetDefinition(id);
+    if (!asset || asset.fixture || asset.availability !== 'shop') return;
+    const itemId = deedItemId(id);
+    const freePurchases = !new URLSearchParams(window.location.search).has('paid');
+    const reasons: string[] = [];
+    if (this.gs.duckettes < asset.price) reasons.push(`need ${asset.price} duckettes`);
+    const woodCost = asset.materialCost.wood ?? 0;
+    if (woodCount(this.gs) < woodCost) reasons.push(`need ${woodCost} Wood`);
+    if (!hasRoomFor(this.gs.inventory, itemId)) reasons.push('inventory has no free slot');
+    if (reasons.length && !freePurchases) {
+      this.vendorMessage = `Cannot buy ${asset.displayName}: ${reasons.join(' · ')}`;
+      setToast(this.gs, this.vendorMessage, 2.2);
+      this.pushHud(true);
+      return;
+    }
+    if (!addToInventory(this.gs, itemId, 1)) {
+      this.vendorMessage = 'Inventory has no free slot';
+      this.pushHud(true);
+      return;
+    }
+    if (!freePurchases) {
+      this.gs.duckettes -= asset.price;
+      if (woodCost > 0) takeFromInventory(this.gs, ITEM_WOOD, woodCost);
+    }
+    this.vendorMessage = `${asset.displayName} deed added to inventory`;
+    this.recordAction('purchase');
+    this.persist();
+    this.pushHud(true);
+  }
+
+  useInventoryItem(id: ItemId): void {
+    const assetId = deedAssetId(id);
+    if (!assetId) return;
+    const asset = assetDefinition(assetId);
+    if (!asset || !this.gs.inventory.some((slot) => slot?.id === id)) return;
+    if (asset.id === 'utility:bear-trap') {
+      this.gs.bearTrapCooldown = 0;
+      if (this.tryBearTrap()) takeFromInventory(this.gs, id, 1);
+      this.pushHud(true);
+      return;
+    }
+    if (asset.useType === 'place') {
+      this.startPlacement(asset.id);
+      return;
+    }
+    if (asset.useType === 'equip') {
+      const equipped = this.equipCatalogAsset(asset);
+      if (equipped) takeFromInventory(this.gs, id, 1);
+      this.pushHud(true);
+      return;
+    }
+    if (asset.id === 'ability:boulder') {
+      const before = this.gs.boulderCooldown;
+      this.tryBoulderRoll();
+      if (before === this.gs.boulderCooldown) return;
+    }
+    takeFromInventory(this.gs, id, 1);
+    this.pushHud(true);
+  }
+
+  deleteInventoryItem(id: ItemId): void {
+    if (takeFromInventory(this.gs, id, 1)) {
+      setToast(this.gs, `Deleted one ${itemInfo(id).name}`, 1.4);
+      this.persist();
+      this.pushHud(true);
+    }
+  }
+
+  private equipCatalogAsset(asset: PurchasableAsset): boolean {
+    if (asset.id === 'tool:shotgun') {
+      this.selectSlot(SLOT_SHOTGUN);
+      return true;
+    }
+    if (asset.id === 'tool:shovel') {
+      this.selectSlot(SLOT_SHOVEL);
+      return true;
+    }
+    if (asset.id === 'tool:axe') {
+      this.selectSlot(SLOT_AXE);
+      return true;
+    }
+    if (asset.id === 'tool:bucket') {
+      this.selectToolSlot();
+      return true;
+    }
+    return false;
+  }
+
+  private startPlacement(assetId: AssetId): void {
+    const asset = assetDefinition(assetId);
+    if (!asset || asset.useType !== 'place') return;
+    if (!this.gs.inventory.some((slot) => slot?.id === deedItemId(assetId))) {
+      setToast(this.gs, `No ${asset.displayName} deed`, 1.4);
+      return;
+    }
+    this.placementAssetId = assetId;
+    this.buildingMode = true;
+    this.demolishMode = false;
+    this.toolMode = 'farm';
+    this.cancelPlayerAction();
+    this.clearShots();
+    setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
+    this.pushHud(true);
+  }
+
+  private rotatePlacement(): void {
+    if (!this.buildingMode || !this.placementAssetId) return;
+    this.placementRotation = (this.placementRotation + 1) % 4;
+    this.pushHud(true);
+  }
+
+  private cancelActiveState(): void {
+    if (this.contextMenu.open) {
+      this.closeContextMenu();
+      return;
+    }
+    if (this.buildingMode || this.placementAssetId) {
+      this.buildingMode = false;
+      this.placementAssetId = null;
+      this.world.setBuildPreview(null);
+      setToast(this.gs, 'Placement cancelled', 1.2);
+      this.pushHud(true);
+      return;
+    }
+    if (this.demolishMode) {
+      this.demolishMode = false;
+      setToast(this.gs, 'Demolish mode off', 1.2);
+      this.pushHud(true);
+      return;
+    }
+    if (this.vendorOpen) {
+      this.closeVendor();
+      return;
+    }
+    if (this.helpOpen) {
+      this.helpOpen = false;
+      this.pushHud(true);
+    }
+  }
+
+  private closeContextMenu(): void {
+    this.contextMenu = { open: false, x: 0, y: 0, name: '', placedIndex: -1 };
+    this.pushHud(true);
+  }
+
+  private placedIndexAtPointer(): number {
+    const tile = this.pointerTile();
+    if (!tile) return -1;
+    for (let index = this.gs.placedBuildings.length - 1; index >= 0; index--) {
+      const placed = this.gs.placedBuildings[index]!;
+      const asset = assetDefinition(placed.id);
+      if (!asset) continue;
+      const origin = placedOrigin(placed, placed.rotation, asset);
+      if (footprintTiles(asset, origin, placed.rotation).some((t) => t.tx === tile.tx && t.ty === tile.ty)) return index;
+    }
+    return -1;
+  }
+
+  private openPlacedContext(): boolean {
+    const index = this.placedIndexAtPointer();
+    if (index < 0) return false;
+    const asset = assetDefinition(this.gs.placedBuildings[index]!.id);
+    if (!asset || asset.fixture) return false;
+    const pointer = this.input.getPointerClient();
+    this.contextMenu = {
+      open: true,
+      x: pointer.x,
+      y: pointer.y,
+      name: asset.displayName,
+      placedIndex: index,
+    };
+    this.pushHud(true);
+    return true;
+  }
+
+  contextRotate(): void {
+    const index = this.contextMenu.placedIndex;
+    const placed = this.gs.placedBuildings[index];
+    const asset = placed ? assetDefinition(placed.id) : null;
+    if (!placed || !asset) return this.closeContextMenu();
+    const next = (normalizeOrientation(placed.rotation) + 1) % 4;
+    const origin = placedOrigin(placed, next, asset);
+    const otherPlaced = this.gs.placedBuildings.filter((_, i) => i !== index);
+    const status = placementStatus({
+      asset,
+      origin,
+      rotation: next,
+      tiles: this.gs.tiles,
+      placed: otherPlaced,
+      fixtures: this.fixtureReservations,
+    });
+    if (!status.valid) {
+      setToast(this.gs, `Cannot rotate: ${status.reason}`, 1.8);
+      return this.closeContextMenu();
+    }
+    placed.rotation = next;
+    this.syncBuildings();
+    this.recalculateEnclosure();
+    this.persist();
+    this.closeContextMenu();
+  }
+
+  contextDestroy(): void {
+    const index = this.contextMenu.placedIndex;
+    this.closeContextMenu();
+    this.destroyPlacedIndex(index);
+  }
+
+  private destroyAtPointer(): void {
+    const index = this.placedIndexAtPointer();
+    if (index < 0) {
+      setToast(this.gs, 'Point at a placed asset to demolish it', 1.2);
+      return;
+    }
+    this.destroyPlacedIndex(index);
+  }
+
+  private destroyPlacedIndex(index: number): void {
+    const placed = this.gs.placedBuildings[index];
+    if (!placed) return;
+    const asset = assetDefinition(placed.id);
+    if (!asset || asset.fixture) return;
+    const deed = deedItemId(asset.id);
+    if (!hasRoomFor(this.gs.inventory, deed)) {
+      setToast(this.gs, 'No inventory space for the returned deed', 1.8);
+      return;
+    }
+    this.gs.placedBuildings.splice(index, 1);
+    addToInventory(this.gs, deed, 1);
+    this.syncBuildings();
+    this.recalculateEnclosure();
+    this.persist();
+    setToast(this.gs, `${asset.displayName} demolished · deed returned`, 1.6);
     this.pushHud(true);
   }
 
@@ -1300,6 +1693,18 @@ export class GameRuntime {
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
       if (!muted) this.audio.play('ui');
     }
+    if (this.input.justPressed('F12')) {
+      this.debugGrid = !this.debugGrid;
+      this.world.setGridDebug(this.debugGrid);
+      setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
+    }
+    if (this.input.justPressed('KeyX')) {
+      this.demolishMode = !this.demolishMode;
+      this.buildingMode = false;
+      this.placementAssetId = null;
+      this.closeContextMenu();
+      setToast(this.gs, this.demolishMode ? 'Demolish mode · click an asset · Esc exits' : 'Demolish mode off', 1.6);
+    }
     if (this.input.justPressed('Equal') || this.input.justPressed('NumpadAdd')) {
       const zoom = this.world.adjustZoom(0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
@@ -1314,12 +1719,7 @@ export class GameRuntime {
       localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
       setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
-    if (this.input.justPressed('KeyP')) {
-      this.toggleBuildMode();
-    }
-    if (this.buildingMode && this.input.justPressed('Escape')) {
-      this.toggleBuildMode();
-    }
+    if (this.input.justPressed('KeyP')) this.toggleBuildMode();
     if (this.buildingMode && this.input.justPressed('KeyN')) {
       this.placeableBuildingIndex = (this.placeableBuildingIndex + 1) % PLACEABLE_BUILDINGS.length;
       setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!.name}`, 1.2);
@@ -1336,9 +1736,11 @@ export class GameRuntime {
       if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
     }
 
+    if (this.input.justPressed('Escape')) this.cancelActiveState();
+
     const structure: [string, ToolMode, string][] = [
       ['KeyZ', 'trench', 'Tool: trench dig'],
-      ['KeyX', 'breed', 'Tool: breeding bed'],
+      ['KeyC', 'breed', 'Tool: breeding bed'],
     ];
     for (const [code, mode, label] of structure) {
       if (!this.input.justPressed(code)) continue;
@@ -1358,6 +1760,12 @@ export class GameRuntime {
       return;
     }
 
+    this.saveTimer += dt;
+    if (this.saveTimer >= 15) {
+      this.saveTimer = 0;
+      this.persist();
+    }
+
     if (this.shotCd > 0) this.shotCd -= dt;
     if (this.meleeCd > 0) this.meleeCd -= dt;
     this.stepShots(dt);
@@ -1374,10 +1782,28 @@ export class GameRuntime {
 
     this.nearMarket =
       Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ) <= MARKET_RANGE;
+    this.nearMerchant =
+      Math.hypot(this.playerX - this.merchantX, this.playerZ - this.merchantZ) <= MARKET_RANGE;
+    if (this.nearMerchant && this.input.justPressed('KeyE')) this.openVendor();
+    if (this.vendorOpen && !this.nearMerchant) {
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      setToast(this.gs, 'You walked away from the Traveling Merchant', 1.5);
+    }
+    if (this.vendorOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
 
-    if (this.input.consumeRmb() || this.input.justPressed('Space')) this.useCombatAction();
+    if (this.input.consumeRmb() || this.input.justPressed('Space')) {
+      if (this.buildingMode) this.rotatePlacement();
+      else if (this.demolishMode) this.destroyAtPointer();
+      else if (!this.openPlacedContext()) this.useCombatAction();
+    }
     if (this.input.consumeLmb()) {
       if (this.buildingMode) this.placeSelectedBuilding();
+      else if (this.demolishMode) this.destroyAtPointer();
       else this.useSelectedTool();
     }
 
@@ -1451,8 +1877,14 @@ export class GameRuntime {
       this.velX = (this.velX / sp) * PLAYER_SPEED;
       this.velZ = (this.velZ / sp) * PLAYER_SPEED;
     }
-    this.playerX = THREE.MathUtils.clamp(this.playerX + this.velX * dt, minX, maxX);
-    this.playerZ = THREE.MathUtils.clamp(this.playerZ + this.velZ * dt, minZ, maxZ);
+    const nextX = THREE.MathUtils.clamp(this.playerX + this.velX * dt, minX, maxX);
+    const nextZ = THREE.MathUtils.clamp(this.playerZ + this.velZ * dt, minZ, maxZ);
+    if (this.canPlayerOccupy(nextX, this.playerZ)) this.playerX = nextX;
+    else this.velX = 0;
+    if (this.canPlayerOccupy(this.playerX, nextZ)) this.playerZ = nextZ;
+    else this.velZ = 0;
+    this.gs.playerX = this.playerX;
+    this.gs.playerZ = this.playerZ;
   }
 
   private worldToFarmTile(wx: number, wz: number): { tx: number; ty: number } | null {
@@ -1470,7 +1902,58 @@ export class GameRuntime {
   private tileBlockedForTilling(tx: number, ty: number): boolean {
     const trees = this.world.getFarmTrees();
     if (trees?.blocksTilling(tx, ty)) return true;
+    if (this.fixtureReservations.has(tileKey(tx, ty))) return true;
+    if (occupiedPlacedTiles(this.gs.placedBuildings).has(tileKey(tx, ty))) return true;
     return this.world.distToWater(tx + 0.5, ty + 0.5) < 0.8;
+  }
+
+  private recalculateEnclosure(): void {
+    const blocked = new Set(this.fixtureReservations);
+    for (const placed of this.gs.placedBuildings) {
+      const asset = assetDefinition(placed.id);
+      if (!asset || !asset.blocksEnclosure || (asset.gate && placed.gateOpen)) continue;
+      const origin = {
+        tx: Math.floor(placed.x - orientedFootprint(asset, placed.rotation).width / 2),
+        ty: Math.floor(placed.z - orientedFootprint(asset, placed.rotation).height / 2),
+      };
+      for (const tile of footprintTiles(asset, origin, placed.rotation)) {
+        blocked.add(tileKey(tile.tx, tile.ty));
+      }
+    }
+    this.enclosedTiles = calculateEnclosedTiles(blocked);
+  }
+
+  private isEnclosed(tx: number, ty: number): boolean {
+    return tileIsEnclosed(this.enclosedTiles, tx, ty);
+  }
+
+  private canPlayerOccupy(x: number, z: number): boolean {
+    const tile = this.worldToFarmTile(x, z);
+    if (!tile) return false;
+    const occupied = occupiedPlacedTiles(this.gs.placedBuildings);
+    if (!occupied.has(tileKey(tile.tx, tile.ty)) && !this.fixtureReservations.has(tileKey(tile.tx, tile.ty))) {
+      return true;
+    }
+    return this.openGateAt(tile.tx, tile.ty);
+  }
+
+  private openGateAt(tx: number, ty: number): boolean {
+    for (const placed of this.gs.placedBuildings) {
+      const asset = assetDefinition(placed.id);
+      if (!asset?.gate || placed.gateOpen) continue;
+      const origin = {
+        tx: Math.floor(placed.x - orientedFootprint(asset, placed.rotation).width / 2),
+        ty: Math.floor(placed.z - orientedFootprint(asset, placed.rotation).height / 2),
+      };
+      if (!footprintTiles(asset, origin, placed.rotation).some((tile) => tile.tx === tx && tile.ty === ty)) continue;
+      placed.gateOpen = true;
+      this.syncBuildings();
+      this.recalculateEnclosure();
+      this.audio.play('build');
+      setToast(this.gs, 'Gate opened', 1.1);
+      return true;
+    }
+    return false;
   }
 
   /** The grid only lights up for the shovel — the tool that actually works soil. */
@@ -1483,14 +1966,17 @@ export class GameRuntime {
         return;
       }
       this.world.setHover(placement.tile.tx, placement.tile.ty, placement.valid);
-      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
-      this.world.setBuildPreview(
-        selected.model,
-        placement.x,
-        placement.z,
-        this.headingTarget,
-        placement.valid,
-      );
+      if (placement.asset) {
+        const size = orientedFootprint(placement.asset, placement.rotation);
+        this.world.setBuildPreview(
+          placement.asset.modelKey,
+          placement.x,
+          placement.z,
+          placement.rotation * Math.PI / 2,
+          placement.valid,
+          size,
+        );
+      }
       return;
     }
     this.world.setBuildPreview(null);
@@ -1508,48 +1994,72 @@ export class GameRuntime {
     const wc = this.farmTileWorld(tile.tx, tile.ty);
     const dist = Math.hypot(this.playerX - wc.x, this.playerZ - wc.z);
     const trees = this.world.getFarmTrees();
+    const treeTarget = axeSelected ? this.pointerTreeTile() : null;
     const usable = shovelSelected
       ? dist <= TOOL_RANGE && !this.tileBlockedForTilling(tile.tx, tile.ty)
-      : dist <= TOOL_RANGE + 0.6 && !!trees && (trees.hasTree(tile.tx, tile.ty) || trees.hasStump(tile.tx, tile.ty));
+      : treeTarget
+        ? dist <= TOOL_RANGE + 0.6
+        : dist <= TOOL_RANGE + 0.6 && !!trees && (trees.hasTree(tile.tx, tile.ty) || trees.hasStump(tile.tx, tile.ty));
     this.world.setHover(tile.tx, tile.ty, usable);
   }
 
   private buildingPlacementStatus(): BuildingPlacement {
     const tile = this.pointerTile();
     if (!tile) {
-      return { tile: null, x: this.playerX, z: this.playerZ, valid: false, reason: 'Point at a ground tile' };
-    }
-    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
-    const wc = this.farmTileWorld(tile.tx, tile.ty);
-    const targetTile = getTile(this.gs.tiles, tile.tx, tile.ty);
-    if (!targetTile || targetTile.state !== 'grass') {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Choose clear grass' };
-    }
-    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > BEAR_TRAP_PLACE_RANGE) {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Move closer to place' };
-    }
-    if (this.tileBlockedForTilling(tile.tx, tile.ty)) {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Tree or boulder occupies this tile' };
-    }
-    if (this.world.distToWater(wc.x, wc.z) < 2.5) {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave a dry bank around buildings' };
-    }
-    if (Math.hypot(wc.x - HOMESTEAD_X, wc.z - HOMESTEAD_Z) < 5) {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave room around the homestead' };
-    }
-    if (this.gs.placedBuildings.some((b) => Math.hypot(b.x - wc.x, b.z - wc.z) < 2.2)) {
-      return { tile, x: wc.x, z: wc.z, valid: false, reason: 'Leave room around existing buildings' };
-    }
-    if (woodCount(this.gs) < selected.cost) {
       return {
-        tile,
-        x: wc.x,
-        z: wc.z,
+        tile: null,
+        x: this.playerX,
+        z: this.playerZ,
         valid: false,
-        reason: `Need ${selected.cost} Wood for ${selected.name}`,
+        reason: 'Point at a ground tile',
+        asset: null,
+        rotation: this.placementRotation,
       };
     }
-    return { tile, x: wc.x, z: wc.z, valid: true, reason: 'Ready to place' };
+    const selected = this.selectedPlacementAsset();
+    if (!selected) {
+      return { tile, x: this.playerX, z: this.playerZ, valid: false, reason: 'No placeable asset selected', asset: null, rotation: this.placementRotation };
+    }
+    const rotation = this.placementAssetId ? this.placementRotation : normalizeOrientation(this.headingTarget);
+    const center = placedCenter(tile, rotation, selected);
+    if (Math.hypot(this.playerX - center.x, this.playerZ - center.z) > BEAR_TRAP_PLACE_RANGE) {
+      return { tile, x: center.x, z: center.z, valid: false, reason: 'Move closer to place', asset: selected, rotation };
+    }
+    const status = placementStatus({
+      asset: selected,
+      origin: tile,
+      rotation,
+      tiles: this.gs.tiles,
+      placed: this.gs.placedBuildings,
+      fixtures: this.fixtureReservations,
+      playerTile: this.worldToFarmTile(this.playerX, this.playerZ),
+      terrainAllowed: (tx, ty) => this.world.distToWater(tx + 0.5, ty + 0.5) >= 2.5,
+    });
+    if (!status.valid) {
+      return { tile, x: center.x, z: center.z, valid: false, reason: status.reason, asset: selected, rotation };
+    }
+    if (!this.placementAssetId && Math.hypot(center.x - HOMESTEAD_X, center.z - HOMESTEAD_Z) < 5) {
+      return { tile, x: center.x, z: center.z, valid: false, reason: 'Leave room around the homestead', asset: selected, rotation };
+    }
+    const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
+    if (!this.placementAssetId && woodCount(this.gs) < legacyCost) {
+      return {
+        tile,
+        x: center.x,
+        z: center.z,
+        valid: false,
+        reason: `Need ${legacyCost} Wood for ${selected.displayName}`,
+        asset: selected,
+        rotation,
+      };
+    }
+    return { tile, x: center.x, z: center.z, valid: true, reason: 'Ready to place', asset: selected, rotation };
+  }
+
+  private selectedPlacementAsset(): PurchasableAsset | null {
+    if (this.placementAssetId) return assetDefinition(this.placementAssetId);
+    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex];
+    return selected ? assetDefinition(selected.id) : null;
   }
 
   private pointerTile(): { tx: number; ty: number } | null {
@@ -1557,6 +2067,11 @@ export class GameRuntime {
     const hit = this.world.raycastGround(ndc.x, ndc.y);
     if (!hit) return null;
     return this.worldToFarmTile(hit.x, hit.z);
+  }
+
+  private pointerTreeTile(): { tx: number; ty: number } | null {
+    const ndc = this.input.getPointerNdc();
+    return this.world.raycastTree(ndc.x, ndc.y);
   }
 
   private useSelectedTool(): void {
@@ -1629,22 +2144,31 @@ export class GameRuntime {
   }
 
   private placeSelectedBuilding(): void {
-    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
     const placement = this.buildingPlacementStatus();
-    if (!placement.valid || !placement.tile) {
+    const selected = placement.asset;
+    if (!selected || !placement.valid || !placement.tile) {
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
-    takeFromInventory(this.gs, ITEM_WOOD, selected.cost);
+    const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
+    if (!this.placementAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
+    else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+      setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
+      return;
+    }
     this.recordAction('build');
-    placeBuilding(this.gs, selected.id, placement.x, placement.z, this.headingTarget);
+    placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
     this.syncBuildings();
+    this.recalculateEnclosure();
     this.persist();
     this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
     this.audio.play('build');
-    setToast(this.gs, `Built ${selected.name}`, 1.6);
+    setToast(this.gs, `Built ${selected.displayName}`, 1.6);
+    this.buildingMode = false;
+    this.placementAssetId = null;
+    this.pushHud(true);
   }
 
   private useBucket(): void {
@@ -1667,7 +2191,9 @@ export class GameRuntime {
 
   private useAxe(): void {
     if (!this.beginMeleeAction('swordSlash')) return;
-    const tilePos = this.pointerTile();
+    // A tree is a direct click target. Ground aiming remains a fallback for
+    // ordinary melee, but the player never has to line up a reticle with timber.
+    const tilePos = this.pointerTreeTile() ?? this.pointerTile();
     if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
     // Nothing to chop — swing at whatever is in front of you instead.
     this.applyMeleeDamage(AXE_DAMAGE);
@@ -1845,12 +2371,17 @@ export class GameRuntime {
       }
       this.treeChops.delete(key);
       this.recordAction('chop');
-      clearStump(this.gs, tx, ty);
+      if (!clearStump(this.gs, tx, ty)) return true;
+      // Stump clearing is intentionally generous: a felled tree leaves one
+      // extra piece of the economy behind even though the model reads as a log.
+      addToInventory(this.gs, ITEM_WOOD, 1);
+      this.gs.stats.woodGathered += 1;
       trees.invalidateTile(tx, ty);
       this.world.markShadowsDirty();
       this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
       this.audio.play('tool');
-      setToast(this.gs, 'Stump cleared', 1.2);
+      this.popup('+1 Wood', wc.x, wc.z);
+      setToast(this.gs, 'Stump cleared · +1 Wood', 1.2);
       return true;
     }
 
@@ -2100,16 +2631,16 @@ export class GameRuntime {
     }
   }
 
-  private tryBearTrap(): void {
+  private tryBearTrap(): boolean {
     if (this.gs.bearTrapCooldown > 0) {
       setToast(this.gs, `Bear trap ready in ${Math.ceil(this.gs.bearTrapCooldown)}s`, 1.2);
-      return;
+      return false;
     }
     const pointer = this.pointerTile();
     const fallbackX = this.playerX + Math.sin(this.headingTarget) * 1.5;
     const fallbackZ = this.playerZ + Math.cos(this.headingTarget) * 1.5;
     const tilePos = pointer ?? this.worldToFarmTile(fallbackX, fallbackZ);
-    if (!tilePos) return;
+    if (!tilePos) return false;
     const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
     const tile = getTile(this.gs.tiles, tilePos.tx, tilePos.ty);
     if (
@@ -2119,11 +2650,11 @@ export class GameRuntime {
       this.world.distToWater(wc.x, wc.z) < 1.2
     ) {
       setToast(this.gs, 'Place the bear trap on clear ground nearby', 1.5);
-      return;
+      return false;
     }
     if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
       setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
-      return;
+      return false;
     }
     this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
     this.playPlayerAction('pickUp');
@@ -2133,6 +2664,7 @@ export class GameRuntime {
     this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
     this.audio.play('trap');
     setToast(this.gs, 'Bear trap set', 1.4);
+    return true;
   }
 
   private stepShots(dt: number): void {
@@ -2486,7 +3018,7 @@ export class GameRuntime {
       this.gs.seed,
       cropValueScore(this.gs.tiles),
       totalWeirdness(this.gs.tiles),
-    );
+    ).filter((spawn) => !this.isEnclosed(Math.floor(spawn.x), Math.floor(spawn.y)));
     for (const sp of spawns) {
       const { root, animations } = cloneModel('fox');
       const x = sp.x;
@@ -2714,7 +3246,13 @@ export class GameRuntime {
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
           continue;
-        } else if (w.targetTx < 0) this.pickTarget(w, crops);
+        } else if (w.targetTx < 0) {
+          this.pickTarget(w, crops);
+          if (w.targetTx < 0) {
+            w.state = 'flee';
+            continue;
+          }
+        }
 
         const wc = this.farmTileWorld(w.targetTx, w.targetTy);
         const dx = wc.x - w.x;
@@ -2827,14 +3365,15 @@ export class GameRuntime {
   }
 
   private pickTarget(w: Fox, crops: { x: number; y: number }[]): void {
-    if (!crops.length) {
+    const exposed = crops.filter((crop) => !this.isEnclosed(crop.x, crop.y));
+    if (!exposed.length) {
       w.targetTx = -1;
       w.targetTy = -1;
       return;
     }
-    let best = crops[0]!;
+    let best = exposed[0]!;
     let bestD = Infinity;
-    for (const c of crops) {
+    for (const c of exposed) {
       const wc = this.farmTileWorld(c.x, c.y);
       const d = Math.hypot(w.x - wc.x, w.z - wc.z);
       if (d < bestD) {
@@ -2976,11 +3515,12 @@ export class GameRuntime {
   }
 
   private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion`;
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
-      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
-      return `Build: ${selected.name} · N next · click place · P exit`;
+      const selected = this.selectedPlacementAsset();
+      return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
     }
+    if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) return 'E — fill bucket';
     if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
@@ -3016,7 +3556,7 @@ export class GameRuntime {
       const trees = tile ? this.world.getFarmTrees() : null;
       if (tile && trees?.hasTree(tile.tx, tile.ty)) return 'Click to chop this tree';
       if (tile && trees?.hasStump(tile.tx, tile.ty)) return 'Click to clear this stump';
-      return '3 axe · point at a tree to chop';
+      return '3 axe · click a tree to chop';
     }
 
     if (this.gs.toolbarSlot === SLOT_SHOTGUN) return '1 shotgun · click or right-click to fire';
@@ -3050,7 +3590,12 @@ export class GameRuntime {
 
     const buildPlacement = this.buildingMode
       ? this.buildingPlacementStatus()
-      : { valid: false, reason: 'Open build mode to preview a structure' };
+      : {
+          valid: false,
+          reason: 'Open build mode to preview a structure',
+          asset: null,
+          rotation: this.placementRotation,
+        };
 
     const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
       index: i,
@@ -3128,6 +3673,25 @@ export class GameRuntime {
         items: marketItems,
         total: marketItems.reduce((n, i) => n + i.price * i.count, 0),
       },
+      vendor: {
+        open: this.vendorOpen,
+        tab: this.vendorTab,
+        tabs: ['Housing', 'Weapons', 'Buildings', 'Upgrades'],
+        items: shopAssets(this.vendorTab).map((asset) => ({
+          id: asset.id,
+          name: asset.displayName,
+          description: asset.description,
+          footprint: `${asset.footprint.width}×${asset.footprint.height}`,
+          model: asset.modelKey,
+          price: asset.price,
+          material: Object.entries(asset.materialCost)
+            .map(([name, cost]) => `${cost} ${name}`)
+            .join(', ') || '—',
+        })),
+        message: this.vendorMessage,
+      },
+      contextMenu: { ...this.contextMenu },
+      demolishMode: this.demolishMode,
       marketAngle: this.world.screenAngleTo(this.playerX, this.playerZ, this.stallX, this.stallZ),
       marketDistance: Math.round(
         Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ),

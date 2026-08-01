@@ -136,6 +136,7 @@ function treatModel(key: ModelKey, root: THREE.Object3D): void {
     });
   }
   if (def.height) scaleToHeight(root, def.height);
+  if (def.animalScale) root.scale.multiplyScalar(def.animalScale);
   if (def.rotateX) root.rotation.x = THREE.MathUtils.degToRad(def.rotateX);
   if (def.silhouette) applySilhouetteMaterials(root);
   else if (def.tint !== undefined) tintMaterials(root, def.tint, def.tintStrength ?? 0.7);

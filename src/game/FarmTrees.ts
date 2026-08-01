@@ -12,6 +12,7 @@ import {
   ROCK_TILE_FRACTION,
   TREE_CHUNK_RADIUS,
 } from '../content';
+import { CENTRAL_CAMP, isCampTile } from '../content/mapData';
 import { instancedParts } from './Assets';
 import { standardMaterial } from './materials';
 import { hash2, smoothstep, valueNoise2D } from './noise';
@@ -50,6 +51,7 @@ export interface FarmTreeHooks {
 }
 
 type Chunk = { key: string; group: THREE.Group };
+type TreeInstanceTarget = { tx: number; ty: number };
 
 /**
  * Overworld trees and boulders.
@@ -93,6 +95,12 @@ export class FarmTrees {
   private inClearing(x: number, z: number): boolean {
     if (Math.hypot(x - STALL_X, z - STALL_Z) < 9) return true;
     if (Math.hypot(x - SPAWN_X, z - SPAWN_Z) < 5) return true;
+    if (
+      x >= CENTRAL_CAMP.minX - 1 &&
+      x <= CENTRAL_CAMP.minX + CENTRAL_CAMP.width + 1 &&
+      z >= CENTRAL_CAMP.minZ - 1 &&
+      z <= CENTRAL_CAMP.minZ + CENTRAL_CAMP.height + 1
+    ) return true;
     return false;
   }
 
@@ -147,7 +155,23 @@ export class FarmTrees {
 
   /** Anything physically standing on the tile that stops a hoe. */
   blocksTilling(tx: number, ty: number): boolean {
-    return this.rockSlot(tx, ty) || this.hasTree(tx, ty) || this.hasStump(tx, ty);
+    return isCampTile(tx, ty) || this.rockSlot(tx, ty) || this.hasTree(tx, ty) || this.hasStump(tx, ty);
+  }
+
+  /** Pick a standing tree instance directly from the cursor. */
+  pickTree(ndcX: number, ndcY: number, camera: THREE.Camera): { tx: number; ty: number } | null {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+    const hits = raycaster.intersectObject(this.root, true);
+    for (const hit of hits) {
+      const targets = (hit.object as THREE.InstancedMesh).userData.farmTreeTargets as
+        | TreeInstanceTarget[]
+        | undefined;
+      if (!targets || hit.instanceId === undefined) continue;
+      const target = targets[hit.instanceId];
+      if (target && this.hasTree(target.tx, target.ty)) return { ...target };
+    }
+    return null;
   }
 
   /** Nearest standing tree to a world point, within `range` tiles. */
@@ -256,6 +280,10 @@ export class FarmTrees {
     const modelTreeParts = mp.trees
       .filter((parts) => parts.length > 0)
       .map((parts) => parts.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max)));
+    const treeTargets = modelTreeParts.map(() => [] as TreeInstanceTarget[]);
+    modelTreeParts.forEach((parts, variant) => {
+      for (const part of parts) part.userData.farmTreeTargets = treeTargets[variant];
+    });
     const usingModels = modelTreeParts.length > 0;
     const fallbackTrunk = new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, max);
     const fallbackCanopy = new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, max * 2);
@@ -328,6 +356,7 @@ export class FarmTrees {
           );
           const parts = modelTreeParts[variant]!;
           const index = treeCounts[variant]!;
+          treeTargets[variant]!.push({ tx, ty });
           this._p.set(x, y, z);
           this._s.set(sc, sc, sc);
           this._m.compose(this._p, this._q, this._s);

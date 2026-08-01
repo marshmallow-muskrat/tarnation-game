@@ -27,6 +27,9 @@ export type ModelDef = {
    */
   height?: number;
 
+  /** Additional gameplay readability scale for a normalized animal silhouette. */
+  animalScale?: number;
+
   /** Lerp the source colour toward this. Omit to keep the pack's own look. */
   tint?: number;
   /** 0..1 strength for `tint`. Default 0.7. */
@@ -79,14 +82,15 @@ export const MODELS = {
   donkey: { path: 'animals/donkey.glb', height: 0.95 },
   cow: { path: 'animals/cow.glb', height: 1.0 },
   bull: { path: 'animals/bull.glb', height: 1.05 },
-  horse: { path: 'animals/horse.glb', height: 1.2 },
+  // Foxes and horses share the same small-animal readability scale in this game.
+  horse: { path: 'animals/horse.glb', height: 0.58, animalScale: 1.18 },
   alpaca: { path: 'animals/alpaca.glb', height: 0.9 },
   deer: { path: 'animals/deer.glb', height: 1.0 },
   stag: { path: 'animals/stag.glb', height: 1.15 },
   // The source fox is much longer than it is tall. 0.48 keeps its footprint
   // below the player silhouette while making a fox readable at the normal
   // camera distance (0.24 made raid attackers look like tiny sprites).
-  fox: { path: 'animals/fox.glb', height: 0.48 },
+  fox: { path: 'animals/fox.glb', height: 0.58, animalScale: 1.18 },
   wolf: { path: 'animals/wolf.glb', height: 0.6 },
   husky: { path: 'animals/husky.glb', height: 0.5 },
 
@@ -197,6 +201,9 @@ export const MODELS = {
   knife: { path: 'items/knife.glb', height: 0.45 },
   pan: { path: 'items/pan.glb', height: 0.48 },
   backpack: { path: 'items/backpack.glb', height: 0.75 },
+  tent: { path: 'items/tent.glb', height: 1.7 },
+  chest_closed: { path: 'items/chest_closed.glb', height: 0.6 },
+  pouch: { path: 'items/pouch.glb', height: 0.42 },
   bonfire: { path: 'items/bonfire.glb', height: 0.9 },
   wood_log: { path: 'items/wood_log.glb', height: 0.45 },
   trophy: { path: 'items/crown.glb', height: 0.45 },
