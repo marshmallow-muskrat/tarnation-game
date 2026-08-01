@@ -318,7 +318,7 @@ export class WorldRenderer {
     for (let row = 0; row < GRID_H; row++) {
       for (let col = 0; col < GRID_W; col++) {
         const t = tiles[row]![col]!;
-        if (t.state === 'grass' && !t.trap) continue;
+        if (t.state === 'grass' && !t.trap && !t.bearTrap && !t.bearTrapClosed) continue;
 
         const wx = col + 0.5;
         const wz = row + 0.5;
@@ -336,6 +336,8 @@ export class WorldRenderer {
           _color.set(0x8a5ab0);
         } else if (t.trap) {
           _color.set(0x9a5ac0);
+        } else if (t.bearTrap || t.bearTrapClosed) {
+          _color.set(t.bearTrapClosed ? 0x5e5960 : 0x9b7b4e);
         } else {
           continue;
         }

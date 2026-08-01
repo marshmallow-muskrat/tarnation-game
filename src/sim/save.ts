@@ -10,7 +10,7 @@ import {
 import { cropItem, ITEM_DARKWOOD, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 
 export interface GameStats {
   cropsHarvested: number;
@@ -22,7 +22,29 @@ export interface GameStats {
   weaselsFelled: number;
 }
 
-export type WeaponId = 'rock' | 'bow' | 'blunderbuss';
+export type WeaponId = 'rock' | 'shotgun' | 'bow' | 'axe';
+
+export type BuildingId =
+  | 'silo'
+  | 'windmill'
+  | 'tower_windmill'
+  | 'water_tower'
+  | 'well'
+  | 'chicken_coop'
+  | 'fence'
+  | 'fence2'
+  | 'small_barn'
+  | 'open_barn'
+  | 'barn'
+  | 'silo_house'
+  | 'big_barn';
+
+export interface PlacedBuilding {
+  id: BuildingId;
+  x: number;
+  z: number;
+  rotation: number;
+}
 
 /** Chopped trees: "tx,ty" → day it was felled. */
 export type ChoppedTrees = Record<string, number>;
@@ -36,6 +58,8 @@ export interface SaveData {
   tiles: Tile[][];
   weapon: WeaponId;
   unlockedWeapons: WeaponId[];
+  homesteadTier: number;
+  placedBuildings: PlacedBuilding[];
   irrigationTier: number;
   bucketFill: number;
   selectedCrop: string;
@@ -98,9 +122,45 @@ function migrateInventory(data: Record<string, unknown>): Inventory {
 }
 
 function migrateWeapon(w: unknown): WeaponId {
-  // The slingshot became the starting rock in v4.
-  if (w === 'bow' || w === 'blunderbuss') return w;
-  return 'rock';
+  // The old rock placeholder is now the Survival Pack shotgun. Keep rock in
+  // the type only so older serialized saves can be read safely.
+  if (w === 'shotgun') return 'shotgun';
+  if (w === 'bow' || w === 'axe') return w;
+  if (w === 'blunderbuss') return 'axe';
+  return 'shotgun';
+}
+
+function migrateBuildings(raw: unknown): PlacedBuilding[] {
+  if (!Array.isArray(raw)) return [];
+  const ids = new Set<BuildingId>([
+    'silo',
+    'windmill',
+    'tower_windmill',
+    'water_tower',
+    'well',
+    'chicken_coop',
+    'fence',
+    'fence2',
+    'small_barn',
+    'open_barn',
+    'barn',
+    'silo_house',
+    'big_barn',
+  ]);
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return [];
+    const e = entry as Record<string, unknown>;
+    if (!ids.has(e.id as BuildingId)) return [];
+    if (typeof e.x !== 'number' || typeof e.z !== 'number') return [];
+    return [
+      {
+        id: e.id as BuildingId,
+        x: e.x,
+        z: e.z,
+        rotation: typeof e.rotation === 'number' ? e.rotation : 0,
+      },
+    ];
+  });
 }
 
 export function deserialize(raw: string): SaveData | null {
@@ -114,7 +174,7 @@ export function deserialize(raw: string): SaveData | null {
 
     const unlocked = Array.isArray(parsed.unlockedWeapons)
       ? (parsed.unlockedWeapons as unknown[]).map(migrateWeapon)
-      : ['rock' as const];
+      : ['shotgun' as const];
 
     // Capture the incoming version before stamping: `data` aliases `parsed`.
     const incoming = typeof parsed.version === 'number' ? parsed.version : 0;
@@ -122,7 +182,10 @@ export function deserialize(raw: string): SaveData | null {
     data.version = SAVE_VERSION;
     data.inventory = migrateInventory(parsed);
     data.weapon = migrateWeapon(parsed.weapon);
-    data.unlockedWeapons = Array.from(new Set(['rock' as WeaponId, ...unlocked]));
+    data.unlockedWeapons = Array.from(new Set(['shotgun' as WeaponId, ...unlocked]));
+    const savedTier = typeof parsed.homesteadTier === 'number' ? parsed.homesteadTier : 1;
+    data.homesteadTier = Math.min(Math.max(savedTier, 1), 5);
+    data.placedBuildings = migrateBuildings(parsed.placedBuildings);
     // "Ducketts" was a typo — v5 spells it duckettes.
     data.duckettes =
       typeof parsed.duckettes === 'number'
@@ -143,11 +206,11 @@ export function deserialize(raw: string): SaveData | null {
       parsed.dropPity && typeof parsed.dropPity === 'object'
         ? (parsed.dropPity as PityState)
         : {};
-    // Slot meanings changed in v5 (0 was the fist, now it's the rock), so an
-    // older save's index no longer points at the tool the player had selected.
-    const preV5 = incoming < SAVE_VERSION;
+    // v4 used slot 0 for the fist. v5 introduced the ranged slot at index 0;
+    // that meaning remains stable now that the ranged asset is a shotgun.
+    const preV5 = incoming < 5;
     data.toolbarSlot =
-      !preV5 && typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : 1;
+      !preV5 && typeof parsed.toolbarSlot === 'number' ? parsed.toolbarSlot : preV5 ? 1 : 0;
     data.toolSlotActive = parsed.toolSlotActive === true;
     return data;
   } catch {
@@ -163,18 +226,20 @@ export function createNewSave(seed: number): SaveData {
     phase: 'day',
     elapsed: 0,
     tiles: [],
-    weapon: 'rock',
-    unlockedWeapons: ['rock'],
+    weapon: 'shotgun',
+    unlockedWeapons: ['shotgun'],
+    homesteadTier: 1,
+    placedBuildings: [],
     irrigationTier: 2,
     bucketFill: 0,
-    selectedCrop: 'turnip',
+    selectedCrop: 'beet',
     inventory: createInventory(),
     inventoryOpen: true,
     duckettes: 0,
     choppedTrees: {},
     clearedStumps: {},
     dropPity: {},
-    toolbarSlot: 1,
+    toolbarSlot: 0,
     toolSlotActive: false,
     seedInventory: [],
     codex: [],

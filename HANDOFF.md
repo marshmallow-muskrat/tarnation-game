@@ -103,17 +103,24 @@ animations. Use this to choose models rather than opening Blender.
 
 **Done**
 - Player is Cowboy_Male (Ultimate Animated Characters), animated
-- Trees, rocks, stumps render from **Ultimate Nature Pack** models via instancing
+- Trees render from the **Textured Stylized Trees — May 2020** pack via instancing; rocks,
+  stumps and scatter use the Ultimate Nature Pack models
 - Crops render from Nature Crops Pack, 4 growth stages per species
 - Terrain, river, creeks, lake, sky, horizon, chunked scatter, day/night
 - Economy: Ducketts, market stall, 24-slot inventory, per-item prices
 - Genetics/crossbreeding, soil painting, toolbar
+- Scatter uses instanced Ultimate Nature Pack grass, plants, flowers, bushes and rocks
+- B-slot bear traps use the open/closed assets and catch foxes in range; Q boulder remains separate
+- Survival Pack shotgun, shovel and red axe are modelled in the toolbar and attached to the right hand
+- The weapon ladder currently starts with shotgun → bow → axe/melee; no forced gun asset is invented
+- Homestead upgrades use the five house tiers, with the 13 farm building models available in build mode
+- HUD previews use real models for actions and inventory; the bucket keeps its readable emoji icon
 
 **Crop roster follows the art, deliberately.** Grass, Dandelion, **Beet**, Carrot, **Lettuce** —
 named for the models that exist. Do not rename crops to something the pack lacks.
 
 **Tuning already done — don't undo it**
-- `FARM_TREE_FRACTION` was cut 0.15 → 0.055. Real tree models have far more canopy
+- `FARM_TREE_FRACTION` is 0.055 and farm `tree_oak` is height 2.5. Real tree models have far more canopy
   volume than the thin cones those numbers were tuned for, and at 0.15 the map closed
   into a solid roof with the player buried. If you swap tree models again, re-check
   this number — canopy width, not model count, is what fills the screen.
@@ -121,7 +128,8 @@ named for the models that exist. Do not rename crops to something the pack lacks
 
 **Rejected, don't redo**
 - Stylized Nature MegaKit trees — converted and present under the `sn_` prefix in `nature/`, but
-  they read wrong against the flat-shaded look. Ultimate Nature Pack is the house style.
+  they read wrong against the flat-shaded look. The accepted farm tree set is now Textured
+  Stylized Trees — May 2020; Ultimate Nature remains the scatter house style.
 - Ultimate Guns — modern silhouettes break the 1940s Americana period.
 - Modular Sci-Fi — wrong game.
 - A weasel — no pack has one. The crop raider is a **fox**. Don't force species the packs lack.
@@ -130,30 +138,24 @@ named for the models that exist. Do not rename crops to something the pack lacks
 
 ## 5. Next tasks, in order
 
-1. **Scatter → Ultimate Nature Pack models.** `ScatterChunks.ts` still builds grass, pebbles,
-   bushes and flowers from `BoxGeometry`/`OctahedronGeometry` primitives. Swap to
-   `instancedParts()` using `nature/` models (`bush_1/2`, `rock_1/2/3`, `plant_1..5`, `grass_*`,
-   `flowers_*`) so scatter matches the trees. **Keep it instanced.** This is the biggest remaining
-   cohesion win.
+1. **Scatter → Ultimate Nature Pack models.** Done. `ScatterChunks.ts` uses `instancedParts()` for
+   `nature/` models (`bush_1/2`, `rock_1/2/3`, `plant_1..5`, `grass_*`, `flowers_*`) and keeps the
+   hundreds of instances batched.
 
-2. **Bear trap on the Q slot.** Q is currently "boulder". `items/bear_trap_open.glb` and
-   `bear_trap_closed.glb` are converted. Place a trap; a fox entering the radius is caught and the
-   model swaps to closed. Fits the farm-defence loop and uses real assets.
+2. **Bear trap on the B slot.** Done. Q remains the boulder; B places `bear_trap_open.glb`, catches
+   a fox entering the radius, swaps to `bear_trap_closed.glb`, and persists.
 
-3. **Tools in hand.** The Cowboy rig ships `PickUp`, `Walk_Carry`, `Run_Carry`, `Shoot_OneHanded`,
-   `SwordSlash`, `Punch`. Find the right hand bone, attach the equipped tool as a child, and drive
-   the matching clip. Converted and ready in `items/`: `axe.glb`, `axe_small.glb`, `axe_double.glb`,
-   `bow_wooden.glb`, `arrow.glb`, `hammer_double.glb`, `sword.glb`, `dagger.glb`, `knife.glb`,
-   `pan.glb`, `backpack.glb`, `bonfire.glb`.
+3. **Tools in hand.** Done. The Cowboy rig uses the right-hand bone plus `PickUp`, `Walk_Carry`,
+   `Run_Carry`, `Shoot_OneHanded`, `SwordSlash` and `Punch` clips. The Survival Pack shotgun,
+   shovel and red axe are attached model assets.
 
-4. **Weapon ladder — let the assets lead.** The old slingshot → bow → blunderbuss → varmint rifle →
-   Cropper ladder cannot be fully assetted: no blunderbuss or period rifle exists in any pack we
-   accepted. Build the ladder from what exists — thrown rock → **bow** (`bow_wooden` + `arrow`) →
-   axe/melee — and extend only when a fitting asset appears.
+4. **Weapon ladder — let the assets lead.** Done for the current accepted assets: Survival Pack
+   shotgun → **bow** (`bow_wooden` + `arrow`) → axe/melee. Weapon fire is gated to the ranged slot;
+   switching to shovel, axe or bucket clears active pellets.
 
-5. **Buildings.** `buildings/` has 13 farm buildings (barn, big_barn, small_barn, open_barn, silo,
-   silo_house, windmill, tower_windmill, water_tower, well, chicken_coop, fence, fence2). Wire the
-   homestead tiers and start the placeable town-building set from these.
+5. **Buildings.** Done. `buildings/` has 13 farm buildings (barn, big_barn, small_barn, open_barn,
+   silo, silo_house, windmill, tower_windmill, water_tower, well, chicken_coop, fence, fence2),
+   wired to homestead tiers and the first placeable town-building set.
 
 6. **Income curve.** Prices exist; ducketts-per-day doesn't. Measure it before pricing anything
    else — see `IDEAS.md` §0.3.

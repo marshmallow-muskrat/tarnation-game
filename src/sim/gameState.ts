@@ -29,7 +29,9 @@ import {
   createNewSave,
   defaultStats,
   type ChoppedTrees,
+  type BuildingId,
   type GameStats,
+  type PlacedBuilding,
   type SaveData,
   type WeaponId,
   serialize,
@@ -62,8 +64,12 @@ export interface GameState {
   toolbarSlot: number;
   /** Dedicated water tool (bucket) selected instead of a numbered slot */
   toolSlotActive: boolean;
-  /** Seconds until Boulder Roll is ready again */
+  /** Seconds until the boulder ability is ready again. */
   boulderCooldown: number;
+  /** Seconds until the B-slot bear trap is ready again. */
+  bearTrapCooldown: number;
+  homesteadTier: number;
+  placedBuildings: PlacedBuilding[];
   /** Plantable seeds (including hybrids) */
   seedInventory: Seed[];
   codex: CodexEntry[];
@@ -90,8 +96,10 @@ export function createGameState(seed?: number): GameState {
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
-    weapon: 'rock',
-    unlockedWeapons: ['rock'],
+    weapon: 'shotgun',
+    unlockedWeapons: ['shotgun'],
+    homesteadTier: 1,
+    placedBuildings: [],
     irrigationTier: 2,
     bucketFill: 0,
     selectedCrop: 'beet',
@@ -101,9 +109,10 @@ export function createGameState(seed?: number): GameState {
     choppedTrees: {},
     clearedStumps: {},
     dropPity: {},
-    toolbarSlot: 1, // start on the fist — the tool you build with
+    toolbarSlot: 0, // start on the Survival Pack shotgun for visual testing
     toolSlotActive: false,
     boulderCooldown: 0,
+    bearTrapCooldown: 0,
     seedInventory: starter,
     codex: [],
     stats: defaultStats(),
@@ -128,8 +137,10 @@ export function loadFromSaveData(data: SaveData): GameState {
     ...base,
     clock: createClock(data.day, data.phase, data.elapsed),
     tiles,
-    weapon: data.weapon ?? 'rock',
-    unlockedWeapons: data.unlockedWeapons ?? ['rock'],
+    weapon: data.weapon ?? 'shotgun',
+    unlockedWeapons: data.unlockedWeapons ?? ['shotgun'],
+    homesteadTier: Math.min(Math.max(data.homesteadTier ?? 1, 1), 5),
+    placedBuildings: (data.placedBuildings ?? []).map((b) => ({ ...b })),
     irrigationTier: Math.max(data.irrigationTier ?? 2, 2),
     bucketFill: Math.min(data.bucketFill ?? 0, BUCKET_CAPACITY),
     selectedCrop: data.selectedCrop ?? 'beet',
@@ -139,7 +150,7 @@ export function loadFromSaveData(data: SaveData): GameState {
     choppedTrees: { ...(data.choppedTrees ?? {}) },
     clearedStumps: { ...(data.clearedStumps ?? {}) },
     dropPity: { ...(data.dropPity ?? {}) },
-    toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 1, 0), TOOLBAR_SLOTS - 1),
+    toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 0, 0), TOOLBAR_SLOTS - 1),
     toolSlotActive: data.toolSlotActive ?? false,
     seedInventory: data.seedInventory?.length ? data.seedInventory : base.seedInventory,
     codex: data.codex ?? [],
@@ -152,7 +163,7 @@ export function loadFromSaveData(data: SaveData): GameState {
 
 export function toSaveData(gs: GameState): SaveData {
   return {
-    version: 5,
+    version: 6,
     seed: gs.seed,
     day: gs.clock.day,
     phase: gs.clock.phase,
@@ -160,6 +171,8 @@ export function toSaveData(gs: GameState): SaveData {
     tiles: cloneGrid(gs.tiles),
     weapon: gs.weapon,
     unlockedWeapons: [...gs.unlockedWeapons],
+    homesteadTier: gs.homesteadTier,
+    placedBuildings: gs.placedBuildings.map((b) => ({ ...b })),
     irrigationTier: gs.irrigationTier,
     bucketFill: gs.bucketFill,
     selectedCrop: gs.selectedCrop,
@@ -214,6 +227,7 @@ export function stepGameClock(gs: GameState, dt: number): GameStepResult {
     if (gs.toastTimer <= 0) gs.toast = '';
   }
   if (gs.boulderCooldown > 0) gs.boulderCooldown = Math.max(0, gs.boulderCooldown - dt);
+  if (gs.bearTrapCooldown > 0) gs.bearTrapCooldown = Math.max(0, gs.bearTrapCooldown - dt);
   return { ...result, matured };
 }
 
@@ -374,6 +388,22 @@ export function cycleWeapon(gs: GameState): void {
   const list = gs.unlockedWeapons;
   const i = list.indexOf(gs.weapon);
   gs.weapon = list[(i + 1) % list.length]!;
+}
+
+export function unlockWeapon(gs: GameState, weapon: WeaponId): boolean {
+  if (gs.unlockedWeapons.includes(weapon)) return false;
+  gs.unlockedWeapons.push(weapon);
+  return true;
+}
+
+export function placeBuilding(
+  gs: GameState,
+  id: BuildingId,
+  x: number,
+  z: number,
+  rotation = 0,
+): void {
+  gs.placedBuildings.push({ id, x, z, rotation });
 }
 
 export function newGameFromSeed(seed: number): GameState {

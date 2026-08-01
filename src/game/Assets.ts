@@ -200,6 +200,19 @@ function applySilhouetteMaterials(root: THREE.Object3D): void {
 function treatModel(key: ModelKey, root: THREE.Object3D): void {
   const def = modelDef(key);
   enableShadows(root);
+  if (def.textureRepeat) {
+    root.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const material of materials) {
+        const map = (material as THREE.MeshStandardMaterial).map;
+        if (!map) continue;
+        map.wrapS = THREE.RepeatWrapping;
+        map.wrapT = THREE.RepeatWrapping;
+        map.needsUpdate = true;
+      }
+    });
+  }
   if (def.height) scaleToHeight(root, def.height);
   if (def.rotateX) root.rotation.x = THREE.MathUtils.degToRad(def.rotateX);
   if (def.silhouette) applySilhouetteMaterials(root);
@@ -285,6 +298,24 @@ export type InstancedPart = {
 };
 
 /**
+ * Meshopt/KHR quantization commonly stores positions and normals as normalized
+ * integer attributes. BufferGeometry.applyMatrix4() mutates the backing array,
+ * so transforming those attributes in place can overflow the integer range.
+ * Convert the attributes that receive transforms to floats first.
+ */
+function dequantizeTransformAttributes(geometry: THREE.BufferGeometry): void {
+  for (const name of ['position', 'normal', 'tangent'] as const) {
+    const attr = geometry.getAttribute(name);
+    if (!attr || (attr.array instanceof Float32Array && !attr.normalized)) continue;
+    const values = new Float32Array(attr.count * attr.itemSize);
+    for (let i = 0; i < attr.count; i++) {
+      for (let c = 0; c < attr.itemSize; c++) values[i * attr.itemSize + c] = attr.getComponent(i, c);
+    }
+    geometry.setAttribute(name, new THREE.Float32BufferAttribute(values, attr.itemSize));
+  }
+}
+
+/**
  * Flatten a model into geometry/material pairs suitable for InstancedMesh.
  *
  * Scatter props render in the hundreds per chunk, so they must stay instanced —
@@ -304,10 +335,19 @@ export function instancedParts(key: ModelKey): InstancedPart[] {
   entry.scene.updateMatrixWorld(true);
   entry.scene.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
-    const geo = obj.geometry.clone();
-    geo.applyMatrix4(obj.matrixWorld);
-    const mat = Array.isArray(obj.material) ? obj.material[0]! : obj.material;
-    parts.push({ geometry: geo, material: mat });
+    const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+    const groups = obj.geometry.groups.length
+      ? obj.geometry.groups
+      : [{ start: 0, count: obj.geometry.index?.count ?? obj.geometry.attributes.position!.count, materialIndex: 0 }];
+    for (const group of groups) {
+      const geo = obj.geometry.clone();
+      geo.clearGroups();
+      geo.setDrawRange(group.start, group.count);
+      dequantizeTransformAttributes(geo);
+      geo.applyMatrix4(obj.matrixWorld);
+      const mat = materials[group.materialIndex] ?? materials[0]!;
+      parts.push({ geometry: geo, material: mat });
+    }
   });
   return parts;
 }

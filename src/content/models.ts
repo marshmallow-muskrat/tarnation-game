@@ -31,6 +31,8 @@ export type ModelDef = {
   tint?: number;
   /** 0..1 strength for `tint`. Default 0.7. */
   tintStrength?: number;
+  /** Repeat UVs for source packs that tile their atlas beyond the 0..1 range. */
+  textureRepeat?: boolean;
 
   /** Unlit pure black, fog disabled. For anything that should read as a silhouette. */
   silhouette?: boolean;
@@ -133,9 +135,18 @@ export const MODELS = {
   tomato_4: { path: 'crops/tomato_4.glb', height: 0.6 },
 
   // ── Nature — scatter. Keep these INSTANCED, see ASSETS.md ────────────────
-  tree_oak: { path: 'nature/common_tree_1.glb', height: 2.5 },
-  tree_oak_2: { path: 'nature/common_tree_2.glb', height: 4.8 },
-  tree_oak_3: { path: 'nature/common_tree_3.glb', height: 4.2 },
+  // Textured Stylized Trees — May 2020. FarmTrees picks a deterministic
+  // silhouette per tile, keeping these instanced even at grove scale.
+  tree_oak: { path: 'trees/tree_1.glb', height: 2.5, textureRepeat: true },
+  tree_oak_2: { path: 'trees/tree_2.glb', height: 2.5, textureRepeat: true },
+  tree_oak_3: { path: 'trees/tree_3.glb', height: 2.5, textureRepeat: true },
+  tree_oak_4: { path: 'trees/tree_4.glb', height: 2.5, textureRepeat: true },
+  tree_oak_5: { path: 'trees/tree_5.glb', height: 2.5, textureRepeat: true },
+  tree_oak_6: { path: 'trees/tree_6.glb', height: 2.5, textureRepeat: true },
+  tree_oak_7: { path: 'trees/tree_7.glb', height: 2.5, textureRepeat: true },
+  tree_oak_8: { path: 'trees/tree_8.glb', height: 2.5, textureRepeat: true },
+  tree_oak_9: { path: 'trees/tree_9.glb', height: 2.5, textureRepeat: true },
+  tree_oak_10: { path: 'trees/tree_10.glb', height: 2.5, textureRepeat: true },
   tree_birch: { path: 'nature/birch_tree_1.glb', height: 4.6 },
   tree_birch_2: { path: 'nature/birch_tree_2.glb', height: 4.3 },
   tree_stump: { path: 'nature/wood_log.glb', height: 0.45 },
@@ -177,12 +188,33 @@ export const MODELS = {
   chicken_coop: { path: 'buildings/chicken_coop.glb', height: 1.8 },
   fence: { path: 'buildings/fence.glb', height: 1.0 },
   fence2: { path: 'buildings/fence2.glb', height: 1.0 },
+  small_barn: { path: 'buildings/small_barn.glb', height: 2.6 },
+  open_barn: { path: 'buildings/open_barn.glb', height: 3.4 },
+  silo_house: { path: 'buildings/silo_house.glb', height: 5.4 },
   barn: { path: 'buildings/barn.glb', height: 4.0 },
+  big_barn: { path: 'buildings/big_barn.glb', height: 6.4 },
 
   // ── Items & tools ─────────────────────────────────────────────────────────
   slingshot: { path: 'items/slingshot.glb', height: 0.4 },
+  shotgun_2: { path: 'items/shotgun_2.glb', height: 0.85, note: 'Brown Survival Pack shotgun.' },
+  shovel: { path: 'items/shovel.glb', height: 1.1, note: 'Survival Pack shovel.' },
   bow: { path: 'items/bow.glb', height: 1.0 },
+  bow_wooden: { path: 'items/bow_wooden.glb', height: 0.85 },
+  arrow: { path: 'items/arrow.glb', height: 0.55 },
   axe: { path: 'items/axe.glb', height: 0.8 },
+  axe_small: { path: 'items/axe_small.glb', height: 0.62 },
+  axe_double: { path: 'items/axe_double.glb', height: 0.95 },
+  hammer_double: { path: 'items/hammer_double.glb', height: 0.95 },
+  sword: { path: 'items/sword.glb', height: 0.95 },
+  dagger: { path: 'items/dagger.glb', height: 0.55 },
+  knife: { path: 'items/knife.glb', height: 0.45 },
+  pan: { path: 'items/pan.glb', height: 0.48 },
+  backpack: { path: 'items/backpack.glb', height: 0.75 },
+  bonfire: { path: 'items/bonfire.glb', height: 0.9 },
+  wood_log: { path: 'items/wood_log.glb', height: 0.45 },
+  trophy: { path: 'items/crown.glb', height: 0.45 },
+  bear_trap_open: { path: 'items/bear_trap_open.glb', height: 0.35 },
+  bear_trap_closed: { path: 'items/bear_trap_closed.glb', height: 0.35 },
   bucket: { path: 'items/bucket.glb', height: 0.35 },
 
   // ── Zone entities — bosses, challenge zones, guardians ───────────────────

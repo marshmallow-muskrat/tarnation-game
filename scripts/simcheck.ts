@@ -84,18 +84,19 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
 // ------------------------------------------------------------- economy
 {
   ok('wood is the unit of account', itemInfo(ITEM_WOOD).price === 1);
-  const turnip = itemInfo(cropItem('Turnip')).price;
+  const beet = itemInfo(cropItem('Beet')).price;
   // A tree is 5 swings for 2 wood; a crop is a till + seed + water + 2 days.
-  ok('a crop beats two days of chopping', turnip >= 8, `turnip ${turnip}₫ vs wood 1₫`);
+  ok('a crop beats two days of chopping', beet >= 8, `beet ${beet}₫ vs wood 1₫`);
   ok(
     'crops are ordered by how demanding they are',
-    itemInfo(cropItem('Onion')).price > itemInfo(cropItem('Carrot')).price &&
-      itemInfo(cropItem('Carrot')).price > itemInfo(cropItem('Turnip')).price &&
-      itemInfo(cropItem('Turnip')).price > itemInfo(cropItem('Dandelion')).price,
+    itemInfo(cropItem('Lettuce')).price > itemInfo(cropItem('Carrot')).price &&
+      itemInfo(cropItem('Carrot')).price > itemInfo(cropItem('Beet')).price &&
+      itemInfo(cropItem('Beet')).price > itemInfo(cropItem('Dandelion')).price &&
+      itemInfo(cropItem('Dandelion')).price > itemInfo(cropItem('Grass')).price,
   );
   ok(
     'hybrids and trophies are the payout tier',
-    itemInfo(cropItem('Screaming Cabbage')).price > itemInfo(cropItem('Onion')).price &&
+    itemInfo(cropItem('Screaming Cabbage')).price > itemInfo(cropItem('Lettuce')).price &&
       itemInfo('trophy:Marsh Stag').price > itemInfo(cropItem('Screaming Cabbage')).price,
   );
 }
@@ -252,7 +253,7 @@ const all = [...results, ...m];
 console.log(all.some((r) => r.startsWith('FAIL')) ? '\nSOME CHECKS FAILED' : '\nALL CHECKS PASSED');
 if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
 
-// v4 → v5 slot remap: index 0 used to be the fist, now it's the rock.
+// v4 → v5 slot remap: index 0 used to be the fist, now it's the ranged tool.
 {
   const v4 = JSON.parse(legacy) as Record<string, unknown>;
   v4.toolbarSlot = 0;
@@ -262,10 +263,10 @@ if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
   if (label === 'FAIL') process.exitCode = 1;
 }
 
-// A brand-new game starts on the fist, not the rock.
+// A brand-new game starts on the Survival Pack shotgun.
 {
   const fresh = createGameState(7);
-  const label = fresh.toolbarSlot === 1 && !fresh.toolSlotActive ? 'PASS' : 'FAIL';
-  console.log(`${label}  a new game starts on the fist — slot ${fresh.toolbarSlot}`);
+  const label = fresh.toolbarSlot === 0 && !fresh.toolSlotActive ? 'PASS' : 'FAIL';
+  console.log(`${label}  a new game starts on the shotgun — slot ${fresh.toolbarSlot}`);
   if (label === 'FAIL') process.exitCode = 1;
 }

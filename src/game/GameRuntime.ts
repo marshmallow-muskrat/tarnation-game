@@ -6,6 +6,11 @@ import {
   BOULDER_RADIUS,
   BOULDER_RANGE,
   BOULDER_SPEED,
+  BEAR_TRAP_COOLDOWN,
+  BEAR_TRAP_PLACE_RANGE,
+  BEAR_TRAP_RADIUS,
+  BOW_COOLDOWN,
+  BOW_SPEED,
   BUCKET_CAPACITY,
   CROP_DEFS,
   FARM_TREE_CHOPS,
@@ -30,11 +35,18 @@ import {
   SHOT_COOLDOWN,
   SHOT_LIFETIME,
   SHOT_SPEED,
+  SHOTGUN_COOLDOWN,
+  SHOTGUN_PELLETS,
+  SHOTGUN_SPEED,
+  SHOTGUN_SPREAD,
   STUMP_CHOPS,
   TOOLBAR_SLOTS,
   TOOL_RANGE,
   WATER_COLLECT_RANGE,
+  WEASEL_ATTACK_RADIUS,
+  WEASEL_ATTACK_SLOT_GAP,
   WEASEL_BURROW_TIME,
+  WEASEL_SEPARATION,
   WEASEL_EAT_TIME,
   WEASEL_SPEED,
   WIN_DAY,
@@ -46,6 +58,7 @@ import {
   checkWin,
   clearStump,
   createGameState,
+  cycleWeapon,
   cycleSeed,
   fillBucket,
   isStumpCleared,
@@ -54,6 +67,7 @@ import {
   markTreeChopped,
   markWinShown,
   onNewDay,
+  placeBuilding,
   saveToString,
   selectedSeed,
   sellEverything,
@@ -61,7 +75,9 @@ import {
   setToast,
   stepGameClock,
   takeFromInventory,
+  unlockWeapon,
   useBucketWater,
+  woodCount,
   type GameState,
 } from '../sim/gameState';
 import {
@@ -74,10 +90,12 @@ import {
   hasRepelNearby,
   makeBreedingBed,
   nibbleCrop,
+  placeBearTrap,
   placeTrap,
   plantTile,
   tillTile,
   tileCenter,
+  triggerBearTrap,
   waterTile,
   worldToTile,
   cropValueScore,
@@ -94,15 +112,17 @@ import {
   trapBehaviourLabel,
   type WeaselType,
 } from '../sim/raid';
-import { cloneModel, preloadAll, initAssetLoaders } from './Assets';
+import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Assets';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
 import { WorldRenderer } from './WorldRenderer';
+import type { BuildingId, PlacedBuilding } from '../sim/save';
 
 export type HudSlot = {
   id: ItemId | null;
   name: string;
   glyph: string;
+  model: ModelKey | null;
   count: number;
   price: number;
   blurb: string;
@@ -112,13 +132,14 @@ export type HudToolbarSlot = {
   index: number;
   name: string;
   glyph: string;
+  model: ModelKey | null;
   selected: boolean;
   empty: boolean;
 };
 
 export type HudMarket = {
   open: boolean;
-  items: { id: ItemId; name: string; glyph: string; count: number; price: number }[];
+  items: { id: ItemId; name: string; glyph: string; model: ModelKey | null; count: number; price: number }[];
   total: number;
 };
 
@@ -142,8 +163,30 @@ export type HudSnapshot = {
   inventoryOpen: boolean;
   duckettes: number;
   toolbar: HudToolbarSlot[];
-  toolSlot: { name: string; glyph: string; selected: boolean; fill: number; capacity: number };
-  ultimate: { name: string; glyph: string; ready: boolean; cooldown: number; max: number };
+  toolSlot: {
+    name: string;
+    glyph: string;
+    model: ModelKey | null;
+    selected: boolean;
+    fill: number;
+    capacity: number;
+  };
+  ultimate: {
+    name: string;
+    glyph: string;
+    model: ModelKey;
+    ready: boolean;
+    cooldown: number;
+    max: number;
+  };
+  bearTrap: {
+    name: string;
+    glyph: string;
+    model: ModelKey;
+    ready: boolean;
+    cooldown: number;
+    max: number;
+  };
   market: HudMarket;
   /** Screen-space bearing to the market stall, radians, 0 = straight up. */
   marketAngle: number;
@@ -173,10 +216,13 @@ type Weasel = {
   eatTimer: number;
   dead: boolean;
   haulSeed: boolean;
+  attackSlot: number;
+  attackAngle: number;
 };
 
 type Shot = {
-  mesh: THREE.Mesh;
+  root: THREE.Object3D;
+  kind: 'rock' | 'arrow' | 'pellet';
   x: number;
   z: number;
   vx: number;
@@ -219,22 +265,82 @@ type PlainsAnimal = {
 
 type ToolMode = 'farm' | 'trench' | 'breed' | 'trap';
 
+type PlayerClip =
+  | 'idle'
+  | 'walk'
+  | 'run'
+  | 'walkCarry'
+  | 'runCarry'
+  | 'pickUp'
+  | 'shoot'
+  | 'swordSlash'
+  | 'punch';
+
+const HOMESTEAD_MODEL_KEYS = [
+  'house_1',
+  'house_2',
+  'house_3',
+  'house_4',
+  'house_5',
+] as const;
+
+const PLACEABLE_BUILDINGS: {
+  id: BuildingId;
+  model: ModelKey;
+  name: string;
+  cost: number;
+}[] = [
+  { id: 'well', model: 'well', name: 'Well', cost: 3 },
+  { id: 'chicken_coop', model: 'chicken_coop', name: 'Chicken Coop', cost: 5 },
+  { id: 'silo', model: 'silo', name: 'Silo', cost: 7 },
+  { id: 'windmill', model: 'windmill', name: 'Windmill', cost: 8 },
+  { id: 'tower_windmill', model: 'tower_windmill', name: 'Tower Windmill', cost: 12 },
+  { id: 'water_tower', model: 'water_tower', name: 'Water Tower', cost: 10 },
+  { id: 'fence', model: 'fence', name: 'Fence', cost: 1 },
+  { id: 'fence2', model: 'fence2', name: 'Fence 2', cost: 1 },
+  { id: 'small_barn', model: 'small_barn', name: 'Small Barn', cost: 5 },
+  { id: 'open_barn', model: 'open_barn', name: 'Open Barn', cost: 7 },
+  { id: 'barn', model: 'barn', name: 'Barn', cost: 10 },
+  { id: 'silo_house', model: 'silo_house', name: 'Silo House', cost: 14 },
+  { id: 'big_barn', model: 'big_barn', name: 'Big Barn', cost: 18 },
+];
+
+const HOMESTEAD_X = HOMESTEAD_MIN_X + 8;
+const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
+const HOMESTEAD_UPGRADE_WOOD = [0, 6, 12, 24, 48];
+
 /**
- * Bottom toolbar. Slot 1 is the rock you throw, slot 2 the fist you work the
- * ground with, slot 3 the axe. The bucket has its own water slot, and Boulder
- * Roll its own ultimate slot to the left.
+ * Bottom toolbar. Slot 1 is the brown shotgun, slot 2 the shovel you work the
+ * ground with, slot 3 the red axe. The bucket has its own water slot, and Boulder
+ * Roll its own ability slots to the left.
  */
-const SLOT_ROCK = 0;
-const SLOT_FIST = 1;
+const SLOT_SHOTGUN = 0;
+const SLOT_SHOVEL = 1;
 const SLOT_AXE = 2;
 
-const TOOLBAR: { name: string; glyph: string; empty: boolean }[] = [
-  { name: 'Rock', glyph: '🪨', empty: false },
-  { name: 'Fist', glyph: '✊', empty: false },
-  { name: 'Axe', glyph: '🪓', empty: false },
-  { name: '', glyph: '', empty: true },
-  { name: '', glyph: '', empty: true },
+const TOOLBAR: { name: string; glyph: string; model: ModelKey | null; empty: boolean }[] = [
+  { name: 'Shotgun', glyph: '', model: 'shotgun_2', empty: false },
+  { name: 'Shovel', glyph: '', model: 'shovel', empty: false },
+  { name: 'Axe', glyph: '', model: 'axe', empty: false },
+  { name: '', glyph: '', model: null, empty: true },
+  { name: '', glyph: '', model: null, empty: true },
 ];
+
+const CROP_ICON_MODELS: Record<string, ModelKey> = {
+  Grass: 'grasscrop_4',
+  Dandelion: 'dandelion_4',
+  Beet: 'beet_4',
+  Carrot: 'carrot_4',
+  Lettuce: 'lettuce_4',
+};
+
+function itemIconModel(id: ItemId): ModelKey | null {
+  if (id === ITEM_WOOD || id === 'darkwood') return 'wood_log';
+  const crop = cropName(id);
+  if (crop !== null) return CROP_ICON_MODELS[crop] ?? null;
+  if (id.startsWith('trophy:')) return 'trophy';
+  return null;
+}
 
 export class GameRuntime {
   private gs!: GameState;
@@ -249,6 +355,11 @@ export class GameRuntime {
   private playerMixer: THREE.AnimationMixer | null = null;
   private idleAction: THREE.AnimationAction | null = null;
   private walkAction: THREE.AnimationAction | null = null;
+  private playerActions: Partial<Record<PlayerClip, THREE.AnimationAction>> = {};
+  private oneShotAction: THREE.AnimationAction | null = null;
+  private handBone: THREE.Object3D | null = null;
+  private equippedToolRoot: THREE.Object3D | null = null;
+  private equippedToolKey: 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | null = null;
   private playerX = WORLD_SIZE / 2;
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
@@ -256,6 +367,8 @@ export class GameRuntime {
   private headingTarget = 0;
   private nearWater = false;
   private toolMode: ToolMode = 'farm';
+  private buildingMode = false;
+  private placeableBuildingIndex = 0;
 
   private weasels: Weasel[] = [];
   private shots: Shot[] = [];
@@ -267,6 +380,9 @@ export class GameRuntime {
   private stallX = 0;
   private stallZ = 0;
   private nearMarket = false;
+  private homesteadRoot: THREE.Object3D | null = null;
+  private buildingRoots = new Map<string, THREE.Object3D>();
+  private bearTrapRoots = new Map<string, THREE.Object3D>();
   /** In-progress chops, keyed "tx,ty". */
   private treeChops = new Map<string, number>();
 
@@ -309,6 +425,8 @@ export class GameRuntime {
 
     this.spawnPlayer();
     this.spawnStall();
+    this.syncBuildings();
+    this.syncBearTrapModels();
     this.seedPlainsAnimals();
     this.world.syncFarmTiles(this.gs.tiles);
     this.rebuildCrops();
@@ -368,13 +486,86 @@ export class GameRuntime {
       this.playerMixer = new THREE.AnimationMixer(root);
       const idle = animations.find((c) => /idle/i.test(c.name)) ?? animations[0]!;
       const walk =
+        animations.find((c) => /^walk$/i.test(c.name)) ??
         animations.find((c) => /walk|run|locomotion/i.test(c.name)) ??
         animations[1] ??
         animations[0]!;
       this.idleAction = this.playerMixer.clipAction(idle);
       this.walkAction = this.playerMixer.clipAction(walk);
+      const clipAction = (pattern: RegExp): THREE.AnimationAction | undefined => {
+        const clip = animations.find((c) => pattern.test(c.name));
+        return clip ? this.playerMixer!.clipAction(clip) : undefined;
+      };
+      this.playerActions = {
+        idle: this.idleAction,
+        walk: this.walkAction,
+        run: clipAction(/^run$/i),
+        walkCarry: clipAction(/^walk_carry$/i),
+        runCarry: clipAction(/^run_carry$/i),
+        pickUp: clipAction(/^pickup$/i),
+        shoot: clipAction(/^shoot_onehanded$/i),
+        swordSlash: clipAction(/^swordslash$/i),
+        punch: clipAction(/^punch$/i),
+      };
       this.idleAction.play();
     }
+    this.handBone = this.findRightHand(root);
+    this.refreshEquippedTool();
+  }
+
+  private findRightHand(root: THREE.Object3D): THREE.Object3D | null {
+    let hand: THREE.Object3D | null = null;
+    root.traverse((obj) => {
+      if (hand || !obj.name) return;
+      if (/^(fist|hand)[._ -]?r$|right.?hand|hand.?right/i.test(obj.name)) hand = obj;
+    });
+    return hand;
+  }
+
+  private refreshEquippedTool(): void {
+    const desired: 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | null =
+      !this.gs || this.gs.toolSlotActive
+        ? null
+        : this.gs.toolbarSlot === SLOT_AXE
+          ? 'axe'
+          : this.gs.toolbarSlot === SLOT_SHOVEL
+            ? 'shovel'
+            : this.gs.toolbarSlot === SLOT_SHOTGUN && this.gs.weapon === 'bow'
+              ? 'bow_wooden'
+              : this.gs.toolbarSlot === SLOT_SHOTGUN && this.gs.weapon === 'shotgun'
+                ? 'shotgun_2'
+                : null;
+    if (desired === this.equippedToolKey && this.equippedToolRoot?.parent === this.handBone) return;
+    this.equippedToolRoot?.removeFromParent();
+    this.equippedToolRoot = null;
+    this.equippedToolKey = null;
+    if (!desired || !this.handBone) return;
+
+    const { root } = cloneModel(desired);
+    root.name = `equipped_${desired}`;
+    root.scale.multiplyScalar(
+      desired === 'shotgun_2' ? 0.4 : desired === 'shovel' ? 1.1 : desired === 'axe' ? 1.35 : 0.58,
+    );
+    if (desired === 'axe') {
+      // The manifest grounds the tool at its handle end; put the grip in the fist.
+      root.position.set(0, -0.64, 0.02);
+      root.rotation.set(0, 0, 0);
+    } else if (desired === 'shovel') {
+      root.position.set(0, -0.42, 0.02);
+      root.rotation.set(0, 0, 0);
+    } else if (desired === 'shotgun_2') {
+      // The source gun already reads correctly along the rig's carry axis. The
+      // old quarter-turn left it at the cowboy's knees and made Run_Carry look
+      // like he was dragging a rifle behind him.
+      root.position.set(0.05, -0.8, 0.12);
+      root.rotation.set(0, 0, 0);
+    } else {
+      root.position.set(0, -0.34, 0.04);
+      root.rotation.set(0, 0, 0);
+    }
+    this.handBone.add(root);
+    this.equippedToolRoot = root;
+    this.equippedToolKey = desired;
   }
 
   /** The market stall is the only structure on the map. */
@@ -387,6 +578,54 @@ export class GameRuntime {
     root.rotation.y = -0.5;
     this.stallRoot = root;
     this.world.getFarmActors().add(root);
+    this.world.markShadowsDirty();
+  }
+
+  private syncBuildings(): void {
+    this.homesteadRoot?.removeFromParent();
+    this.homesteadRoot = null;
+    for (const root of this.buildingRoots.values()) root.removeFromParent();
+    this.buildingRoots.clear();
+
+    const tier = Math.min(Math.max(this.gs.homesteadTier, 1), HOMESTEAD_MODEL_KEYS.length);
+    const homestead = cloneModel(HOMESTEAD_MODEL_KEYS[tier - 1]! ).root;
+    homestead.name = `homestead_tier_${tier}`;
+    homestead.position.set(HOMESTEAD_X, this.world.heightAt(HOMESTEAD_X, HOMESTEAD_Z), HOMESTEAD_Z);
+    homestead.rotation.y = -0.25;
+    this.world.getFarmActors().add(homestead);
+    this.homesteadRoot = homestead;
+
+    this.gs.placedBuildings.forEach((placed: PlacedBuilding, index) => {
+      const def = PLACEABLE_BUILDINGS.find((entry) => entry.id === placed.id);
+      if (!def) return;
+      const root = cloneModel(def.model).root;
+      root.name = `placed_${placed.id}_${index}`;
+      root.position.set(placed.x, this.world.heightAt(placed.x, placed.z), placed.z);
+      root.rotation.y = placed.rotation;
+      this.world.getFarmActors().add(root);
+      this.buildingRoots.set(`${index}:${placed.id}`, root);
+    });
+    this.world.markShadowsDirty();
+  }
+
+  private syncBearTrapModels(): void {
+    for (const root of this.bearTrapRoots.values()) root.removeFromParent();
+    this.bearTrapRoots.clear();
+    for (let ty = 0; ty < GRID_H; ty++) {
+      for (let tx = 0; tx < GRID_W; tx++) {
+        const tile = this.gs.tiles[ty]![tx]!;
+        if (!tile.bearTrap && !tile.bearTrapClosed) continue;
+        const key = `${tx},${ty}`;
+        const model = tile.bearTrapClosed ? 'bear_trap_closed' : 'bear_trap_open';
+        const root = cloneModel(model).root;
+        const wc = this.farmTileWorld(tx, ty);
+        root.name = `${model}_${key}`;
+        root.position.set(wc.x, this.world.heightAt(wc.x, wc.z), wc.z);
+        root.rotation.y = (tx * 17 + ty * 31) % 6.28;
+        this.world.getFarmActors().add(root);
+        this.bearTrapRoots.set(key, root);
+      }
+    }
     this.world.markShadowsDirty();
   }
 
@@ -424,15 +663,23 @@ export class GameRuntime {
 
   selectSlot(index: number): void {
     if (index < 0 || index >= TOOLBAR_SLOTS) return;
+    this.buildingMode = false;
+    if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
     this.gs.toolSlotActive = false;
-    if (index !== SLOT_FIST) this.toolMode = 'farm';
+    if (index === SLOT_SHOTGUN) this.gs.weapon = this.gs.weapon === 'bow' ? 'bow' : 'shotgun';
+    if (index === SLOT_AXE) this.gs.weapon = 'axe';
+    if (index !== SLOT_SHOVEL) this.toolMode = 'farm';
+    this.refreshEquippedTool();
     this.pushHud(true);
   }
 
   selectToolSlot(): void {
+    this.buildingMode = false;
+    this.clearShots();
     this.gs.toolSlotActive = true;
     this.toolMode = 'farm';
+    this.refreshEquippedTool();
     this.pushHud(true);
   }
 
@@ -443,6 +690,10 @@ export class GameRuntime {
 
   useUltimate(): void {
     this.tryBoulderRoll();
+  }
+
+  useBearTrap(): void {
+    this.tryBearTrap();
   }
 
   /** Console helpers — teleport, hand out items, jump the clock. */
@@ -559,17 +810,44 @@ export class GameRuntime {
 
   private updateAnim(moving: boolean): void {
     if (!this.idleAction || !this.walkAction) return;
-    if (moving) {
-      this.walkAction.enabled = true;
-      this.walkAction.setEffectiveWeight(1);
-      this.idleAction.setEffectiveWeight(0);
-      if (!this.walkAction.isRunning()) this.walkAction.play();
-    } else {
-      this.idleAction.enabled = true;
-      this.idleAction.setEffectiveWeight(1);
-      this.walkAction.setEffectiveWeight(0);
-      if (!this.idleAction.isRunning()) this.idleAction.play();
+    if (this.oneShotAction?.isRunning()) {
+      for (const action of Object.values(this.playerActions)) {
+        if (action && action !== this.oneShotAction) action.setEffectiveWeight(0);
+      }
+      this.oneShotAction.setEffectiveWeight(1);
+      return;
     }
+    if (this.oneShotAction) {
+      this.oneShotAction.stop();
+      this.oneShotAction = null;
+    }
+
+    const speed = Math.hypot(this.velX, this.velZ);
+    const carry = this.equippedToolRoot !== null;
+    const locomotion = moving
+      ? carry
+        ? speed > PLAYER_SPEED * 0.72
+          ? this.playerActions.runCarry ?? this.playerActions.walkCarry ?? this.walkAction
+          : this.playerActions.walkCarry ?? this.walkAction
+        : this.playerActions.walk ?? this.walkAction
+      : this.playerActions.idle ?? this.idleAction;
+    for (const action of Object.values(this.playerActions)) {
+      if (action) action.setEffectiveWeight(action === locomotion ? 1 : 0);
+    }
+    locomotion.enabled = true;
+    if (!locomotion.isRunning()) locomotion.play();
+  }
+
+  private playPlayerAction(clip: PlayerClip): void {
+    const action = this.playerActions[clip];
+    if (!action) return;
+    this.oneShotAction?.stop();
+    action.reset();
+    action.setLoop(THREE.LoopOnce, 1);
+    action.clampWhenFinished = true;
+    action.setEffectiveWeight(1);
+    action.play();
+    this.oneShotAction = action;
   }
 
   private handleHotkeys(): void {
@@ -585,7 +863,31 @@ export class GameRuntime {
       setToast(this.gs, `Bucket · ${this.gs.bucketFill}/${BUCKET_CAPACITY}`, 1.2);
     }
     if (this.input.justPressed('KeyQ')) this.tryBoulderRoll();
+    if (this.input.justPressed('KeyB')) this.tryBearTrap();
     if (this.input.justPressed('KeyI')) this.toggleInventory();
+    if (this.input.justPressed('KeyR')) {
+      cycleWeapon(this.gs);
+      this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
+      this.gs.toolSlotActive = false;
+      this.refreshEquippedTool();
+      setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
+    }
+    if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
+    if (this.input.justPressed('KeyP')) {
+      this.buildingMode = !this.buildingMode;
+      this.toolMode = 'farm';
+      setToast(
+        this.gs,
+        this.buildingMode
+          ? `Build: ${PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!.name} · click to place`
+          : 'Build mode off',
+        1.6,
+      );
+    }
+    if (this.buildingMode && this.input.justPressed('KeyN')) {
+      this.placeableBuildingIndex = (this.placeableBuildingIndex + 1) % PLACEABLE_BUILDINGS.length;
+      setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!.name}`, 1.2);
+    }
 
     if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
       cycleSeed(this.gs, -1);
@@ -605,7 +907,7 @@ export class GameRuntime {
     ];
     for (const [code, mode, label] of structure) {
       if (!this.input.justPressed(code)) continue;
-      this.selectSlot(SLOT_FIST);
+      this.selectSlot(SLOT_SHOVEL);
       this.toolMode = mode;
       setToast(this.gs, label, 1.2);
     }
@@ -632,8 +934,11 @@ export class GameRuntime {
     this.nearMarket =
       Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ) <= MARKET_RANGE;
 
-    if (this.input.consumeRmb() || this.input.justPressed('Space')) this.throwRock();
-    if (this.input.consumeLmb()) this.useSelectedTool();
+    if (this.input.consumeRmb() || this.input.justPressed('Space')) this.useCombatAction();
+    if (this.input.consumeLmb()) {
+      if (this.buildingMode) this.placeSelectedBuilding();
+      else this.useSelectedTool();
+    }
 
     const clock = stepGameClock(this.gs, dt);
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
@@ -715,16 +1020,30 @@ export class GameRuntime {
     return { x: c.x, z: c.y };
   }
 
-  /** Rock, tree, stump or open water — all of them stop a hoe. */
+  /** Rock, tree, stump or open water — all of them stop a shovel. */
   private tileBlockedForTilling(tx: number, ty: number): boolean {
     const trees = this.world.getFarmTrees();
     if (trees?.blocksTilling(tx, ty)) return true;
     return this.world.distToWater(tx + 0.5, ty + 0.5) < 0.8;
   }
 
-  /** The grid only lights up for the fist — the tool that actually works soil. */
+  /** The grid only lights up for the shovel — the tool that actually works soil. */
   private updateHover(): void {
-    if (this.gs.toolSlotActive || this.gs.toolbarSlot !== SLOT_FIST) {
+    if (this.buildingMode) {
+      const tile = this.pointerTile();
+      if (!tile) {
+        this.world.setHover(null, null, false);
+        return;
+      }
+      const wc = this.farmTileWorld(tile.tx, tile.ty);
+      const usable =
+        Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) <= BEAR_TRAP_PLACE_RANGE &&
+        !this.tileBlockedForTilling(tile.tx, tile.ty) &&
+        this.world.distToWater(wc.x, wc.z) >= 2.5;
+      this.world.setHover(tile.tx, tile.ty, usable);
+      return;
+    }
+    if (this.gs.toolSlotActive || this.gs.toolbarSlot !== SLOT_SHOVEL) {
       this.world.setHover(null, null, false);
       return;
     }
@@ -752,18 +1071,95 @@ export class GameRuntime {
       return;
     }
     switch (this.gs.toolbarSlot) {
-      case SLOT_ROCK:
-        this.throwRock();
+      case SLOT_SHOTGUN:
+        this.fireWeapon();
+        return;
+      case SLOT_SHOVEL:
+        this.useShovel();
         return;
       case SLOT_AXE:
         this.useAxe();
         return;
-      case SLOT_FIST:
-        this.useFist();
-        return;
       default:
         setToast(this.gs, `Slot ${this.gs.toolbarSlot + 1} is empty`, 1.2);
     }
+  }
+
+  /** Combat input must respect the selected toolbar slot. */
+  private useCombatAction(): void {
+    if (this.gs.toolSlotActive) return;
+    if (this.gs.toolbarSlot === SLOT_SHOTGUN) {
+      this.fireWeapon();
+      return;
+    }
+    if (this.gs.toolbarSlot === SLOT_AXE) this.meleeSwing(AXE_DAMAGE);
+  }
+
+  private tryUpgradeHomestead(): void {
+    const distance = Math.hypot(this.playerX - HOMESTEAD_X, this.playerZ - HOMESTEAD_Z);
+    if (distance > 8) {
+      setToast(this.gs, 'Stand by the homestead to upgrade it', 1.8);
+      return;
+    }
+    if (this.gs.homesteadTier >= HOMESTEAD_MODEL_KEYS.length) {
+      setToast(this.gs, 'The homestead is fully upgraded', 1.8);
+      return;
+    }
+    const nextTier = this.gs.homesteadTier + 1;
+    const cost = HOMESTEAD_UPGRADE_WOOD[nextTier - 1] ?? 0;
+    if (woodCount(this.gs) < cost) {
+      setToast(this.gs, `Homestead tier ${nextTier}: need ${cost} Wood`, 2);
+      return;
+    }
+    if (cost > 0) takeFromInventory(this.gs, ITEM_WOOD, cost);
+    this.gs.homesteadTier = nextTier;
+    const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
+    this.syncBuildings();
+    this.persist();
+    setToast(
+      this.gs,
+      unlocked
+        ? `Homestead tier ${nextTier} · new weapon: ${this.gs.unlockedWeapons[this.gs.unlockedWeapons.length - 1]}`
+        : `Homestead tier ${nextTier}`,
+      2.4,
+    );
+  }
+
+  private placeSelectedBuilding(): void {
+    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
+    const tilePos = this.pointerTile();
+    if (!tilePos) return;
+    const tile = getTile(this.gs.tiles, tilePos.tx, tilePos.ty);
+    const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
+    if (!tile || tile.state !== 'grass') {
+      setToast(this.gs, 'Buildings need clear grass', 1.4);
+      return;
+    }
+    if (
+      Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > BEAR_TRAP_PLACE_RANGE ||
+      this.tileBlockedForTilling(tilePos.tx, tilePos.ty) ||
+      this.world.distToWater(wc.x, wc.z) < 2.5
+    ) {
+      setToast(this.gs, 'That ground is not suitable for a building', 1.6);
+      return;
+    }
+    if (
+      Math.hypot(wc.x - HOMESTEAD_X, wc.z - HOMESTEAD_Z) < 5 ||
+      this.gs.placedBuildings.some((b) => Math.hypot(b.x - wc.x, b.z - wc.z) < 2.2)
+    ) {
+      setToast(this.gs, 'Leave room around existing buildings', 1.6);
+      return;
+    }
+    if (woodCount(this.gs) < selected.cost) {
+      setToast(this.gs, `${selected.name}: need ${selected.cost} Wood`, 1.6);
+      return;
+    }
+    takeFromInventory(this.gs, ITEM_WOOD, selected.cost);
+    placeBuilding(this.gs, selected.id, wc.x, wc.z, this.headingTarget);
+    this.playPlayerAction('pickUp');
+    this.syncBuildings();
+    this.persist();
+    setToast(this.gs, `Built ${selected.name}`, 1.6);
   }
 
   private useBucket(): void {
@@ -782,16 +1178,17 @@ export class GameRuntime {
   }
 
   private useAxe(): void {
+    this.playPlayerAction('swordSlash');
     const tilePos = this.pointerTile();
     if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
     // Nothing to chop — swing at whatever is in front of you instead.
     this.meleeSwing(AXE_DAMAGE);
   }
 
-  private useFist(): void {
+  private useShovel(): void {
     const tilePos = this.pointerTile();
     if (!tilePos) {
-      this.meleeSwing(FIST_DAMAGE);
+      this.meleeSwing(FIST_DAMAGE, 'swordSlash');
       return;
     }
     const { tx, ty } = tilePos;
@@ -799,7 +1196,7 @@ export class GameRuntime {
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
-      this.meleeSwing(FIST_DAMAGE);
+      this.meleeSwing(FIST_DAMAGE, 'swordSlash');
       return;
     }
 
@@ -960,8 +1357,24 @@ export class GameRuntime {
 
   // ---------------------------------------------------------------- combat
 
-  private throwRock(): void {
-    if (this.shotCd > 0) return;
+  private fireWeapon(): void {
+    if (this.gs.toolSlotActive || this.gs.toolbarSlot !== SLOT_SHOTGUN) return;
+    if (this.gs.weapon === 'shotgun') {
+      this.fireShotgun();
+      return;
+    }
+    if (this.gs.weapon === 'bow') {
+      this.fireBow();
+      return;
+    }
+    if (this.gs.weapon === 'axe') {
+      this.meleeSwing(AXE_DAMAGE);
+      return;
+    }
+    this.throwRock();
+  }
+
+  private aimDirection(): { dx: number; dz: number } {
     const ndc = this.input.getPointerNdc();
     const hit = this.world.raycastGround(ndc.x, ndc.y);
     let dx = Math.sin(this.headingTarget);
@@ -974,6 +1387,88 @@ export class GameRuntime {
     dx /= len;
     dz /= len;
     this.headingTarget = Math.atan2(dx, dz);
+    return { dx, dz };
+  }
+
+  private fireShotgun(): void {
+    if (this.shotCd > 0) return;
+    const { dx, dz } = this.aimDirection();
+    const sideX = dz;
+    const sideZ = -dx;
+    const pelletMaterial = new THREE.MeshStandardMaterial({
+      color: 0x4b4b45,
+      metalness: 0.65,
+      roughness: 0.35,
+    });
+
+    for (let i = 0; i < SHOTGUN_PELLETS; i++) {
+      const spread = (i - (SHOTGUN_PELLETS - 1) / 2) * SHOTGUN_SPREAD;
+      const rawX = dx + sideX * spread;
+      const rawZ = dz + sideZ * spread;
+      const length = Math.hypot(rawX, rawZ) || 1;
+      const pelletX = rawX / length;
+      const pelletZ = rawZ / length;
+      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 4), pelletMaterial);
+      mesh.position.set(
+        this.playerX + pelletX * 0.4,
+        this.world.heightAt(this.playerX, this.playerZ) + 0.82,
+        this.playerZ + pelletZ * 0.4,
+      );
+      mesh.castShadow = true;
+      this.world.getSharedActors().add(mesh);
+      this.shots.push({
+        root: mesh,
+        kind: 'pellet',
+        x: this.playerX,
+        z: this.playerZ,
+        vx: pelletX * SHOTGUN_SPEED,
+        vz: pelletZ * SHOTGUN_SPEED,
+        life: SHOT_LIFETIME,
+        ricochet: 0,
+        dmg: 1,
+      });
+    }
+    this.shotCd = SHOTGUN_COOLDOWN;
+    this.playPlayerAction('shoot');
+    this.world.shake(0.06, 0.05);
+  }
+
+  private clearShots(): void {
+    for (const shot of this.shots) shot.root.removeFromParent();
+    this.shots.length = 0;
+  }
+
+  private fireBow(): void {
+    if (this.shotCd > 0) return;
+    const { dx, dz } = this.aimDirection();
+    const { root } = cloneModel('arrow');
+    root.scale.multiplyScalar(0.85);
+    root.position.set(
+      this.playerX + dx * 0.35,
+      this.world.heightAt(this.playerX, this.playerZ) + 0.95,
+      this.playerZ + dz * 0.35,
+    );
+    root.rotation.y = Math.atan2(dx, dz);
+    root.castShadow = true;
+    this.world.getSharedActors().add(root);
+    this.shots.push({
+      root,
+      kind: 'arrow',
+      x: this.playerX,
+      z: this.playerZ,
+      vx: dx * BOW_SPEED,
+      vz: dz * BOW_SPEED,
+      life: SHOT_LIFETIME,
+      ricochet: 0,
+      dmg: 2,
+    });
+    this.shotCd = BOW_COOLDOWN;
+    this.playPlayerAction('shoot');
+  }
+
+  private throwRock(): void {
+    if (this.shotCd > 0) return;
+    const { dx, dz } = this.aimDirection();
 
     // Special crops act as ammo when you have them; a bare rock costs nothing.
     let ammo: string | null = null;
@@ -994,7 +1489,8 @@ export class GameRuntime {
     mesh.castShadow = true;
     this.world.getSharedActors().add(mesh);
     this.shots.push({
-      mesh,
+      root: mesh,
+      kind: 'rock',
       x: this.playerX,
       z: this.playerZ,
       vx: dx * SHOT_SPEED,
@@ -1004,12 +1500,14 @@ export class GameRuntime {
       dmg: 1,
     });
     this.shotCd = SHOT_COOLDOWN;
+    this.playPlayerAction('shoot');
   }
 
-  /** Fist / axe swing — hits everything alive inside a short radius. */
-  private meleeSwing(damage: number): void {
+  /** Tool swing — hits everything alive inside a short radius. */
+  private meleeSwing(damage: number, clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash'): void {
     if (this.meleeCd > 0) return;
     this.meleeCd = MELEE_COOLDOWN;
+    this.playPlayerAction(clip);
     let connected = false;
     for (const w of [...this.weasels]) {
       if (w.dead) continue;
@@ -1030,22 +1528,10 @@ export class GameRuntime {
 
   private tryBoulderRoll(): void {
     if (this.gs.boulderCooldown > 0) {
-      setToast(this.gs, `Boulder Roll ready in ${Math.ceil(this.gs.boulderCooldown)}s`, 1.2);
+      setToast(this.gs, `Boulder ready in ${Math.ceil(this.gs.boulderCooldown)}s`, 1.2);
       return;
     }
-    const ndc = this.input.getPointerNdc();
-    const hit = this.world.raycastGround(ndc.x, ndc.y);
-    let dx = Math.sin(this.headingTarget);
-    let dz = Math.cos(this.headingTarget);
-    if (hit) {
-      dx = hit.x - this.playerX;
-      dz = hit.z - this.playerZ;
-    }
-    const len = Math.hypot(dx, dz) || 1;
-    dx /= len;
-    dz /= len;
-    this.headingTarget = Math.atan2(dx, dz);
-
+    const { dx, dz } = this.aimDirection();
     const mesh = new THREE.Mesh(
       new THREE.DodecahedronGeometry(BOULDER_RADIUS, 1),
       new THREE.MeshStandardMaterial({ color: 0x6f6a5e, flatShading: true, roughness: 0.95 }),
@@ -1110,18 +1596,55 @@ export class GameRuntime {
     }
   }
 
+  private tryBearTrap(): void {
+    if (this.gs.bearTrapCooldown > 0) {
+      setToast(this.gs, `Bear trap ready in ${Math.ceil(this.gs.bearTrapCooldown)}s`, 1.2);
+      return;
+    }
+    const pointer = this.pointerTile();
+    const fallbackX = this.playerX + Math.sin(this.headingTarget) * 1.5;
+    const fallbackZ = this.playerZ + Math.cos(this.headingTarget) * 1.5;
+    const tilePos = pointer ?? this.worldToFarmTile(fallbackX, fallbackZ);
+    if (!tilePos) return;
+    const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
+    const tile = getTile(this.gs.tiles, tilePos.tx, tilePos.ty);
+    if (
+      !tile ||
+      Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > BEAR_TRAP_PLACE_RANGE ||
+      this.tileBlockedForTilling(tilePos.tx, tilePos.ty) ||
+      this.world.distToWater(wc.x, wc.z) < 1.2
+    ) {
+      setToast(this.gs, 'Place the bear trap on clear ground nearby', 1.5);
+      return;
+    }
+    if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
+      setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
+      return;
+    }
+    this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
+    this.playPlayerAction('pickUp');
+    this.world.syncFarmTiles(this.gs.tiles);
+    this.syncBearTrapModels();
+    this.persist();
+    setToast(this.gs, 'Bear trap set', 1.4);
+  }
+
   private stepShots(dt: number): void {
     for (let i = this.shots.length - 1; i >= 0; i--) {
       const s = this.shots[i]!;
       s.x += s.vx * dt;
       s.z += s.vz * dt;
       s.life -= dt;
-      s.mesh.position.set(s.x, 0.8, s.z);
-      s.mesh.rotation.x += dt * 9;
-      s.mesh.rotation.y += dt * 7;
+      s.root.position.set(s.x, this.world.heightAt(s.x, s.z) + (s.kind === 'arrow' ? 0.95 : 0.8), s.z);
+      if (s.kind === 'arrow') {
+        s.root.rotation.y = Math.atan2(s.vx, s.vz);
+      } else if (s.kind === 'rock') {
+        s.root.rotation.x += dt * 9;
+        s.root.rotation.y += dt * 7;
+      }
 
       if (s.life <= 0) {
-        s.mesh.removeFromParent();
+        s.root.removeFromParent();
         this.shots.splice(i, 1);
         continue;
       }
@@ -1155,7 +1678,7 @@ export class GameRuntime {
         }
       }
       if (consumed) {
-        s.mesh.removeFromParent();
+        s.root.removeFromParent();
         this.shots.splice(i, 1);
       }
     }
@@ -1241,6 +1764,8 @@ export class GameRuntime {
         eatTimer: 0,
         dead: false,
         haulSeed: false,
+        attackSlot: this.weasels.length,
+        attackAngle: this.gs.rng() * Math.PI * 2,
       });
     }
     this.world.markShadowsDirty();
@@ -1257,11 +1782,48 @@ export class GameRuntime {
     return WEASEL_SPEED;
   }
 
+  private nearestOpenBearTrap(x: number, z: number): { tx: number; ty: number; wx: number; wz: number } | null {
+    const r = Math.ceil(BEAR_TRAP_RADIUS + 0.5);
+    const cx = Math.floor(x);
+    const cz = Math.floor(z);
+    let best: { tx: number; ty: number; wx: number; wz: number } | null = null;
+    let bestDistance = BEAR_TRAP_RADIUS;
+    for (let ty = cz - r; ty <= cz + r; ty++) {
+      for (let tx = cx - r; tx <= cx + r; tx++) {
+        const tile = getTile(this.gs.tiles, tx, ty);
+        if (!tile?.bearTrap || tile.bearTrapClosed) continue;
+        const wc = this.farmTileWorld(tx, ty);
+        const distance = Math.hypot(x - wc.x, z - wc.z);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = { tx, ty, wx: wc.x, wz: wc.z };
+        }
+      }
+    }
+    return best;
+  }
+
   private stepWeasels(dt: number): void {
     const crops = findCropTiles(this.gs.tiles);
     for (const w of [...this.weasels]) {
       if (w.dead) continue;
       (w.root.userData.mixer as THREE.AnimationMixer | undefined)?.update(dt);
+
+      if (w.state !== 'burrow' && w.state !== 'trapped') {
+        const bearTrap = this.nearestOpenBearTrap(w.x, w.z);
+        if (bearTrap && triggerBearTrap(this.gs.tiles, bearTrap.tx, bearTrap.ty)) {
+          w.x = bearTrap.wx;
+          w.z = bearTrap.wz;
+          w.state = 'trapped';
+          w.timer = 5;
+          w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
+          w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
+          this.world.syncFarmTiles(this.gs.tiles);
+          this.syncBearTrapModels();
+          setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
+          continue;
+        }
+      }
 
       const tpos = this.worldToFarmTile(w.x, w.z);
       if (tpos && w.state !== 'burrow' && w.state !== 'trapped') {
@@ -1331,13 +1893,21 @@ export class GameRuntime {
             }
           }
         } else if (crops.length === 0) {
-          const dx = this.playerX - w.x;
-          const dz = this.playerZ - w.z;
+          // Give each fox a point on an attack ring. Without this, every raid
+          // actor seeks the exact player coordinate and the models stack into a
+          // single broken-looking pile.
+          const radius = WEASEL_ATTACK_RADIUS + (w.attackSlot % 3) * WEASEL_ATTACK_SLOT_GAP;
+          const targetX = this.playerX + Math.sin(w.attackAngle) * radius;
+          const targetZ = this.playerZ + Math.cos(w.attackAngle) * radius;
+          const dx = targetX - w.x;
+          const dz = targetZ - w.z;
           const len = Math.hypot(dx, dz) || 1;
-          w.x += (dx / len) * this.weaselSpeed(w) * 0.5 * dt;
-          w.z += (dz / len) * this.weaselSpeed(w) * 0.5 * dt;
+          if (len > 0.18) {
+            w.x += (dx / len) * this.weaselSpeed(w) * 0.5 * dt;
+            w.z += (dz / len) * this.weaselSpeed(w) * 0.5 * dt;
+          }
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-          w.root.rotation.y = Math.atan2(dx, dz);
+          w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
           continue;
         } else if (w.targetTx < 0) this.pickTarget(w, crops);
 
@@ -1412,7 +1982,40 @@ export class GameRuntime {
         }
       }
     }
+    this.separateWeasels();
     this.weasels = this.weasels.filter((w) => !w.dead);
+  }
+
+  private separateWeasels(): void {
+    for (let i = 0; i < this.weasels.length; i++) {
+      const a = this.weasels[i]!;
+      if (a.dead || a.state === 'trapped') continue;
+      for (let j = i + 1; j < this.weasels.length; j++) {
+        const b = this.weasels[j]!;
+        if (b.dead || b.state === 'trapped') continue;
+        let dx = a.x - b.x;
+        let dz = a.z - b.z;
+        let distance = Math.hypot(dx, dz);
+        if (distance >= WEASEL_SEPARATION) continue;
+        if (distance < 0.001) {
+          const angle = (i * 2.17 + j * 1.31) % (Math.PI * 2);
+          dx = Math.sin(angle);
+          dz = Math.cos(angle);
+          distance = 1;
+        }
+        const push = (WEASEL_SEPARATION - distance) * 0.52;
+        a.x += (dx / distance) * push;
+        a.z += (dz / distance) * push;
+        b.x -= (dx / distance) * push;
+        b.z -= (dz / distance) * push;
+      }
+    }
+    for (const w of this.weasels) {
+      if (w.dead || w.state === 'trapped') continue;
+      w.x = THREE.MathUtils.clamp(w.x, 2, WORLD_SIZE - 2);
+      w.z = THREE.MathUtils.clamp(w.z, 2, WORLD_SIZE - 2);
+      w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
+    }
   }
 
   private pickTarget(w: Weasel, crops: { x: number; y: number }[]): void {
@@ -1566,40 +2169,51 @@ export class GameRuntime {
     if (!this.onHud) return;
 
     const seed = selectedSeed(this.gs);
-    let hint = `1 rock · 2 fist · 3 axe · 6 bucket · Q boulder · I inventory · [ ] seed (${
-      seed?.displayName ?? '—'
-    })`;
+    let hint = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · I inventory · [ ] seed (${seed?.displayName ?? '—'})`;
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) hint = 'E — fill bucket';
-    if (this.toolMode !== 'farm') hint = `Tool: ${this.toolMode} · 2 back to fist`;
+    if (this.toolMode !== 'farm') hint = `Tool: ${this.toolMode} · 2 back to shovel`;
+    if (this.buildingMode) {
+      const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!;
+      hint = `Build: ${selected.name} · N next · click place · P exit`;
+    }
     if (this.nearMarket) hint = 'Market stall — sell for duckettes';
 
     const inventory: HudSlot[] = this.gs.inventory.map((slot) => {
-      if (!slot) return { id: null, name: '', glyph: '', count: 0, price: 0, blurb: '' };
+      if (!slot) return { id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' };
       const info = itemInfo(slot.id);
       return {
         id: slot.id,
         name: info.name,
         glyph: info.glyph,
+        model: itemIconModel(slot.id),
         count: slot.count,
         price: info.price,
         blurb: info.blurb,
       };
     });
     while (inventory.length < INVENTORY_SLOTS) {
-      inventory.push({ id: null, name: '', glyph: '', count: 0, price: 0, blurb: '' });
+      inventory.push({ id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' });
     }
 
     const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
       index: i,
       name: t.name,
       glyph: t.glyph,
+      model: t.model,
       empty: t.empty,
       selected: !this.gs.toolSlotActive && this.gs.toolbarSlot === i,
     }));
 
     const marketItems = occupiedSlots(this.gs.inventory).map((s) => {
       const info = itemInfo(s.id);
-      return { id: s.id, name: info.name, glyph: info.glyph, count: s.count, price: info.price };
+      return {
+        id: s.id,
+        name: info.name,
+        glyph: info.glyph,
+        model: itemIconModel(s.id),
+        count: s.count,
+        price: info.price,
+      };
     });
 
     const snap: HudSnapshot = {
@@ -1614,16 +2228,26 @@ export class GameRuntime {
       toolSlot: {
         name: 'Bucket',
         glyph: '🪣',
+        model: null,
         selected: this.gs.toolSlotActive,
         fill: this.gs.bucketFill,
         capacity: BUCKET_CAPACITY,
       },
       ultimate: {
-        name: 'Boulder Roll',
-        glyph: '🎳',
+        name: 'Boulder',
+        glyph: '',
+        model: 'rock_2',
         ready: this.gs.boulderCooldown <= 0,
         cooldown: Math.ceil(this.gs.boulderCooldown),
         max: BOULDER_COOLDOWN,
+      },
+      bearTrap: {
+        name: 'Bear Trap',
+        glyph: '',
+        model: 'bear_trap_open',
+        ready: this.gs.bearTrapCooldown <= 0,
+        cooldown: Math.ceil(this.gs.bearTrapCooldown),
+        max: BEAR_TRAP_COOLDOWN,
       },
       market: {
         open: this.nearMarket,

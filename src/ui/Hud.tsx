@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import * as THREE from 'three';
+import { cloneModel, type ModelKey } from '../game/Assets';
 import type { HudSlot, HudSnapshot } from '../game/GameRuntime';
 import type { ItemId } from '../sim/items';
 
@@ -8,6 +10,7 @@ type Props = {
   onSelectSlot: (index: number) => void;
   onSelectToolSlot: () => void;
   onUltimate: () => void;
+  onBearTrap: () => void;
   onToggleInventory: () => void;
   onSellOne: (id: ItemId) => void;
   onSellStack: (id: ItemId) => void;
@@ -16,12 +19,81 @@ type Props = {
 
 type Tip = { slot: HudSlot; x: number; y: number } | null;
 
+type IconView = {
+  rotationY: number;
+  camera: [number, number, number];
+  targetY: number;
+};
+
+// Tool silhouettes are much easier to read from their broad profile. The
+// default three-quarter view makes the axe and shovel nearly edge-on because
+// their heads are wide on X but very thin on Z.
+const ICON_VIEWS: Partial<Record<ModelKey, IconView>> = {
+  axe: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48 },
+  shovel: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48 },
+  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48 },
+  bow_wooden: { rotationY: 0, camera: [0, 1.05, 2.8], targetY: 0.5 },
+};
+
+function ModelIcon({ model, className = 'tool-model-icon' }: { model: ModelKey; className?: string }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+    renderer.setPixelRatio(1);
+    renderer.setSize(48, 48, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.25;
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xf3f0df, 0x26382f, 2.2));
+    const key = new THREE.DirectionalLight(0xffe0b0, 3.2);
+    key.position.set(2, 4, 3);
+    scene.add(key);
+
+    const camera = new THREE.PerspectiveCamera(24, 1, 0.01, 50);
+    const { root } = cloneModel(model);
+    const view = ICON_VIEWS[model];
+    root.rotation.y = view?.rotationY ?? -0.55;
+    scene.add(root);
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+    root.position.x -= center.x;
+    root.position.z -= center.z;
+    const extent = Math.max(size.x, size.y, size.z, 0.2);
+    const cameraPosition = view?.camera ?? [2.15, 1.35, 2.15];
+    camera.position.set(
+      extent * cameraPosition[0],
+      extent * cameraPosition[1],
+      extent * cameraPosition[2],
+    );
+    camera.lookAt(0, size.y * (view?.targetY ?? 0.42), 0);
+    renderer.render(scene, camera);
+
+    return () => {
+      renderer.dispose();
+      scene.remove(root);
+    };
+  }, [model]);
+
+  return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
+}
+
 export function Hud({
   hud,
   onDismissWin,
   onSelectSlot,
   onSelectToolSlot,
   onUltimate,
+  onBearTrap,
   onToggleInventory,
   onSellOne,
   onSellStack,
@@ -82,7 +154,8 @@ export function Hud({
         onClick={onToggleInventory}
         title="Toggle inventory (I)"
       >
-        🎒 <span className="inv-toggle-key">I</span>
+        <ModelIcon model="backpack" className="inv-toggle-model-icon" />
+        <span className="inv-toggle-key">I</span>
       </button>
 
       {hud.inventoryOpen && (
@@ -103,7 +176,7 @@ export function Hud({
               >
                 {slot.id && (
                   <>
-                    <span className="inv-glyph">{slot.glyph}</span>
+                    {slot.model ? <ModelIcon model={slot.model} className="inv-model-icon" /> : <span className="inv-glyph">{slot.glyph}</span>}
                     <span className="inv-count">{slot.count}</span>
                   </>
                 )}
@@ -119,7 +192,7 @@ export function Hud({
           style={{ right: 'auto', left: Math.max(8, tip.x - 210), top: Math.max(8, tip.y - 8) }}
         >
           <p className="tooltip-name">
-            {tip.slot.glyph} {tip.slot.name}
+            {tip.slot.name}
           </p>
           <p className="tooltip-meta">
             ×{tip.slot.count} · {tip.slot.price}₫ each · {tip.slot.price * tip.slot.count}₫ total
@@ -139,7 +212,8 @@ export function Hud({
                 {hud.market.items.map((item) => (
                   <li key={item.id}>
                     <span className="market-name">
-                      {item.glyph} {item.name} ×{item.count}
+                      {item.model ? <ModelIcon model={item.model} className="market-model-icon" /> : <span className="market-glyph">{item.glyph}</span>}
+                      {item.name} ×{item.count}
                     </span>
                     <span className="market-price">{item.price}₫</span>
                     <button type="button" onClick={() => onSellOne(item.id)}>
@@ -159,13 +233,12 @@ export function Hud({
         </div>
       )}
 
-      {hud.toast && (
-        <div className="toast">
-          <span>{hud.toast}</span>
-        </div>
-      )}
-
       <div className="hud-bottom-center">
+        {hud.toast && (
+          <div className="toast">
+            <span>{hud.toast}</span>
+          </div>
+        )}
         <p className="hint">{hud.hint}</p>
         <div className="toolbar">
           <button
@@ -175,9 +248,25 @@ export function Hud({
             title={`${hud.ultimate.name} (Q)`}
           >
             <span className="tool-key">Q</span>
-            <span className="tool-glyph">{hud.ultimate.glyph}</span>
+            <span className="tool-glyph">
+              <ModelIcon model={hud.ultimate.model} />
+            </span>
             <span className="tool-name">
-              {hud.ultimate.ready ? 'Boulder' : `${hud.ultimate.cooldown}s`}
+              {hud.ultimate.ready ? hud.ultimate.name : `${hud.ultimate.cooldown}s`}
+            </span>
+          </button>
+          <button
+            type="button"
+            className={`tool-slot ultimate trap ${hud.bearTrap.ready ? '' : 'cooling'}`}
+            onClick={onBearTrap}
+            title={`${hud.bearTrap.name} (B)`}
+          >
+            <span className="tool-key">B</span>
+            <span className="tool-glyph">
+              <ModelIcon model={hud.bearTrap.model} />
+            </span>
+            <span className="tool-name">
+              {hud.bearTrap.ready ? hud.bearTrap.name : `${hud.bearTrap.cooldown}s`}
             </span>
           </button>
           <span className="toolbar-divider" />
@@ -190,7 +279,9 @@ export function Hud({
               title={slot.empty ? 'Empty' : slot.name}
             >
               <span className="tool-key">{slot.index + 1}</span>
-              <span className="tool-glyph">{slot.glyph}</span>
+              <span className="tool-glyph">
+                {slot.model ? <ModelIcon model={slot.model} /> : slot.glyph}
+              </span>
               <span className="tool-name">{slot.empty ? '' : slot.name}</span>
             </button>
           ))}
@@ -202,7 +293,9 @@ export function Hud({
             title={`${hud.toolSlot.name} · ${hud.toolSlot.fill}/${hud.toolSlot.capacity} water`}
           >
             <span className="tool-key">6</span>
-            <span className="tool-glyph">{hud.toolSlot.glyph}</span>
+            <span className="tool-glyph">
+              {hud.toolSlot.model ? <ModelIcon model={hud.toolSlot.model} /> : hud.toolSlot.glyph}
+            </span>
             <span className="tool-name">
               {hud.toolSlot.fill}/{hud.toolSlot.capacity}
             </span>

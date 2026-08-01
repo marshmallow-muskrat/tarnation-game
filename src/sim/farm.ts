@@ -24,8 +24,12 @@ export interface Tile {
   breedB: Seed | null;
   /** Fence / trench damage for sappers */
   structureHp: number;
-  /** Mushroom trap present */
+  /** Legacy mushroom trap present */
   trap: boolean;
+  /** Bear trap placed from the Q slot. */
+  bearTrap: boolean;
+  /** The bear trap has fired and should render its closed model. */
+  bearTrapClosed: boolean;
   /** Day the tile was turned over. Unplanted soil goes back to grass. */
   tilledDay: number;
 }
@@ -42,6 +46,8 @@ export function emptyTile(): Tile {
     breedB: null,
     structureHp: 0,
     trap: false,
+    bearTrap: false,
+    bearTrapClosed: false,
     tilledDay: -1,
   };
 }
@@ -361,6 +367,24 @@ export function placeTrap(tiles: Tile[][], tx: number, ty: number): boolean {
   const t = getTile(tiles, tx, ty);
   if (!t || t.state === 'planted' || t.state === 'mature') return false;
   t.trap = true;
+  return true;
+}
+
+export function placeBearTrap(tiles: Tile[][], tx: number, ty: number): boolean {
+  const t = getTile(tiles, tx, ty);
+  if (!t || t.state === 'planted' || t.state === 'mature' || t.bearTrap || t.bearTrapClosed) {
+    return false;
+  }
+  t.bearTrap = true;
+  t.bearTrapClosed = false;
+  return true;
+}
+
+export function triggerBearTrap(tiles: Tile[][], tx: number, ty: number): boolean {
+  const t = getTile(tiles, tx, ty);
+  if (!t?.bearTrap || t.bearTrapClosed) return false;
+  t.bearTrap = false;
+  t.bearTrapClosed = true;
   return true;
 }
 

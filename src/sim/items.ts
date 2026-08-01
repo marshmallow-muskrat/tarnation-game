@@ -47,19 +47,19 @@ export function cropName(id: ItemId): string | null {
 }
 
 const BASE_CROPS: Record<string, { glyph: string; price: number; blurb: string }> = {
-  Grass: { glyph: '🌿', price: 6, blurb: 'Fodder. Grows anywhere, sells for little.' },
-  Dandelion: { glyph: '🌼', price: 8, blurb: 'Bitter greens. Somebody buys them.' },
-  Beet: { glyph: '🥬', price: 10, blurb: 'Honest root. The backbone of a season.' },
-  Carrot: { glyph: '🥕', price: 12, blurb: 'Sweeter than a beet, and priced like it.' },
-  Lettuce: { glyph: '🥗', price: 14, blurb: 'Thirsty, leafy, and worth the trouble.' },
+  Grass: { glyph: 'G', price: 6, blurb: 'Fodder. Grows anywhere, sells for little.' },
+  Dandelion: { glyph: 'D', price: 8, blurb: 'Bitter greens. Somebody buys them.' },
+  Beet: { glyph: 'B', price: 10, blurb: 'Honest root. The backbone of a season.' },
+  Carrot: { glyph: 'C', price: 12, blurb: 'Sweeter than a beet, and priced like it.' },
+  Lettuce: { glyph: 'L', price: 14, blurb: 'Thirsty, leafy, and worth the trouble.' },
 };
 
 export function itemInfo(id: ItemId): ItemInfo {
   if (id === ITEM_WOOD) {
-    return { id, name: 'Wood', glyph: '🪵', price: 1, blurb: 'Chopped from a tree. The base of every price.' };
+    return { id, name: 'Wood', glyph: 'W', price: 1, blurb: 'Chopped from a tree. The base of every price.' };
   }
   if (id === ITEM_DARKWOOD) {
-    return { id, name: 'Darkwood', glyph: '🌑', price: 10, blurb: 'Heartwood from somewhere darker.' };
+    return { id, name: 'Darkwood', glyph: 'DW', price: 10, blurb: 'Heartwood from somewhere darker.' };
   }
 
   const crop = cropName(id);
@@ -69,7 +69,7 @@ export function itemInfo(id: ItemId): ItemInfo {
     return {
       id,
       name: crop,
-      glyph: base?.glyph ?? '🌱',
+      glyph: base?.glyph ?? '+',
       price: base?.price ?? 26,
       blurb: base?.blurb ?? 'A hybrid of your own making. Rare, and priced for it.',
     };
@@ -79,11 +79,11 @@ export function itemInfo(id: ItemId): ItemInfo {
     return {
       id,
       name: id.slice(7),
-      glyph: '🏆',
+      glyph: 'T',
       price: 60,
       blurb: 'A rare trophy taken from a fallen creature.',
     };
   }
 
-  return { id, name: id, glyph: '📦', price: 1, blurb: '' };
+  return { id, name: id, glyph: '?', price: 1, blurb: '' };
 }

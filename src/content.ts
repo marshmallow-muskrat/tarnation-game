@@ -43,6 +43,12 @@ export const WEASEL_SPEED = 3.2;
 export const WEASEL_EAT_TIME = 3;
 export const WEASEL_HP = 1;
 export const WEASEL_BURROW_TIME = 1.2;
+/** Foxes stop at the player’s edge instead of converging into the same point. */
+export const WEASEL_ATTACK_RADIUS = 1.25;
+/** Minimum visual spacing between raid actors. */
+export const WEASEL_SEPARATION = 0.78;
+/** Additional radius between attack-ring slots. */
+export const WEASEL_ATTACK_SLOT_GAP = 0.28;
 export const NIBBLER_SPEED = 4.4;
 export const HAULER_SPEED = 3.6;
 
@@ -50,11 +56,18 @@ export const HAULER_SPEED = 3.6;
 export const SHOT_SPEED = 14;
 export const SHOT_COOLDOWN = 0.4;
 export const SHOT_LIFETIME = 1.2;
+export const SHOTGUN_COOLDOWN = 0.7;
+export const SHOTGUN_SPEED = 18;
+export const SHOTGUN_PELLETS = 6;
+export const SHOTGUN_SPREAD = 0.09;
 export const BOW_COOLDOWN = 0.55;
 export const BOW_SPEED = 18;
-export const BLUNDER_COOLDOWN = 1.1;
-export const BLUNDER_SPREAD = 0.28;
-export const BLUNDER_PELLETS = 5;
+/** B-slot bear trap placement cooldown. */
+export const BEAR_TRAP_COOLDOWN = 4;
+/** Radius around the trap model that catches a fox. */
+export const BEAR_TRAP_RADIUS = 0.85;
+/** How far ahead the B-slot can place a trap. */
+export const BEAR_TRAP_PLACE_RANGE = 3.2;
 
 // Overworld trees — choppable, respawning, clustered into groves
 /** Share of world tiles that carry a tree, averaged over the whole map. */
@@ -110,7 +123,7 @@ export const BUCKET_CAPACITY = 10;
 export const INVENTORY_SLOTS = 24;
 export const TOOLBAR_SLOTS = 5;
 
-// Ultimate — its own slot to the left of the toolbar
+// Abilities — their own slots to the left of the toolbar
 export const BOULDER_COOLDOWN = 12;
 export const BOULDER_DAMAGE = 5;
 export const BOULDER_SPEED = 9;

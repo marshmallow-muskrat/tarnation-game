@@ -118,12 +118,14 @@ body,
   bottom: 18px;
   left: 50%;
   transform: translateX(-50%);
-  max-width: min(720px, 92vw);
+  width: min(1000px, calc(100vw - 24px));
+  max-width: calc(100vw - 24px);
   text-align: center;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
+  pointer-events: none;
 }
 
 /* Inventory — 24 slots, unlimited stacks */
@@ -160,6 +162,35 @@ body,
 .inv-glyph {
   font-size: 17px;
   line-height: 1;
+}
+
+.inv-toggle-model-icon,
+.inv-model-icon,
+.market-model-icon {
+  display: block;
+  pointer-events: none;
+}
+
+.inv-toggle-model-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.inv-model-icon {
+  width: 30px;
+  height: 30px;
+}
+
+.market-model-icon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+
+.market-glyph {
+  width: 24px;
+  text-align: center;
+  flex: 0 0 24px;
 }
 
 .inv-count {
@@ -232,6 +263,13 @@ body,
 .tool-glyph {
   font-size: 21px;
   line-height: 1;
+}
+
+.tool-model-icon {
+  display: block;
+  width: 48px;
+  height: 48px;
+  pointer-events: none;
 }
 
 .tool-name {
@@ -363,10 +401,14 @@ body,
 }
 
 .hud-bottom-center .hint {
+  max-width: 100%;
+  box-sizing: border-box;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 14px;
+  line-height: 1.25;
+  white-space: normal;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
@@ -610,10 +652,7 @@ body,
 
 /* ----------------------------------------------------------------- toast */
 .toast {
-  position: absolute;
-  bottom: 140px;
-  left: 50%;
-  transform: translateX(-50%);
+  position: static;
   padding: 8px 16px;
   border-radius: 8px;
   background: var(--panel);
@@ -622,6 +661,9 @@ body,
   font-size: 13px;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  max-width: min(560px, 88vw);
+  max-width: min(720px, 100%);
+  box-sizing: border-box;
   text-align: center;
+  line-height: 1.25;
+  pointer-events: none;
 }

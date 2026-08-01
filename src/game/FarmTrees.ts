@@ -19,6 +19,18 @@ import { TERRAIN_SEED } from './terrain';
 
 const TREE_SEED = TERRAIN_SEED ^ 0x7a3e;
 const ROCK_SEED = TERRAIN_SEED ^ 0x2b91;
+const TREE_MODELS = [
+  'tree_oak',
+  'tree_oak_2',
+  'tree_oak_3',
+  'tree_oak_4',
+  'tree_oak_5',
+  'tree_oak_6',
+  'tree_oak_7',
+  'tree_oak_8',
+  'tree_oak_9',
+  'tree_oak_10',
+] as const;
 
 /** Where GameRuntime puts the market stall and drops the player in. */
 const STALL_X = HOMESTEAD_MIN_X + HOMESTEAD_SIZE / 2 + 6;
@@ -215,7 +227,7 @@ export class FarmTrees {
    * means the model is missing and the primitive cone/cylinder path is used instead.
    */
   private modelParts: {
-    tree: ReturnType<typeof instancedParts>;
+    trees: ReturnType<typeof instancedParts>[];
     rock: ReturnType<typeof instancedParts>;
     stump: ReturnType<typeof instancedParts>;
   } | null = null;
@@ -223,7 +235,7 @@ export class FarmTrees {
   private resolveModels(): void {
     if (this.modelParts) return;
     this.modelParts = {
-      tree: instancedParts('tree_oak'),
+      trees: TREE_MODELS.map((key) => instancedParts(key)),
       rock: instancedParts('rock_a'),
       stump: instancedParts('tree_stump'),
     };
@@ -241,12 +253,12 @@ export class FarmTrees {
 
     // One InstancedMesh per model part (a tree is trunk + leaves as separate meshes,
     // each with its own material). Every part receives the same per-instance matrix.
-    const treeParts = mp.tree.length
-      ? mp.tree.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
-      : [
-          new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, max),
-          new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, max),
-        ];
+    const modelTreeParts = mp.trees
+      .filter((parts) => parts.length > 0)
+      .map((parts) => parts.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max)));
+    const usingModels = modelTreeParts.length > 0;
+    const fallbackTrunk = new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, max);
+    const fallbackCanopy = new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, max * 2);
     const rockParts = mp.rock.length
       ? mp.rock.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
       : [new THREE.InstancedMesh(this.geoBoulder, this.matBoulder, max)];
@@ -254,13 +266,11 @@ export class FarmTrees {
       ? mp.stump.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
       : [new THREE.InstancedMesh(this.geoStump, this.matStump, max)];
 
-    const trunks = treeParts[0]!;
-    const canopy = treeParts[1] ?? treeParts[0]!;
     const stumps = stumpParts[0]!;
     const boulders = rockParts[0]!;
-    const usingModels = mp.tree.length > 0;
+    const treeCounts = modelTreeParts.map(() => 0);
 
-    for (const m of [...treeParts, ...rockParts, ...stumpParts]) {
+    for (const m of [...modelTreeParts.flat(), fallbackTrunk, fallbackCanopy, ...rockParts, ...stumpParts]) {
       m.castShadow = true;
       m.receiveShadow = true;
     }
@@ -310,42 +320,55 @@ export class FarmTrees {
 
         if (usingModels) {
           // The model already has trunk and foliage positioned relative to each
-          // other, so every part takes the identical ground-level matrix.
+          // other, so every part takes the identical ground-level matrix. Pick a
+          // stable silhouette from the Textured Stylized Trees pack per tile.
+          const variant = Math.min(
+            modelTreeParts.length - 1,
+            Math.floor(hash2(tx, ty, 0x77) * modelTreeParts.length),
+          );
+          const parts = modelTreeParts[variant]!;
+          const index = treeCounts[variant]!;
           this._p.set(x, y, z);
           this._s.set(sc, sc, sc);
           this._m.compose(this._p, this._q, this._s);
-          for (const part of treeParts) part.setMatrixAt(ti, this._m);
-          ti++;
-          ci = ti;
+          for (const part of parts) part.setMatrixAt(index, this._m);
+          treeCounts[variant] = index + 1;
           continue;
         }
 
         this._p.set(x, y + 0.62 * sc, z);
         this._s.set(sc, sc, sc);
         this._m.compose(this._p, this._q, this._s);
-        trunks.setMatrixAt(ti++, this._m);
+        fallbackTrunk.setMatrixAt(ti++, this._m);
 
         this._p.set(x, y + 1.5 * sc, z);
         this._m.compose(this._p, this._q, this._s);
-        canopy.setMatrixAt(ci++, this._m);
+        fallbackCanopy.setMatrixAt(ci++, this._m);
 
         this._p.set(x, y + 2.15 * sc, z);
         this._s.set(sc * 0.7, sc * 0.72, sc * 0.7);
         this._m.compose(this._p, this._q, this._s);
-        canopy.setMatrixAt(ci++, this._m);
+        fallbackCanopy.setMatrixAt(ci++, this._m);
       }
     }
 
     if (usingModels) {
-      for (const part of treeParts) part.count = ti;
+      modelTreeParts.forEach((parts, variant) => {
+        for (const part of parts) part.count = treeCounts[variant]!;
+      });
     } else {
-      trunks.count = ti;
-      canopy.count = ci;
+      fallbackTrunk.count = ti;
+      fallbackCanopy.count = ci;
     }
     for (const part of stumpParts) part.count = si;
     for (const part of rockParts) part.count = bi;
 
-    const all = [...treeParts, ...stumpParts, ...rockParts];
+    const all = [
+      ...modelTreeParts.flat(),
+      ...(usingModels ? [] : [fallbackTrunk, fallbackCanopy]),
+      ...stumpParts,
+      ...rockParts,
+    ];
     for (const m of all) {
       m.instanceMatrix.needsUpdate = true;
       m.computeBoundingSphere();
