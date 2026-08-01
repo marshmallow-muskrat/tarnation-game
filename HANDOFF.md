@@ -130,3 +130,9 @@ Deployment record:
   <https://8adc4535.tarnation.pages.dev>
 - `9c71e65` — completed vendor/deed plan, final QA, and release documentation —
   <https://174a94e2.tarnation.pages.dev>
+- `b84d1fb` — M0 trusted baseline: BASE-02 characterization suite and deployment gate —
+  <https://tarnation.pages.dev/>; GitHub Actions run
+  [30719858155](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30719858155)
+  passed all verification and deployment steps. Fresh production smoke test passed New Adventure,
+  Day 1 startup, keyboard movement before and after the field guide, and produced no console
+  warnings or errors.
