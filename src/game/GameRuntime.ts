@@ -577,6 +577,8 @@ export class GameRuntime {
   private popups: HudPopup[] = [];
   private popupId = 1;
   private hitPause = 0;
+  /** Renderer-only randomness; never consume the simulation RNG for decoration. */
+  private feedbackSeed = 0x51f15eed;
   private onHud: ((s: HudSnapshot) => void) | null = null;
   private lastHudJson = '';
   private winShownLocal = false;
@@ -2335,6 +2337,11 @@ export class GameRuntime {
     }
   }
 
+  private nextFeedbackRandom(): number {
+    this.feedbackSeed = (this.feedbackSeed * 1664525 + 1013904223) >>> 0;
+    return this.feedbackSeed / 0x1_0000_0000;
+  }
+
   /** Small, shared low-poly contact feedback for actions that changed the world. */
   private spawnFeedbackBurst(
     x: number,
@@ -2356,11 +2363,11 @@ export class GameRuntime {
     const particles: FeedbackParticle[] = [];
     for (let i = 0; i < count; i++) {
       const mesh = new THREE.Mesh(geometry, material);
-      const size = 0.65 + this.gs.rng() * 0.65;
+      const size = 0.65 + this.nextFeedbackRandom() * 0.65;
       mesh.position.set(
-        (this.gs.rng() - 0.5) * spread,
-        this.gs.rng() * 0.12,
-        (this.gs.rng() - 0.5) * spread,
+        (this.nextFeedbackRandom() - 0.5) * spread,
+        this.nextFeedbackRandom() * 0.12,
+        (this.nextFeedbackRandom() - 0.5) * spread,
       );
       mesh.scale.setScalar(size);
       mesh.renderOrder = 6;
@@ -2369,14 +2376,14 @@ export class GameRuntime {
         mesh,
         size,
         velocity: new THREE.Vector3(
-          (this.gs.rng() - 0.5) * 1.45,
-          0.72 + this.gs.rng() * 1.15,
-          (this.gs.rng() - 0.5) * 1.45,
+          (this.nextFeedbackRandom() - 0.5) * 1.45,
+          0.72 + this.nextFeedbackRandom() * 1.15,
+          (this.nextFeedbackRandom() - 0.5) * 1.45,
         ),
         spin: new THREE.Vector3(
-          (this.gs.rng() - 0.5) * 8,
-          (this.gs.rng() - 0.5) * 8,
-          (this.gs.rng() - 0.5) * 8,
+          (this.nextFeedbackRandom() - 0.5) * 8,
+          (this.nextFeedbackRandom() - 0.5) * 8,
+          (this.nextFeedbackRandom() - 0.5) * 8,
         ),
       });
     }
