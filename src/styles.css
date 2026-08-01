@@ -106,6 +106,17 @@ body,
   color: var(--red);
 }
 
+.save-status {
+  margin: 8px 0 6px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.save-status.failed {
+  color: var(--red);
+}
+
 .hud-top-left {
   position: absolute;
   top: 18px;
