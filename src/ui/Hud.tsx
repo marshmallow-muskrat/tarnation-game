@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { cloneModel, type ModelKey } from '../game/Assets';
+import { cloneModel, loadModel, type ModelKey } from '../game/Assets';
 import type { HudSlot, HudSnapshot } from '../game/GameRuntime';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
@@ -60,6 +60,17 @@ function ModelIcon({
   size?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [assetVersion, setAssetVersion] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    void loadModel(model).then(() => {
+      if (active) setAssetVersion((version) => version + 1);
+    });
+    return () => {
+      active = false;
+    };
+  }, [model]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -106,7 +117,7 @@ function ModelIcon({
       renderer.dispose();
       scene.remove(root);
     };
-  }, [model, size]);
+  }, [assetVersion, model, size]);
 
   return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
 }

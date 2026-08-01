@@ -9,7 +9,7 @@ import {
   WORLD_SIZE,
 } from '../content';
 import type { Tile } from '../sim/farm';
-import { cloneModel, type ModelKey } from './Assets';
+import { cloneModel, isModelReady, type ModelKey } from './Assets';
 import { FarmTrees } from './FarmTrees';
 import { standardMaterial } from './materials';
 import { hash2 } from './noise';
@@ -124,8 +124,9 @@ export class WorldRenderer {
     this.camera.lookAt(this.cameraTarget);
 
     // Scatter models are loaded by GameRuntime after this renderer is built.
-    // The first real scatter chunks are created by snapCamera once preloadAll()
-    // has completed; building here would permanently cache primitive fallbacks.
+    // The first real scatter chunks are created by snapCamera once the
+    // first_play group has completed; building here would permanently cache
+    // primitive fallbacks.
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -424,10 +425,13 @@ export class WorldRenderer {
       this.removeBuildPreview();
       return;
     }
-    if (!this.buildPreviewRoot || this.buildPreviewKey !== key) {
+    const needsLoadedModelRefresh =
+      this.buildPreviewRoot?.userData.assetFallback === true && isModelReady(key);
+    if (!this.buildPreviewRoot || this.buildPreviewKey !== key || needsLoadedModelRefresh) {
       this.removeBuildPreview();
       const { root } = cloneModel(key);
       root.name = `build_preview_${key}`;
+      root.userData.assetFallback = !isModelReady(key);
       root.renderOrder = 4;
       root.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) return;

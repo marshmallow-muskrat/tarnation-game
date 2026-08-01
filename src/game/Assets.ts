@@ -3,7 +3,12 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as skeletonClone } from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
-import { MODEL_KEYS, modelDef, type ModelKey } from '../content/models';
+import {
+  modelDef,
+  modelKeysForLoadGroup,
+  type AssetLoadGroup,
+  type ModelKey,
+} from '../content/models';
 
 // Model definitions live in src/content/models.ts. Adding an asset is a data edit
 // there, never a code edit here.
@@ -14,6 +19,19 @@ type CacheEntry = {
   animations: THREE.AnimationClip[];
   isFallback: boolean;
 };
+
+export type AssetLoadProgress = {
+  group: AssetLoadGroup;
+  loaded: number;
+  total: number;
+  fallbackKeys: readonly ModelKey[];
+  complete: boolean;
+};
+
+export type AssetLoadReport = Omit<AssetLoadProgress, 'complete'> & { complete: true };
+
+export const ASSET_LOAD_CONCURRENCY = 4;
+const ASSET_LOAD_ORDER = ['boot', 'first_play', 'nearby', 'catalog', 'optional'] as const satisfies readonly AssetLoadGroup[];
 
 const logged = new Set<string>();
 const cache = new Map<ModelKey, CacheEntry>();
@@ -157,9 +175,61 @@ export function initAssetLoaders(renderer: THREE.WebGLRenderer): void {
   loader.setKTX2Loader(ktx2);
 }
 
-/** Load all known keys (missing files become fallbacks). */
-export async function preloadAll(): Promise<void> {
-  await Promise.all(MODEL_KEYS.map((k) => loadModel(k)));
+/**
+ * Load one manifest group with a small fixed worker pool. A failed model is
+ * still cached as a primitive fallback, so an optional art failure cannot block
+ * the playable world; the report lets the UI offer a retry for critical groups.
+ */
+export async function preloadGroup(
+  group: AssetLoadGroup,
+  onProgress?: (progress: AssetLoadProgress) => void,
+): Promise<AssetLoadReport> {
+  const keys = modelKeysForLoadGroup(group);
+  let next = 0;
+  let loaded = 0;
+  const fallbackKeys: ModelKey[] = [];
+  const report = (complete: boolean): void => {
+    onProgress?.({
+      group,
+      loaded,
+      total: keys.length,
+      fallbackKeys: [...fallbackKeys].sort(),
+      complete,
+    });
+  };
+
+  report(false);
+  const worker = async (): Promise<void> => {
+    while (true) {
+      const index = next++;
+      if (index >= keys.length) return;
+      const key = keys[index]!;
+      const entry = await loadModel(key);
+      if (entry.isFallback) fallbackKeys.push(key);
+      loaded++;
+      report(false);
+    }
+  };
+
+  const workerCount = Math.min(ASSET_LOAD_CONCURRENCY, keys.length);
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  const finalFallbackKeys = [...fallbackKeys].sort();
+  const result: AssetLoadReport = {
+    group,
+    loaded,
+    total: keys.length,
+    fallbackKeys: finalFallbackKeys,
+    complete: true,
+  };
+  onProgress?.(result);
+  return result;
+}
+
+/** Load every group in release order for callers that still need the old API. */
+export async function preloadAll(
+  onProgress?: (progress: AssetLoadProgress) => void,
+): Promise<void> {
+  for (const group of ASSET_LOAD_ORDER) await preloadGroup(group, onProgress);
 }
 
 export async function loadModel(key: ModelKey): Promise<CacheEntry> {
@@ -186,6 +256,23 @@ export async function loadModel(key: ModelKey): Promise<CacheEntry> {
     cache.set(key, entry);
     return entry;
   }
+}
+
+/** Drop only cached fallbacks so a later launch can retry failed network loads. */
+export function resetFailedAssets(): number {
+  let reset = 0;
+  for (const [key, entry] of cache) {
+    if (!entry.isFallback) continue;
+    cache.delete(key);
+    reset++;
+  }
+  return reset;
+}
+
+/** Whether a real model (rather than an uncached or primitive fallback) is ready. */
+export function isModelReady(key: ModelKey): boolean {
+  const entry = cache.get(key);
+  return entry !== undefined && !entry.isFallback;
 }
 
 /** Clone a cached model for placement in the world. */

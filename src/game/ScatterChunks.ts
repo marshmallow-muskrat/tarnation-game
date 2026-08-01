@@ -74,7 +74,7 @@ export class ScatterChunks {
   private readonly _s = new THREE.Vector3();
   private readonly _e = new THREE.Euler();
 
-  /** Resolved once after preloadAll(), then reused by every live chunk. */
+  /** Resolved once after first_play loading, then reused by every live chunk. */
   private modelParts: ScatterModelParts | null = null;
 
   constructor(
