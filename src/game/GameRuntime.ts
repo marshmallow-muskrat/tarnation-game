@@ -276,6 +276,63 @@ type PlayerClip =
   | 'swordSlash'
   | 'punch';
 
+type EquippedToolKey = 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel';
+
+type ToolProfile = {
+  scale: number;
+  /** Transform from the animated right-hand socket into the tool's grip pose. */
+  carryPosition: readonly [number, number, number];
+  carryRotation: readonly [number, number, number];
+  /** A readable strike/pickup pose while the rig plays a one-shot clip. */
+  actionPosition: readonly [number, number, number];
+  actionRotation: readonly [number, number, number];
+  actionScale: number;
+  /** Some carry clips are authored for a particular silhouette. */
+  runClip: 'walkCarry' | 'runCarry';
+};
+
+const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
+  axe: {
+    scale: 1.15,
+    carryPosition: [0.02, -0.34, 0.03],
+    carryRotation: [0, 0, -0.55],
+    actionPosition: [0.25, 0.1, -0.3],
+    actionRotation: [0, 0, -0.55],
+    actionScale: 1.25,
+    runClip: 'runCarry',
+  },
+  bow_wooden: {
+    scale: 0.58,
+    carryPosition: [0, -0.24, 0.04],
+    carryRotation: [0, 0, -0.25],
+    actionPosition: [0.05, -0.16, -0.18],
+    actionRotation: [0, 0, -0.25],
+    actionScale: 1,
+    runClip: 'walkCarry',
+  },
+  shotgun_2: {
+    scale: 0.4,
+    carryPosition: [0.05, -0.42, 0.12],
+    carryRotation: [0, 0, 0],
+    actionPosition: [0.05, -0.42, 0.12],
+    actionRotation: [0, 0, 0],
+    actionScale: 1,
+    runClip: 'walkCarry',
+  },
+  shovel: {
+    // Carry it across the body so the blade and shaft stay readable while
+    // idle or running; the source's vertical default disappears inside the
+    // cowboy's torso from the isometric camera.
+    scale: 1,
+    carryPosition: [0.16, -0.02, -0.18],
+    carryRotation: [0, 0, -0.62],
+    actionPosition: [0.2, 0, -0.25],
+    actionRotation: [0, 0, -0.62],
+    actionScale: 1,
+    runClip: 'runCarry',
+  },
+};
+
 const HOMESTEAD_MODEL_KEYS = [
   'house_1',
   'house_2',
@@ -349,6 +406,7 @@ export class GameRuntime {
   private canvas!: HTMLCanvasElement;
   private accum = 0;
   private running = false;
+  private disposed = false;
   private raf = 0;
 
   private playerRoot!: THREE.Object3D;
@@ -359,7 +417,8 @@ export class GameRuntime {
   private oneShotAction: THREE.AnimationAction | null = null;
   private handBone: THREE.Object3D | null = null;
   private equippedToolRoot: THREE.Object3D | null = null;
-  private equippedToolKey: 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | null = null;
+  private equippedToolKey: EquippedToolKey | null = null;
+  private equippedToolSourceScale = 1;
   private playerX = WORLD_SIZE / 2;
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
@@ -397,6 +456,7 @@ export class GameRuntime {
   private winShownLocal = false;
 
   async mount(canvas: HTMLCanvasElement, onHud: (s: HudSnapshot) => void): Promise<void> {
+    this.disposed = false;
     this.canvas = canvas;
     this.onHud = onHud;
 
@@ -404,6 +464,10 @@ export class GameRuntime {
     this.world = new WorldRenderer(canvas);
     initAssetLoaders(this.world.renderer);
     await preloadAll();
+    // React development mode can dispose an effect while the asynchronous
+    // asset preload is still in flight. Do not let that abandoned runtime
+    // attach input handlers or render over the replacement runtime.
+    if (this.disposed) return;
 
     const raw = localStorage.getItem(SAVE_KEY);
     this.gs = raw ? loadFromString(raw) ?? createGameState() : createGameState();
@@ -443,12 +507,17 @@ export class GameRuntime {
   }
 
   dispose(): void {
+    this.disposed = true;
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.input.dispose();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
     this.persist();
+    const handles = window as unknown as {
+      tarnation?: GameRuntime;
+    };
+    if (handles.tarnation === this) delete handles.tarnation;
   }
 
   dismissWin(): void {
@@ -523,7 +592,7 @@ export class GameRuntime {
   }
 
   private refreshEquippedTool(): void {
-    const desired: 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | null =
+    const desired: EquippedToolKey | null =
       !this.gs || this.gs.toolSlotActive
         ? null
         : this.gs.toolbarSlot === SLOT_AXE
@@ -543,29 +612,41 @@ export class GameRuntime {
 
     const { root } = cloneModel(desired);
     root.name = `equipped_${desired}`;
-    root.scale.multiplyScalar(
-      desired === 'shotgun_2' ? 0.4 : desired === 'shovel' ? 1.1 : desired === 'axe' ? 1.35 : 0.58,
-    );
-    if (desired === 'axe') {
-      // The manifest grounds the tool at its handle end; put the grip in the fist.
-      root.position.set(0, -0.64, 0.02);
-      root.rotation.set(0, 0, 0);
-    } else if (desired === 'shovel') {
-      root.position.set(0, -0.42, 0.02);
-      root.rotation.set(0, 0, 0);
-    } else if (desired === 'shotgun_2') {
-      // The source gun already reads correctly along the rig's carry axis. The
-      // old quarter-turn left it at the cowboy's knees and made Run_Carry look
-      // like he was dragging a rifle behind him.
-      root.position.set(0.05, -0.8, 0.12);
-      root.rotation.set(0, 0, 0);
-    } else {
-      root.position.set(0, -0.34, 0.04);
-      root.rotation.set(0, 0, 0);
+    const profile = TOOL_PROFILES[desired];
+    this.equippedToolSourceScale = root.scale.x;
+    root.scale.multiplyScalar(profile.scale);
+    root.position.set(...profile.carryPosition);
+    root.rotation.set(...profile.carryRotation);
+    if (desired === 'axe' || desired === 'shovel') {
+      // These thin, dark tools otherwise disappear behind the cowboy's torso
+      // during the carry and slash clips. They are hand-held presentation
+      // props, so draw them after the body while retaining their shadow casters.
+      root.renderOrder = 3;
+      root.traverse((obj) => {
+        if (!(obj instanceof THREE.Mesh)) return;
+        obj.renderOrder = 3;
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        for (const material of materials) {
+          material.depthTest = false;
+          material.depthWrite = false;
+        }
+      });
     }
     this.handBone.add(root);
     this.equippedToolRoot = root;
     this.equippedToolKey = desired;
+  }
+
+  private applyEquippedToolPose(action: boolean): void {
+    if (!this.equippedToolRoot || !this.equippedToolKey) return;
+    const profile = TOOL_PROFILES[this.equippedToolKey];
+    const position = action ? profile.actionPosition : profile.carryPosition;
+    const rotation = action ? profile.actionRotation : profile.carryRotation;
+    this.equippedToolRoot.position.set(...position);
+    this.equippedToolRoot.rotation.set(...rotation);
+    this.equippedToolRoot.scale.setScalar(
+      this.equippedToolSourceScale * profile.scale * (action ? profile.actionScale : 1),
+    );
   }
 
   /** The market stall is the only structure on the map. */
@@ -664,6 +745,7 @@ export class GameRuntime {
   selectSlot(index: number): void {
     if (index < 0 || index >= TOOLBAR_SLOTS) return;
     this.buildingMode = false;
+    this.cancelPlayerAction();
     if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
     this.gs.toolSlotActive = false;
@@ -676,6 +758,7 @@ export class GameRuntime {
 
   selectToolSlot(): void {
     this.buildingMode = false;
+    this.cancelPlayerAction();
     this.clearShots();
     this.gs.toolSlotActive = true;
     this.toolMode = 'farm';
@@ -810,11 +893,14 @@ export class GameRuntime {
 
   private updateAnim(moving: boolean): void {
     if (!this.idleAction || !this.walkAction) return;
-    if (this.oneShotAction?.isRunning()) {
+    const oneShot = this.oneShotAction;
+    const oneShotActive = oneShot?.isRunning() ?? false;
+    this.applyEquippedToolPose(oneShotActive);
+    if (oneShotActive) {
       for (const action of Object.values(this.playerActions)) {
-        if (action && action !== this.oneShotAction) action.setEffectiveWeight(0);
+        if (action && action !== oneShot) action.setEffectiveWeight(0);
       }
-      this.oneShotAction.setEffectiveWeight(1);
+      oneShot?.setEffectiveWeight(1);
       return;
     }
     if (this.oneShotAction) {
@@ -824,10 +910,14 @@ export class GameRuntime {
 
     const speed = Math.hypot(this.velX, this.velZ);
     const carry = this.equippedToolRoot !== null;
+    const profile = this.equippedToolKey ? TOOL_PROFILES[this.equippedToolKey] : null;
+    const carryAction = profile?.runClip === 'walkCarry'
+      ? this.playerActions.walkCarry ?? this.walkAction
+      : this.playerActions.runCarry ?? this.playerActions.walkCarry ?? this.walkAction;
     const locomotion = moving
       ? carry
         ? speed > PLAYER_SPEED * 0.72
-          ? this.playerActions.runCarry ?? this.playerActions.walkCarry ?? this.walkAction
+          ? carryAction
           : this.playerActions.walkCarry ?? this.walkAction
         : this.playerActions.walk ?? this.walkAction
       : this.playerActions.idle ?? this.idleAction;
@@ -848,6 +938,13 @@ export class GameRuntime {
     action.setEffectiveWeight(1);
     action.play();
     this.oneShotAction = action;
+    this.applyEquippedToolPose(true);
+  }
+
+  private cancelPlayerAction(): void {
+    this.oneShotAction?.stop();
+    this.oneShotAction = null;
+    this.applyEquippedToolPose(false);
   }
 
   private handleHotkeys(): void {
@@ -1178,11 +1275,11 @@ export class GameRuntime {
   }
 
   private useAxe(): void {
-    this.playPlayerAction('swordSlash');
+    if (!this.beginMeleeAction('swordSlash')) return;
     const tilePos = this.pointerTile();
     if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
     // Nothing to chop — swing at whatever is in front of you instead.
-    this.meleeSwing(AXE_DAMAGE);
+    this.applyMeleeDamage(AXE_DAMAGE);
   }
 
   private useShovel(): void {
@@ -1215,7 +1312,9 @@ export class GameRuntime {
     }
 
     if (this.toolMode === 'trench') {
+      if (this.meleeCd > 0) return;
       if (digTrench(this.gs.tiles, tx, ty)) {
+        this.beginMeleeAction('swordSlash');
         for (const [dx, dy] of [
           [0, 0],
           [1, 0],
@@ -1234,12 +1333,15 @@ export class GameRuntime {
     }
 
     if (this.toolMode === 'breed') {
+      if (this.meleeCd > 0) return;
       if (makeBreedingBed(this.gs.tiles, tx, ty)) {
+        this.beginMeleeAction('swordSlash');
         this.world.syncFarmTiles(this.gs.tiles);
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
         const parents = clearBreedingParents(this.gs.tiles, tx, ty);
         if (parents) {
+          this.beginMeleeAction('pickUp');
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
           addSeedToInventory(this.gs, child);
           this.gs.tiles[ty]![tx]!.state = 'tilled';
@@ -1251,33 +1353,43 @@ export class GameRuntime {
     }
 
     if (this.toolMode === 'trap') {
-      if (placeTrap(this.gs.tiles, tx, ty)) this.world.syncFarmTiles(this.gs.tiles);
+      if (this.meleeCd > 0) return;
+      if (placeTrap(this.gs.tiles, tx, ty)) {
+        this.beginMeleeAction('swordSlash');
+        this.world.syncFarmTiles(this.gs.tiles);
+      }
       return;
     }
 
     if (tile.state === 'grass') {
+      if (this.meleeCd > 0) return;
       if (this.tileBlockedForTilling(tx, ty)) {
         setToast(this.gs, "This ground can't be worked", 1.4);
         return;
       }
       if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
+        this.beginMeleeAction('swordSlash');
         this.world.syncFarmTiles(this.gs.tiles);
       }
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
+      if (this.meleeCd > 0) return;
       const seed = selectedSeed(this.gs);
       if (!seed) {
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
       if (plantTile(this.gs.tiles, tx, ty, seed)) {
+        this.beginMeleeAction('pickUp');
         this.rebuildCrops();
         this.world.syncFarmTiles(this.gs.tiles);
       }
     } else if (tile.state === 'planted' && !tile.watered) {
       this.waterWithBucket(tx, ty, true);
     } else if (tile.state === 'mature') {
+      if (this.meleeCd > 0) return;
       const res = harvestTile(this.gs.tiles, tx, ty);
       if (res.ok && res.seed) {
+        this.beginMeleeAction('pickUp');
         const id = cropItem(res.seed.displayName);
         if (!addToInventory(this.gs, id, res.count)) return;
         this.gs.stats.cropsHarvested += res.count;
@@ -1503,11 +1615,14 @@ export class GameRuntime {
     this.playPlayerAction('shoot');
   }
 
-  /** Tool swing — hits everything alive inside a short radius. */
-  private meleeSwing(damage: number, clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash'): void {
-    if (this.meleeCd > 0) return;
+  private beginMeleeAction(clip: PlayerClip): boolean {
+    if (this.meleeCd > 0) return false;
     this.meleeCd = MELEE_COOLDOWN;
     this.playPlayerAction(clip);
+    return true;
+  }
+
+  private applyMeleeDamage(damage: number): void {
     let connected = false;
     for (const w of [...this.weasels]) {
       if (w.dead) continue;
@@ -1524,6 +1639,15 @@ export class GameRuntime {
       this.world.shake(0.08, 0.07);
       this.hitPause = 0.04;
     }
+  }
+
+  /** Tool swing — hits everything alive inside a short radius. */
+  private meleeSwing(
+    damage: number,
+    clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash',
+  ): void {
+    if (!this.beginMeleeAction(clip)) return;
+    this.applyMeleeDamage(damage);
   }
 
   private tryBoulderRoll(): void {

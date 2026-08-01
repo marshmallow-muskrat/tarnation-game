@@ -38,6 +38,8 @@ export function App() {
       cancelled = true;
       runtime.dispose();
       runtimeRef.current = null;
+      const handles = window as unknown as { tarn?: unknown };
+      if (handles.tarn === runtime) delete handles.tarn;
     };
   }, []);
 

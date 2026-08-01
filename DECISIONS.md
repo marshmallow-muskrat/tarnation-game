@@ -6,3 +6,16 @@ Scatter keeps its existing deterministic counts and placement, but its grass, ro
 and flowers/plants now use Ultimate Nature Pack models through `instancedParts()`. Each model
 variant gets one `InstancedMesh` per glTF part. If a model is missing or fails to load, the old
 primitive geometry remains the fallback. The rejected `sn_` Stylized Nature assets are not used.
+
+## 2026-08-01 — Profile held tools at the player socket
+
+Equipped items now use named per-tool carry and action profiles instead of unrelated offsets in the
+runtime. The shotgun keeps a readable carry pose, the shovel carries across the body, and the axe
+gets a raised-to-contact pose during the existing rig slash clip. Axe and shovel materials render
+after the body because their thin dark silhouettes otherwise disappear inside the cowboy from the
+isometric camera; they still cast shadows. Bear traps use only their real model, not the generic
+structure slab.
+
+The runtime also refuses to let an abandoned async mount survive React development cleanup. Two
+active runtimes were able to split input, HUD, and canvas state, which made a correct tool look like
+the wrong slot. The mount now exits after preload when it has been disposed.

@@ -23,19 +23,28 @@ type IconView = {
   rotationY: number;
   camera: [number, number, number];
   targetY: number;
+  zoom?: number;
 };
 
 // Tool silhouettes are much easier to read from their broad profile. The
 // default three-quarter view makes the axe and shovel nearly edge-on because
 // their heads are wide on X but very thin on Z.
 const ICON_VIEWS: Partial<Record<ModelKey, IconView>> = {
-  axe: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48 },
-  shovel: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48 },
-  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48 },
+  axe: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.28 },
+  shovel: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.12 },
+  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48, zoom: 1.12 },
   bow_wooden: { rotationY: 0, camera: [0, 1.05, 2.8], targetY: 0.5 },
 };
 
-function ModelIcon({ model, className = 'tool-model-icon' }: { model: ModelKey; className?: string }) {
+function ModelIcon({
+  model,
+  className = 'tool-model-icon',
+  size = 48,
+}: {
+  model: ModelKey;
+  className?: string;
+  size?: number;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -44,7 +53,7 @@ function ModelIcon({ model, className = 'tool-model-icon' }: { model: ModelKey; 
 
     const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
     renderer.setPixelRatio(1);
-    renderer.setSize(48, 48, false);
+    renderer.setSize(size, size, false);
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.25;
@@ -62,27 +71,28 @@ function ModelIcon({ model, className = 'tool-model-icon' }: { model: ModelKey; 
     scene.add(root);
     root.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(root);
-    const size = new THREE.Vector3();
+    const boundsSize = new THREE.Vector3();
     const center = new THREE.Vector3();
-    box.getSize(size);
+    box.getSize(boundsSize);
     box.getCenter(center);
     root.position.x -= center.x;
     root.position.z -= center.z;
-    const extent = Math.max(size.x, size.y, size.z, 0.2);
+    const extent = Math.max(boundsSize.x, boundsSize.y, boundsSize.z, 0.2);
     const cameraPosition = view?.camera ?? [2.15, 1.35, 2.15];
+    const iconZoom = view?.zoom ?? 1;
     camera.position.set(
-      extent * cameraPosition[0],
-      extent * cameraPosition[1],
-      extent * cameraPosition[2],
+      (extent * cameraPosition[0]) / iconZoom,
+      (extent * cameraPosition[1]) / iconZoom,
+      (extent * cameraPosition[2]) / iconZoom,
     );
-    camera.lookAt(0, size.y * (view?.targetY ?? 0.42), 0);
+    camera.lookAt(0, boundsSize.y * (view?.targetY ?? 0.42), 0);
     renderer.render(scene, camera);
 
     return () => {
       renderer.dispose();
       scene.remove(root);
     };
-  }, [model]);
+  }, [model, size]);
 
   return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
 }
@@ -280,7 +290,15 @@ export function Hud({
             >
               <span className="tool-key">{slot.index + 1}</span>
               <span className="tool-glyph">
-                {slot.model ? <ModelIcon model={slot.model} /> : slot.glyph}
+                {slot.model ? (
+                  <ModelIcon
+                    model={slot.model}
+                    className={slot.model === 'shotgun_2' ? 'tool-model-icon shotgun-tool-icon' : undefined}
+                    size={slot.model === 'shotgun_2' ? 52 : 48}
+                  />
+                ) : (
+                  slot.glyph
+                )}
               </span>
               <span className="tool-name">{slot.empty ? '' : slot.name}</span>
             </button>
