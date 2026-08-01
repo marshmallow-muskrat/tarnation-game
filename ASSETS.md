@@ -1,5 +1,15 @@
 # TARNATION — Asset plan (Quaternius)
 
+> **Game concept (current):** an economic sandbox farming economy with progression across many
+> systems, non-linear paths, and multiple maps of varying difficulty — including triggered secret
+> zones and smaller boss, challenge and treasure zones — supporting exploration, town and city
+> building, gathering and combat.
+>
+> **The Dark Woods is removed.** One horror zone becomes many zones of varying kind. That changes
+> this plan three ways: Ultimate Monsters is back in scope (bosses and challenge zones, not one
+> stalker), fish are wanted for rivers and lakes, and buildings matter far more now that town
+> building is a pillar.
+
 **Decision: Quaternius becomes the primary art source.** All packs are CC0 — commercial use, no
 attribution required, no licence tracking beyond keeping the files.
 
@@ -19,9 +29,8 @@ games.**
 **Recommendation: go all-Quaternius.** Move the player to Ultimate Animated Characters and retire
 the KayKit models, except where a specific thing has no Quaternius equivalent.
 
-**The exception worth keeping:** the Woodsman. It's rendered as a pure black unlit silhouette, so
-its source mesh is invisible by definition — style mismatch cannot show. Keep whichever silhouette
-reads best.
+**Done.** `public/models/` is reorganised by category and the manifest points at it. The old KayKit
+files remain only as placeholders until the Quaternius equivalents land.
 
 ---
 
@@ -34,10 +43,10 @@ You listed fifteen. Most are right. Three aren't, and one is more important than
 | Pack | Use | Priority |
 |---|---|---|
 | **Ultimate Animated Characters** | Player, merchant, any NPC | 🔴 First |
-| **Ultimate Animated Animals** | Weasels, donkey, mole, plains animals, elephant | 🔴 First |
+| **Ultimate Animated Animals** | Weasels, donkey, livestock, wildlife | 🔴 First |
 | **Ultimate Crops** | All 5+ crops and their growth stages | 🔴 First |
 | **Ultimate Nature** | Trees, rocks, bushes, scatter — replaces procedural props | 🔴 First |
-| **Ultimate Monsters** | ⭐ **The Dark Woods.** See §3. | 🔴 First |
+| **Ultimate Monsters** | Bosses, zone guardians, challenge zones. See §3. | 🟠 Second |
 | **Ultimate Buildings** | Homestead tiers + the 25-piece city-building sheet | 🟠 Second |
 | **Ultimate RPG** | Slingshot, bow, axe, tools, props | 🟠 Second |
 | **Ultimate Modular Men / Women** | Merchant, future NPCs, character variety | 🟡 Later |
@@ -49,10 +58,14 @@ You listed fifteen. Most are right. Three aren't, and one is more important than
 **Ultimate House Interior** — there are no interiors in the design yet. Downloading is free, but
 don't wire it in; an interior system is a real feature, not an asset drop.
 
-**Animated Fish** — `masterplan.md` §15 explicitly lists *"No fishing. It's always the thing that
-eats a month."* You now have a river and a lake, which makes the temptation worse, not better. If
-you want fish as *ambient life* in the water — visual only, not catchable — that's cheap and lovely.
-The moment it becomes a minigame, it's a month.
+**Animated Fish / Animated Cute Fish — download both, use as ambient life now.** Swimming fish in
+the river and lake cost almost nothing: a few models on looping spline paths under the surface,
+no interaction. They make the water read as alive.
+
+Fishing as a *system* is a later decision. The old masterplan banned it outright (*"it's always
+the thing that eats a month"*), and that warning still holds — but with an economy sandbox as the
+concept, fishing is a legitimate income path rather than a distraction. Ship the fish as scenery;
+decide on the minigame once the income curve is known.
 
 ### Two real problems
 
@@ -67,32 +80,25 @@ revolver — and get the slingshot and bow from **Ultimate RPG** instead. Skip t
 comically modern gun as a late-tier joke, that's defensible — just make it *the joke*, deliberately,
 not the default aesthetic.
 
-**Ultimate Modular Sci-Fi — wrong game.** There's no reading where sci-fi fits 1940s cartoon
-Americana plus folk horror. Download it for a future project; keep it out of this one.
+**Ultimate Modular Sci-Fi — wrong game.** Nothing about sci-fi fits cartoon Americana. Download it
+for a future project; keep it out of this one.
 
 ---
 
-## 3. Ultimate Monsters is the most important pack on your list
+## 3. Ultimate Monsters — bosses, guardians and challenge zones
 
-`IDEAS.md` §0.1 flags that the 78-entry idea sheet contains **nothing** for the Dark Woods — the
-half of the game that is actually the differentiator. The reason is partly that horror is harder to
-brainstorm than comedy, and partly that there was nothing to build with.
+With multiple maps of varying difficulty plus boss, challenge and treasure zones, this pack is
+what populates them. One monster roster covers a lot of ground.
 
-**Ultimate Monsters fixes that.** It gives you a roster to build the woods out of, immediately:
+**Use the silhouette treatment selectively, not globally.** Override every material to unlit pure
+black with `fog: false` and a model becomes a pure silhouette with a real walk cycle — free, and
+more menacing than a detailed model because the player fills in the rest.
 
-- **Woodsman variants** — same all-black unlit treatment, different silhouettes per depth tier, so
-  the Fringe, Thickets and Deepwood each have their own wrong shape
-- **Deep-woods fauna** — things that aren't the Woodsman but shouldn't be there
-- **The Hollow** — whatever is at the bottom
+- **Full black** — zone guardians, anything meant to read as a threat you can't yet handle
+- **Very dark grey** — mid-tier, so "how much of it you can see" encodes difficulty
+- **Untreated** — ordinary fights, where the player should read attacks fairly
 
-**The treatment matters more than the model.** Take any monster, override every material to unlit
-pure black with `fog: false`, and it becomes a silhouette with a real walk cycle. That's free, and
-it's scarier than a detailed monster because the player's imagination fills it in.
-
-Half-lit variants for the shallower tiers: very dark grey rather than pure black, so depth reads as
-"how much of it you can see."
-
----
+That gradient is a free difficulty signal, set per model via the manifest's `silhouette` flag.
 
 ## 4. Where files live
 
@@ -135,62 +141,48 @@ public/models/
 **Do not commit whole packs.** Extract what you use. A pack has hundreds of models; you'll ship
 dozens.
 
-### Format
+### Format — every Ultimate pack needs converting
 
-Quaternius ships FBX, OBJ, GLTF/GLB and `.blend`. **Take the GLB.** If a pack only offers FBX,
-import to Blender and export GLB with *Include → Animation* ticked.
+**Verified on quaternius.com: the entire "Ultimate" series (2019–2020) ships FBX / OBJ / Blend
+only. There is no glTF.** Ultimate Crops and Ultimate Animated Characters both confirm this on
+their pack pages. Newer MegaKits may differ — check per pack.
 
-**No conversion needed to load them.** `Assets.ts` already handles both plain GLB and the
-meshopt/KTX2-compressed KayKit models — the decoders only engage when a file declares them.
+So conversion is mandatory, not optional. No Blender required:
 
----
-
-## 5. Integration — replace the hardcoded list with a manifest
-
-`Assets.ts` currently has a `ModelKey` union and a `MODEL_PATHS` record. That's fine for 13 models
-and unmanageable at 80. Move to data:
-
-```ts
-// src/content/models.ts
-export type ModelDef = {
-  path: string;
-  /** Normalise to this world height in units. Packs ship wildly different scales. */
-  height?: number;
-  /** Multiply the source colour toward this. Omit to leave the pack's own look. */
-  tint?: number;
-  /** Unlit pure black silhouette — woods entities. */
-  silhouette?: boolean;
-  /** Regexes to find clips; packs name them differently. */
-  clips?: { idle?: RegExp; walk?: RegExp; attack?: RegExp; death?: RegExp };
-};
-
-export const MODELS: Record<string, ModelDef> = {
-  player:   { path: 'characters/player.glb', height: 1.6 },
-  merchant: { path: 'characters/merchant.glb', height: 1.6 },
-
-  weasel:   { path: 'animals/weasel.glb',  height: 0.45, tint: 0x8b5e3c },
-  donkey:   { path: 'animals/donkey.glb',  height: 1.3 },
-
-  woodsman: { path: 'monsters/woodsman.glb', height: 1.9, silhouette: true },
-
-  turnip_3: { path: 'crops/turnip.glb', height: 0.5 },
-  tree_oak: { path: 'nature/tree_oak.glb', height: 4.0 },
-};
+```bash
+npm i -D fbx2gltf
+node scripts/convert-fbx.mjs ~/Downloads/UltimateCrops public/models/crops
+node scripts/convert-fbx.mjs ~/Downloads/UltimateCrops public/models/crops --filter Carrot
 ```
 
-**Three things this buys you:**
+`scripts/convert-fbx.mjs` walks a directory, converts every `.fbx` to `.glb`, and renames
+`PascalCase` to `snake_case` game keys. Verified working: `FBX2glTF 0.9.7` runs on arm64 under
+Rosetta.
 
-1. **Adding a model is a data edit**, not a code edit — no union to extend, no switch to update.
-2. **`height` normalisation is essential.** Different packs export at wildly different scales; one
-   may be 100× another. Normalising to a target height in the manifest means you never hand-tune
-   scale in three different places.
-3. **Clip regexes handle naming differences.** KayKit uses `Idle` / `Running_A`; other packs use
-   `Armature|Idle` or `idle_loop`. Per-model regexes beat one global guess.
-
-Keep the primitive fallback exactly as it is. A missing model must never break the build — that's
-what lets you add assets one at a time.
+**Check animations survived.** FBX→glTF conversion is where rigs break. Load one converted
+character and confirm its clips play before converting a whole pack.
 
 ---
+
+## 5. Integration — the manifest (built)
+
+`src/content/models.ts` is the manifest. **Adding a model is a data edit there, never a code edit
+in `Assets.ts`.** Each entry carries:
+
+| Field | Purpose |
+|---|---|
+| `path` | under `public/models/` |
+| `height` | **normalise to this world height** — the field that matters most; packs export at wildly different scales |
+| `tint` / `tintStrength` | lerp source colour, preserving baked detail |
+| `silhouette` | unlit pure black, `fog: false` |
+| `rotateX` | pose fix, e.g. pitching a runner forward |
+| `clips` | per-model animation-name regexes, since packs name them inconsistently |
+
+`Assets.ts` reads it — no per-key switch survives. Missing files still fall back to primitives and
+log once, which is what lets assets arrive one at a time.
+
+A **LEGACY** block at the bottom of the manifest maps the keys the current code calls onto real
+files. Migrate call sites to the categorised keys, then delete that block.
 
 ## 6. Consistency rules
 
@@ -248,7 +240,53 @@ how this turns into a week of tedium instead of an afternoon.
 
 ---
 
-## 9. Credits
+## 9. Download checklist
+
+Each page's **Download** button opens a Google Drive folder — these can't be scripted, so it's a
+manual click per pack. With 5 TB of Drive, keep the raw zips there permanently.
+
+| Pack | URL |
+|---|---|
+| Ultimate Animated Characters | `quaternius.com/packs/ultimatedanimatedcharacter.html` |
+| Ultimate Animated Animals | `quaternius.com/packs/ultimateanimatedanimals.html` |
+| Ultimate Crops | `quaternius.com/packs/ultimatecrops.html` |
+| Ultimate Nature | `quaternius.com/packs/ultimatenature.html` |
+| Ultimate Buildings | `quaternius.com/packs/ultimatetexturedbuildings.html` |
+| Ultimate RPG | `quaternius.com/packs/ultimaterpg.html` |
+| Ultimate Monsters | `quaternius.com/packs/ultimatemonsters.html` |
+| Ultimate Food | `quaternius.com/packs/ultimatefood.html` |
+| Ultimate Furniture | `quaternius.com/packs/ultimatefurniture.html` |
+| Ultimate Modular Men | `quaternius.com/packs/ultimatemodularcharacters.html` |
+| Ultimate Modular Women | `quaternius.com/packs/ultimatemodularwomen.html` |
+| Animated Fish | `quaternius.com/packs/animatedfish.html` |
+| Animated Cute Fish | `quaternius.com/packs/cutefish.html` |
+
+**Also worth grabbing — not on the original list but a better fit than some that were:**
+
+| Pack | Why |
+|---|---|
+| **Farm Buildings** | `quaternius.com/packs/farmbuildings.html` — purpose-built for exactly this game |
+| **Farm Animal** | `quaternius.com/packs/farmanimal.html` — animated livestock |
+| **Universal Animation Library 1 & 2** | Retargetable humanoid animations. If a character lacks a clip you need, retarget rather than hunting for another model. |
+| **Universal Base Characters** | Rigged and retargetable — a base to build custom characters on |
+| **Survival Pack** | Gathering and crafting props |
+| **Stylized Nature MegaKit** | Larger, Ghibli-flavoured nature set if Ultimate Nature reads too plain |
+
+### Where they go
+
+```
+Google Drive (5 TB)
+└── Marshmallow Muskrat/assets-raw/quaternius/
+    ├── UltimateCrops.zip
+    └── …
+```
+
+Extract to a local scratch folder, convert, and copy only what you use into `public/models/`.
+
+**Note:** the Drive connector isn't available to Claude Code — I can't read or write your Drive
+from here. Downloading and unzipping is a manual step; everything after it is scripted.
+
+## 10. Credits
 
 CC0 requires no attribution, but keep the record — it takes seconds now and is miserable to
 reconstruct at launch. Extend `public/models/CREDITS.md` with pack name, source URL, download date,

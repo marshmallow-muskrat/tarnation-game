@@ -1,148 +1,140 @@
 # CLAUDE.md — Tarnation
 
-Read this before writing any code. Both founders' agents follow this file, so it is the
-single source of truth for how this codebase works.
-
-**Design authority:** `masterplan.md` (and `_II`, `_III`, …). If this file and a
-masterplan disagree, the **highest-numbered masterplan wins** — flag the conflict rather than
-silently picking one.
+Read this before writing any code. Both founders' agents follow this file.
 
 ---
 
 ## What this is
 
-A 2D cartoon farming game with a genuinely horrifying second zone, shipping as a Windows `.exe`
-on Steam. Built by two people who are not professional engineers, with AI assistance throughout.
+> **An economic sandbox farming economy** with progression built into numerous systems,
+> non-linear paths, and multiple maps of varying difficulty and variety — including triggered
+> secret zones and smaller boss, challenge and treasure zones — that allows for exploration,
+> town and city building, gathering and combat.
 
-**Consequence for you:** favor clear, boring, well-named code over clever code. The humans
-reviewing your work need to understand it. A dense one-liner they can't read is a liability, not
-a win.
+Cartoon Americana art direction. Built by two people who are not professional engineers, with AI
+assistance throughout.
+
+**Consequence for you:** favour clear, boring, well-named code over clever code. The humans
+reviewing your work need to read it. A dense one-liner they can't follow is a liability.
+
+### The Dark Woods is removed
+
+Earlier masterplans are built around a single horror zone — the Dark Woods, the Woodsman, the
+Attention meter, the bag-drop stake, and a hard tonal contract of "no jokes past the treeline."
+**All of that is cut.**
+
+It's superseded by the multi-zone structure above: many zones of varying difficulty and kind,
+rather than one scary one. Anything in `masterplans/` describing the Dark Woods is **historical
+record, not instruction.** Do not build from it.
+
+The one thing worth keeping from it: the **silhouette treatment** (unlit pure black, `fog: false`)
+is still the cheapest way to make a boss or guardian read as a threat. `Assets.ts` keeps it as
+`applySilhouetteMaterials`, driven by the manifest's `silhouette` flag.
 
 ---
 
-## Stack — pinned
+## Stack — actual, not aspirational
 
 | | |
 |---|---|
 | Language | TypeScript, `strict: true` |
-| Renderer | **Phaser 3** — check `package.json` for the exact pinned version |
+| Renderer | **Three.js** (isometric orthographic, Gloamreach look recipe) |
+| UI | **React 19**, DOM overlay above the canvas |
 | Build | Vite |
-| Desktop | Electron + electron-builder |
-| Steam | `steamworks.js` |
-| Tests | Vitest |
+| Deploy | **Cloudflare Pages** → tarnation.pages.dev |
 
-**Phaser API discipline.** Phaser 2 and pre-3.60 APIs are a common failure mode. If you are not
-certain an API exists in the pinned version, check `node_modules/phaser/types/` or the installed
-docs before using it. Do not write from memory. Log every gotcha you hit in `docs/phaser-notes.md`.
+**No Phaser. No Electron. No Steam SDK. No backend.** Those appear in older masterplans; they are
+not the current stack. Electron may return much later as a shipping wrapper — the static `dist/`
+output is already the payload — but nothing should be built for it now.
 
 ---
 
-## Architecture — the rule that matters most
+## Architecture
 
 ```
-apps/game/       Phaser. Scenes, sprites, input, audio, VFX, cameras.
-apps/desktop/    Electron main + preload. Thin.
-packages/sim/    ★ Pure TypeScript game logic. NO Phaser. NO DOM. NO window.
-packages/content/  Data only: crops, weasels, guns, buildings, loot tables.
-packages/shared/   Types, seeded RNG, math.
+src/sim/       ★ Pure game logic. No Three, no React, no DOM, no window.
+src/game/      Three.js — WorldRenderer, terrain, streams, water, scatter, Assets, GameRuntime
+src/ui/        React HUD
+src/content/   Data — models.ts manifest, tuning constants
+public/models/ .glb assets by category
+public/basis/  KTX2 transcoder — DO NOT REMOVE
 ```
 
-### `packages/sim` never imports Phaser, never touches the DOM
+### `src/sim/` never imports a renderer
 
-This is the most important rule in the repo. Game logic — genetics, economy, raid generation,
-woods loot, the day clock, save serialization — lives in `packages/sim` as pure, testable
-functions.
+The most important rule here. Economy, growth, genetics, inventory, save serialisation — all pure
+functions. **Why:** it's the only way the humans can verify AI-written logic. `scripts/simcheck.ts`
+proves systems work with no browser. Logic buried in a renderer is untestable, and untestable AI
+code is where bugs live.
 
-**Why:** it is the only way the humans can verify AI-written game logic. `vitest run` proves the
-genetics system works in under a second with no browser. Logic buried in a Phaser scene is
-untestable, and untestable AI code is where bugs live.
-
-If you find yourself wanting to import Phaser into `packages/sim`, the design is wrong. Return
-data from the sim and let the scene render it.
+If you want to import `three` into `src/sim/`, the design is wrong. Return data; let the renderer
+draw it.
 
 ### Determinism
 
-- **One seeded PRNG** (`mulberry32` in `packages/shared`), seeded from the save.
-- **`Math.random()` is banned in `packages/sim`.** Enforced by ESLint. Do not disable the rule.
-- **Fixed timestep:** the sim ticks at a fixed 30Hz, accumulated from render delta. Never derive
-  game state from raw frame delta — it makes behavior differ between 60Hz and 144Hz monitors.
+- One seeded PRNG (`mulberry32`), seeded from the save. **No `Math.random()` in `src/sim/`.**
+- Fixed timestep, accumulated from delta. Never drive game state off raw frame delta, or behaviour
+  differs between a 60Hz and a 144Hz monitor.
 
 ---
 
-## Non-negotiables
+## Assets — read `ASSETS.md` before touching models
 
-1. **No network calls in the shipped game.** No CDN fonts, no analytics, no telemetry, no remote
-   asset loading. Everything is bundled. The game must run fully offline forever.
-2. **The renderer loads via the `app://` custom protocol**, never `file://`.
-3. **Electron security:** `nodeIntegration: false`, `contextIsolation: true`. All main-process
-   access goes through a narrow, explicit `preload.ts` bridge.
-4. **Saves are atomic.** Write to `save.tmp`, fsync, then rename over `save.json`. Never write in
-   place. Keep 3 rolling backups. Save format is versioned with an explicit migration per bump.
-5. **Never break an existing save format without a migration.** Players losing a 30-hour save is
-   the worst thing that can happen to this game.
+**All 3D assets come from Quaternius packs** (CC0). KayKit is retired.
 
----
+**Adding a model is a data edit in `src/content/models.ts`, never a code edit in `Assets.ts`.**
+The manifest carries path, target height, tint, silhouette flag and clip regexes.
 
-## Testing
+Three things that will waste your time if you don't know them:
 
-- Every `packages/sim` module needs tests. No exceptions.
-- Balance is verified by **simulation**, not by feel: run thousands of iterations and assert on
-  the distribution. Example: 100,000 random crossbreeds must not produce trait runaway, and the
-  "absurd" Weirdness tier must be reachable in ~2 in-game weeks of deliberate play but
-  essentially never by accident.
-- Run `npm test` before proposing any change to `packages/sim`.
+1. **Every Quaternius "Ultimate" pack ships FBX/OBJ/Blend only — no glTF.** Convert with
+   `node scripts/convert-fbx.mjs <src> <out>` before anything can load.
+2. **`height` in the manifest is mandatory in practice.** Packs export at wildly different scales.
+   Normalise there, never by hand at a call site.
+3. **The KTX2 + meshopt decoders in `Assets.ts` are load-bearing.** Some models declare
+   `EXT_meshopt_compression`, `KHR_mesh_quantization`, `KHR_texture_basisu`; a bare `GLTFLoader`
+   throws on all three and silently falls back to a primitive. `initAssetLoaders(renderer)` must
+   run before `preloadAll()`, and the renderer must exist first because `KTX2Loader.detectSupport()`
+   needs it.
 
----
+**A missing model must never break the build.** The primitive fallback is what lets assets arrive
+one at a time.
 
-## Style
+**Clone rigged models with `SkeletonUtils.clone()`**, never `Object3D.clone()` — the latter leaves
+skinned meshes bound to the source skeleton and characters render collapsed.
 
-- Descriptive names over short ones. `weaselRaidIntensity`, not `wri`.
-- Comment the **why**, never the what. If the what isn't obvious, rename things instead.
-- No new dependency without asking. Every dep is a thing two non-engineers have to maintain
-  forever and a potential supply-chain risk in a shipped binary.
-- Data goes in `packages/content` as typed data, not hardcoded in logic. Crops, weapons, weasel
-  stats, and loot tables must be editable without touching code.
-- Prefer many small files over few large ones — easier to review, easier to revert.
+**Tint materials, don't replace them.** Replacing throws away baked detail and leaves a featureless
+blob.
 
 ---
 
-## Performance budget
-
-Check these at every milestone; regressions are bugs.
+## Performance
 
 | Metric | Budget |
 |---|---|
-| Frame time | < 16.6ms (60fps) with 60 weasels + full particles |
+| Frame time | < 16.6ms (60fps) at full scatter density |
 | Sim tick | < 2ms |
 | Cold start to playable | < 6s |
-| Installed size | < 1.5 GB |
-| Idle RAM | < 700 MB |
-| Save write | < 50ms, never on the render thread |
 
----
-
-## The tonal contract — this is a code constraint, not just vibes
-
-The farm is a cartoon. The woods are sincerely frightening. **They never blend.**
-
-**No jokes past the treeline.** Not in item names, not in death messages, not in sound effects,
-not in UI copy. If you are writing anything that appears in the Dark Woods, it is not funny. The
-comedy is what the player is protecting; the woods are what they are protecting it from.
-
-The two zones differ mechanically and technically, not just artistically — see the Contrast Table
-in `masterplan.md` §2. Notably: **farm characters animate on 2s (12fps, snappy,
-squash-and-stretch); the Woodsman moves at smooth 60fps with real easing.** That difference is a
-deliberate scare mechanic. Do not "fix" it.
+**Scatter props stay `InstancedMesh`.** Hundreds per chunk — individual meshes will not hold 60fps.
+Only actors get their own mesh.
 
 ---
 
 ## Workflow
 
-- Branch from `main`: `feat/…`, `fix/…`. Branches live 2–3 days maximum.
-- Small commits. They're the humans' undo button when an AI change goes wrong.
-- Every PR gets reviewed by the other founder. Write PR descriptions for someone who did not
-  watch you build it.
-- Log significant decisions in `DECISIONS.md` with the reasoning and the rejected alternatives.
-- Do not add features that are not in a masterplan. Scope creep is the top project risk — see
-  masterplan §15 for the explicit "will not build" list. If you think something is missing,
-  propose it for the next masterplan rather than building it.
+- **`git pull` before you start.** Two agents and two humans work in this repo; stale working trees
+  have already nearly destroyed a batch of work once.
+- Small commits. They're the humans' undo button.
+- Never `git add -A` without checking `git status` first.
+- Log significant decisions in `DECISIONS.md` with the reasoning and rejected alternatives.
+- Don't add features that aren't in a masterplan or `IDEAS.md`. Scope creep is the top project
+  risk. If something's missing, propose it rather than building it.
+
+## Design docs
+
+| Doc | Status |
+|---|---|
+| `IDEAS.md` | Live — triaged idea backlog with build order |
+| `ASSETS.md` | Live — the Quaternius pipeline |
+| `masterplans/` | **Historical.** Useful for systems design; the Dark Woods, Phaser and Electron sections are dead. |
