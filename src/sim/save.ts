@@ -1,6 +1,7 @@
 import type { Phase } from './clock';
-import type { Tile } from './farm';
-import type { CodexEntry, Seed } from './genetics';
+import { CROP_DEFS, GRID_H, GRID_W } from '../content';
+import { createEmptyGrid, emptyTile, type Tile, type TileState } from './farm';
+import type { CodexEntry, HybridMech, Seed } from './genetics';
 import {
   addItem,
   createInventory,
@@ -11,7 +12,15 @@ import { cropItem, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
 import { assetDefinition, deedAssetId, type AssetId } from '../content/purchasables';
 
-export const SAVE_VERSION = 8;
+/** Current compact wire format. Versions 3–8 remain readable through migration. */
+export const SAVE_VERSION = 9;
+
+/** Storage budgets used by the save service and release checks. */
+export const SAVE_SIZE_BUDGETS = {
+  fresh: 250_000,
+  typical: 1_000_000,
+  warning: 4_000_000,
+} as const;
 
 export interface GameStats {
   cropsHarvested: number;
@@ -70,6 +79,394 @@ export interface SaveData {
   trophies: string[];
 }
 
+interface CompactSeed {
+  /** species */
+  s: string;
+  /** yield, vigor, thirst, hardiness, weirdness */
+  t: [number, number, number, number, number];
+  /** display name */
+  n: string;
+  /** hybrid */
+  h: boolean;
+  /** mechanic */
+  m: HybridMech;
+  /** lineage */
+  l?: string[];
+}
+
+interface CompactTile {
+  x: number;
+  y: number;
+  /** tile state */
+  s: TileState;
+  /** non-default plantedAt, watered, stage, growth */
+  p?: number;
+  w?: 1;
+  g?: number;
+  r?: number;
+  /** seed, breedA, breedB table references */
+  a?: number;
+  b?: number;
+  c?: number;
+  /** non-default structureHp */
+  h?: number;
+  /** bearTrap and bearTrapClosed */
+  t?: 1;
+  q?: 1;
+  /** non-default tilledDay */
+  d?: number;
+}
+
+interface CompactTiles {
+  w: number;
+  h: number;
+  r: CompactTile[];
+}
+
+interface CompactCodexEntry {
+  id: string;
+  s: number;
+  d: number;
+}
+
+const TILE_STATES: readonly TileState[] = [
+  'grass',
+  'tilled',
+  'planted',
+  'mature',
+  'trench',
+  'breeding',
+];
+
+const HYBRID_MECHANICS: readonly HybridMech[] = [
+  'repel_foxes',
+  'portable_light',
+  'ironroot',
+  'ricochet',
+  'greed_crop',
+  'none',
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isIntegerInRange(value: unknown, min: number, max: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max;
+}
+
+function isTileState(value: unknown): value is TileState {
+  return typeof value === 'string' && TILE_STATES.includes(value as TileState);
+}
+
+function isHybridMechanic(value: unknown): value is HybridMech {
+  return typeof value === 'string' && HYBRID_MECHANICS.includes(value as HybridMech);
+}
+
+function cloneSeed(seed: Seed): Seed {
+  return {
+    ...seed,
+    traits: { ...seed.traits },
+    lineage: seed.lineage ? [...seed.lineage] : undefined,
+  };
+}
+
+function seedKey(seed: Seed): string {
+  return JSON.stringify([
+    seed.species,
+    seed.traits.yield,
+    seed.traits.vigor,
+    seed.traits.thirst,
+    seed.traits.hardiness,
+    seed.traits.weirdness,
+    seed.displayName,
+    seed.hybrid,
+    seed.mech,
+    seed.lineage ?? null,
+  ]);
+}
+
+function encodeSeed(seed: Seed): CompactSeed {
+  return {
+    s: seed.species,
+    t: [
+      seed.traits.yield,
+      seed.traits.vigor,
+      seed.traits.thirst,
+      seed.traits.hardiness,
+      seed.traits.weirdness,
+    ],
+    n: seed.displayName,
+    h: seed.hybrid,
+    m: seed.mech,
+    ...(seed.lineage ? { l: [...seed.lineage] } : {}),
+  };
+}
+
+function encodeSeedReference(
+  seed: Seed | null,
+  seeds: CompactSeed[],
+  indexes: Map<string, number>,
+): number | undefined {
+  if (!seed) return undefined;
+  const key = seedKey(seed);
+  const existing = indexes.get(key);
+  if (existing !== undefined) return existing;
+  const index = seeds.length;
+  indexes.set(key, index);
+  seeds.push(encodeSeed(seed));
+  return index;
+}
+
+function isDefaultTile(tile: Tile): boolean {
+  return (
+    tile.state === 'grass' &&
+    tile.plantedAt === -1 &&
+    !tile.watered &&
+    tile.stage === 0 &&
+    tile.growth === 0 &&
+    tile.seed === null &&
+    tile.breedA === null &&
+    tile.breedB === null &&
+    tile.structureHp === 0 &&
+    !tile.bearTrap &&
+    !tile.bearTrapClosed &&
+    tile.tilledDay === -1
+  );
+}
+
+function encodeTile(
+  tile: Tile,
+  x: number,
+  y: number,
+  seeds: CompactSeed[],
+  indexes: Map<string, number>,
+): CompactTile {
+  const record: CompactTile = { x, y, s: tile.state };
+  if (tile.plantedAt !== -1) record.p = tile.plantedAt;
+  if (tile.watered) record.w = 1;
+  if (tile.stage !== 0) record.g = tile.stage;
+  if (tile.growth !== 0) record.r = tile.growth;
+  const seed = encodeSeedReference(tile.seed, seeds, indexes);
+  if (seed !== undefined) record.a = seed;
+  const breedA = encodeSeedReference(tile.breedA, seeds, indexes);
+  if (breedA !== undefined) record.b = breedA;
+  const breedB = encodeSeedReference(tile.breedB, seeds, indexes);
+  if (breedB !== undefined) record.c = breedB;
+  if (tile.structureHp !== 0) record.h = tile.structureHp;
+  if (tile.bearTrap) record.t = 1;
+  if (tile.bearTrapClosed) record.q = 1;
+  if (tile.tilledDay !== -1) record.d = tile.tilledDay;
+  return record;
+}
+
+function encodeCompact(data: SaveData): Record<string, unknown> {
+  const seeds: CompactSeed[] = [];
+  const indexes = new Map<string, number>();
+  const records: CompactTile[] = [];
+
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      const tile = data.tiles[y]?.[x];
+      if (!tile || isDefaultTile(tile)) continue;
+      records.push(encodeTile(tile, x, y, seeds, indexes));
+    }
+  }
+
+  const seedInventory = data.seedInventory.map((seed) => {
+    const index = encodeSeedReference(seed, seeds, indexes);
+    if (index === undefined) throw new Error('Save seed inventory contained an empty seed');
+    return index;
+  });
+  const codex = data.codex.map((entry): CompactCodexEntry => {
+    const index = encodeSeedReference(entry.seed, seeds, indexes);
+    if (index === undefined) throw new Error('Save Codex entry contained an empty seed');
+    return { id: entry.id, s: index, d: entry.discoveredDay };
+  });
+
+  return {
+    version: SAVE_VERSION,
+    seed: data.seed,
+    day: data.day,
+    phase: data.phase,
+    elapsed: data.elapsed,
+    tiles: { w: GRID_W, h: GRID_H, r: records } satisfies CompactTiles,
+    playerX: data.playerX,
+    playerZ: data.playerZ,
+    weapon: data.weapon,
+    unlockedWeapons: [...data.unlockedWeapons],
+    homesteadTier: data.homesteadTier,
+    placedBuildings: data.placedBuildings.map((building) => ({ ...building })),
+    irrigationTier: data.irrigationTier,
+    bucketFill: data.bucketFill,
+    selectedCrop: data.selectedCrop,
+    inventory: data.inventory.map((slot) => (slot ? { ...slot } : null)),
+    inventoryOpen: data.inventoryOpen,
+    duckettes: data.duckettes,
+    choppedTrees: { ...data.choppedTrees },
+    clearedStumps: { ...data.clearedStumps },
+    dropPity: { ...data.dropPity },
+    toolbarSlot: data.toolbarSlot,
+    toolSlotActive: data.toolSlotActive,
+    seedInventory,
+    codex,
+    seeds,
+    stats: { ...data.stats },
+    simTime: data.simTime,
+    winShown: data.winShown,
+    trophies: [...data.trophies],
+  };
+}
+
+function decodeSeed(raw: unknown): Seed | null {
+  if (
+    !isRecord(raw) ||
+    typeof raw.s !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(CROP_DEFS, raw.s)
+  ) {
+    return null;
+  }
+  if (
+    !Array.isArray(raw.t) ||
+    raw.t.length !== 5 ||
+    !raw.t.every(isFiniteNumber) ||
+    typeof raw.n !== 'string' ||
+    typeof raw.h !== 'boolean' ||
+    !isHybridMechanic(raw.m)
+  ) {
+    return null;
+  }
+  if (raw.l !== undefined && (!Array.isArray(raw.l) || !raw.l.every((value) => typeof value === 'string'))) {
+    return null;
+  }
+  return {
+    species: raw.s as Seed['species'],
+    traits: {
+      yield: raw.t[0]!,
+      vigor: raw.t[1]!,
+      thirst: raw.t[2]!,
+      hardiness: raw.t[3]!,
+      weirdness: raw.t[4]!,
+    },
+    displayName: raw.n,
+    hybrid: raw.h,
+    mech: raw.m,
+    lineage: raw.l ? [...raw.l] : undefined,
+  };
+}
+
+function seedAt(seeds: Seed[], value: unknown): Seed | null {
+  if (!isIntegerInRange(value, 0, seeds.length - 1)) return null;
+  return cloneSeed(seeds[value]);
+}
+
+function optionalNumber(record: Record<string, unknown>, key: string): number | undefined | null {
+  if (!(key in record)) return undefined;
+  return isFiniteNumber(record[key]) ? record[key] : null;
+}
+
+function decodeCompactSave(parsed: Record<string, unknown>): Record<string, unknown> | null {
+  const rawTiles = parsed.tiles;
+  const rawSeeds = parsed.seeds;
+  if (
+    !isRecord(rawTiles) ||
+    rawTiles.w !== GRID_W ||
+    rawTiles.h !== GRID_H ||
+    !Array.isArray(rawTiles.r) ||
+    !Array.isArray(rawSeeds)
+  ) {
+    return null;
+  }
+  const seeds: Seed[] = [];
+  for (const rawSeed of rawSeeds) {
+    const seed = decodeSeed(rawSeed);
+    if (!seed) return null;
+    seeds.push(seed);
+  }
+
+  const tiles = createEmptyGrid();
+  const seen = new Set<string>();
+  for (const rawRecord of rawTiles.r) {
+    if (!isRecord(rawRecord)) return null;
+    if (!isIntegerInRange(rawRecord.x, 0, GRID_W - 1) || !isIntegerInRange(rawRecord.y, 0, GRID_H - 1)) {
+      return null;
+    }
+    const key = `${rawRecord.x},${rawRecord.y}`;
+    if (seen.has(key) || !isTileState(rawRecord.s)) return null;
+    seen.add(key);
+
+    const plantedAt = optionalNumber(rawRecord, 'p');
+    const stage = optionalNumber(rawRecord, 'g');
+    const growth = optionalNumber(rawRecord, 'r');
+    const structureHp = optionalNumber(rawRecord, 'h');
+    const tilledDay = optionalNumber(rawRecord, 'd');
+    if (plantedAt === null || stage === null || growth === null || structureHp === null || tilledDay === null) {
+      return null;
+    }
+    if (
+      (rawRecord.w !== undefined && rawRecord.w !== 1) ||
+      (rawRecord.t !== undefined && rawRecord.t !== 1) ||
+      (rawRecord.q !== undefined && rawRecord.q !== 1)
+    ) {
+      return null;
+    }
+
+    const tile = emptyTile();
+    tile.state = rawRecord.s;
+    if (plantedAt !== undefined) tile.plantedAt = plantedAt;
+    tile.watered = rawRecord.w === 1;
+    if (stage !== undefined) tile.stage = stage;
+    if (growth !== undefined) tile.growth = growth;
+    if (structureHp !== undefined) tile.structureHp = structureHp;
+    if (tilledDay !== undefined) tile.tilledDay = tilledDay;
+    tile.bearTrap = rawRecord.t === 1;
+    tile.bearTrapClosed = rawRecord.q === 1;
+
+    if (rawRecord.a !== undefined) {
+      const seed = seedAt(seeds, rawRecord.a);
+      if (!seed) return null;
+      tile.seed = seed;
+    }
+    if (rawRecord.b !== undefined) {
+      const seed = seedAt(seeds, rawRecord.b);
+      if (!seed) return null;
+      tile.breedA = seed;
+    }
+    if (rawRecord.c !== undefined) {
+      const seed = seedAt(seeds, rawRecord.c);
+      if (!seed) return null;
+      tile.breedB = seed;
+    }
+    tiles[rawRecord.y]![rawRecord.x] = tile;
+  }
+
+  if (!Array.isArray(parsed.seedInventory) || !Array.isArray(parsed.codex)) return null;
+  const seedInventory: Seed[] = [];
+  for (const rawIndex of parsed.seedInventory) {
+    const seed = seedAt(seeds, rawIndex);
+    if (!seed) return null;
+    seedInventory.push(seed);
+  }
+  const codex: CodexEntry[] = [];
+  for (const rawEntry of parsed.codex) {
+    if (!isRecord(rawEntry) || typeof rawEntry.id !== 'string' || !isFiniteNumber(rawEntry.d)) return null;
+    const seed = seedAt(seeds, rawEntry.s);
+    if (!seed) return null;
+    codex.push({ id: rawEntry.id, seed, discoveredDay: rawEntry.d });
+  }
+
+  const expanded = { ...parsed };
+  delete expanded.seeds;
+  expanded.tiles = tiles;
+  expanded.seedInventory = seedInventory;
+  expanded.codex = codex;
+  return expanded;
+}
+
 export function defaultStats(): GameStats {
   return {
     cropsHarvested: 0,
@@ -82,7 +479,7 @@ export function defaultStats(): GameStats {
 }
 
 export function serialize(data: SaveData): string {
-  return JSON.stringify(data);
+  return JSON.stringify(encodeCompact(data));
 }
 
 /** v4 moved the old counters and bag map into the current 24-slot inventory. */
@@ -168,12 +565,18 @@ function migrateBuildings(raw: unknown): PlacedBuilding[] {
 
 export function deserialize(raw: string): SaveData | null {
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    if (!parsed || typeof parsed !== 'object') return null;
-    if (typeof parsed.version === 'number' && parsed.version > SAVE_VERSION) {
-      console.error(`[Save] Save version ${parsed.version} is newer than supported version ${SAVE_VERSION}`);
+    const input = JSON.parse(raw) as Record<string, unknown>;
+    if (!input || typeof input !== 'object') return null;
+    if (typeof input.version === 'number' && input.version > SAVE_VERSION) {
+      console.error(`[Save] Save version ${input.version} is newer than supported version ${SAVE_VERSION}`);
       return null;
     }
+    const incoming = typeof input.version === 'number' ? input.version : 0;
+    // Accept a canonical full-grid object at the current version as well. This
+    // keeps callers that already stamped data before serialization on the safe
+    // migration path; new writes always use the compact tile envelope.
+    const parsed = incoming === SAVE_VERSION && !Array.isArray(input.tiles) ? decodeCompactSave(input) : input;
+    if (!parsed) return null;
     if (typeof parsed.seed !== 'number') return null;
     if (typeof parsed.day !== 'number') return null;
     if (parsed.phase !== 'day' && parsed.phase !== 'night') return null;
@@ -184,7 +587,6 @@ export function deserialize(raw: string): SaveData | null {
       : ['shotgun' as const];
 
     // Capture the incoming version before stamping: `data` aliases `parsed`.
-    const incoming = typeof parsed.version === 'number' ? parsed.version : 0;
     const data = parsed as unknown as SaveData;
     data.version = SAVE_VERSION;
     data.inventory = migrateInventory(parsed, incoming);

@@ -79,6 +79,8 @@ export function midgameSaveFixture(): SaveData {
     breedA: cloneSeed(beet),
     breedB: cloneSeed(carrot),
   };
+  save.tiles[25]![20] = { ...emptyTile(), bearTrap: true };
+  save.tiles[26]![20] = { ...emptyTile(), bearTrapClosed: true };
 
   save.day = 3;
   save.phase = 'night';
@@ -123,6 +125,13 @@ export function midgameSaveFixture(): SaveData {
   save.winShown = false;
   save.trophies = ['Thicket Fox', 'Marsh Stag'];
   return save;
+}
+
+/** The last released full-grid shape, used to prove the v8 → v9 codec migration. */
+export function legacyV8SaveFixture(): string {
+  const save = midgameSaveFixture();
+  save.version = 8;
+  return JSON.stringify(save);
 }
 
 /** Dense worked area generated from typed state, rather than a checked-in JSON blob. */
