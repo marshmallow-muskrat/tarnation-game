@@ -145,8 +145,8 @@ The characterization baseline intentionally preserves current behavior for later
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
 production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`, and
 `npm run build`, then deploys the verified `dist/` bundle through
-`.github/workflows/deploy.yml`. A failed check prevents deployment. Use `npm run deploy` only as a
-manual recovery path, then smoke-test the live site and record the URL/commit here.
+`.github/workflows/deploy.yml`. A failed check prevents deployment. Do not use `npm run deploy`; recovery
+must go through a focused, verified `main` change, followed by live smoke testing and a record here.
 
 Last known production target: <https://tarnation.pages.dev/> (the canonical Cloudflare Pages URL;
 the release preview and commit are recorded below).
@@ -175,3 +175,10 @@ Deployment record:
   [30721616462](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30721616462)
   passed all verification and deployment steps. Live smoke passed fresh New Adventure, reload/
   Continue, HUD Saved status, and produced no console warnings or errors.
+- `ae4ee73` — M2 honest economy: ECON-01–04 production purchase policy, explicit catalog
+  availability, local outcome diagnostics, and fixed-seed first-session calibration —
+  <https://tarnation.pages.dev/>; GitHub Actions run
+  [30723636941](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30723636941)
+  passed simulation checks, the deterministic unit suite, asset validation, build, and deployment.
+  Fresh live smoke passed New Adventure, Day 1/daylight HUD launch, Saved status, starter controls,
+  and produced no console warnings or errors.
