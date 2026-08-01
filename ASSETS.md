@@ -272,19 +272,51 @@ manual click per pack. With 5 TB of Drive, keep the raw zips there permanently.
 | **Survival Pack** | Gathering and crafting props |
 | **Stylized Nature MegaKit** | Larger, Ghibli-flavoured nature set if Ultimate Nature reads too plain |
 
+### The download flow, and one Google Drive gotcha
+
+Clicking **Download** on quaternius.com opens a Drive folder owned by Quaternius. It lands in your
+**Shared with me**, which is *not* your Drive — it's a pointer to his files. That matters two ways:
+
+- **It costs you no storage**, so leaving it there is harmless.
+- **It is not a backup.** He can reorganise, update or remove those files at any time and your
+  reference disappears with them.
+
+Either way you must **download to the Mac**, because `convert-fbx.mjs` works on local files.
+
+**The gotcha:** popular shared Drive files regularly throw *"Too many users have viewed or
+downloaded this file recently."* Quaternius packs are popular enough to hit it. The workaround is
+exactly the thing you asked about — **right-click → Make a copy**, which puts a copy you own in
+your Drive, then download from that. Your own copy has no shared-quota limit.
+
+So: normally just download; if Google blocks you, copy to your Drive first and download from there.
+
 ### Where they go
 
+**Local staging** (already created):
+
 ```
-Google Drive (5 TB)
-└── Marshmallow Muskrat/assets-raw/quaternius/
-    ├── UltimateCrops.zip
-    └── …
+~/Downloads/quaternius/
+├── _raw/         # the .zip exactly as downloaded
+└── _extracted/   # unzipped, one folder per pack
 ```
 
-Extract to a local scratch folder, convert, and copy only what you use into `public/models/`.
+Then convert straight into the repo:
 
-**Note:** the Drive connector isn't available to Claude Code — I can't read or write your Drive
-from here. Downloading and unzipping is a manual step; everything after it is scripted.
+```bash
+node scripts/convert-fbx.mjs ~/Downloads/quaternius/_extracted/UltimateCrops public/models/crops
+```
+
+**Archive the raw zips to your own Drive afterwards.** Not "Shared with me" — a folder you own:
+
+```
+My Drive/Marshmallow Muskrat/assets-raw/quaternius/
+```
+
+Worth doing because you'll extract maybe 20 models from a 100-model pack, and in six months when
+you want the cow you skipped, you want the pack sitting somewhere you control rather than hoping
+a shared link still resolves. With 5 TB it's free insurance.
+
+Keep the zips out of git — they're large, they never change, and git gains you nothing on them.
 
 ## 10. Credits
 
