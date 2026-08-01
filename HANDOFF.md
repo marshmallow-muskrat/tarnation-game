@@ -66,6 +66,8 @@ The next active work is Milestone 3 in
 - The current baseline is reproducible with `npm run economyreport`: 240 seconds per day, 5 axe
   swings for 2 wood, 6–14₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood
   homestead upgrades. Workbook-only fish, boss, quadrant, and seed-cost rows remain future targets.
+- Active repository terminology and asset credits have been audited; historical `masterplans/` is
+  intentionally excluded from that audit.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.

@@ -114,6 +114,9 @@ The following are non-negotiable quality pillars:
   strings. Keep save migrations only where they protect existing players.
 - Remove obsolete crop and woodland terminology from active code and docs. The crop roster follows
   available art: Grass, Dandelion, Beet, Carrot, and Lettuce.
+- Keep asset credits and manifest notes aligned with the accepted Quaternius packs and the current
+  fox/crop/tree vocabulary; active-repository consistency audits exclude only the explicitly
+  historical `masterplans/` directory.
 - Add a small browser QA checklist and keep `scripts/simcheck.ts` aligned with the live roster.
 
 **Exit criteria:** a repository-wide search finds no obsolete user-facing concept; typecheck and

@@ -71,7 +71,7 @@ export const MODELS = {
   player: {
     path: 'characters/player.glb',
     height: 1.6,
-    note: 'Cowboy_Male, Quaternius Ultimate Animated Character Pack. Replaces KayKit thorn-ranger.',
+    note: 'Cowboy_Male from the Quaternius Ultimate Animated Character Pack.',
   },
 
   // ── Animals ───────────────────────────────────────────────────────────────
