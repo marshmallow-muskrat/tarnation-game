@@ -232,6 +232,8 @@ type Fox = {
   haulSeed: boolean;
   attackSlot: number;
   attackAngle: number;
+  trappedTx: number;
+  trappedTy: number;
 };
 
 type FoxActions = {
@@ -1850,6 +1852,7 @@ export class GameRuntime {
       return;
     }
     w.dead = true;
+    this.resetFoxTrap(w);
     this.gs.stats.foxesFelled += 1;
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
@@ -1940,14 +1943,31 @@ export class GameRuntime {
         attackAngle:
           (this.foxes.length / Math.max(1, spawns.length)) * Math.PI * 2 +
           (this.gs.rng() - 0.5) * 0.22,
+        trappedTx: -1,
+        trappedTy: -1,
       });
     }
     this.world.markShadowsDirty();
   }
 
   private clearFoxes(): void {
-    for (const w of this.foxes) w.root.removeFromParent();
+    for (const w of this.foxes) {
+      this.resetFoxTrap(w);
+      w.root.removeFromParent();
+    }
     this.foxes = [];
+  }
+
+  private resetFoxTrap(w: Fox): void {
+    if (w.trappedTx < 0 || w.trappedTy < 0) return;
+    const tile = getTile(this.gs.tiles, w.trappedTx, w.trappedTy);
+    if (tile?.bearTrapClosed) {
+      tile.bearTrapClosed = false;
+      tile.bearTrap = true;
+      this.syncBearTrapModels();
+    }
+    w.trappedTx = -1;
+    w.trappedTy = -1;
   }
 
   private playFoxAction(w: Fox, action: 'idle' | 'walk' | 'attack'): void {
@@ -1998,6 +2018,8 @@ export class GameRuntime {
           w.z = bearTrap.wz;
           w.state = 'trapped';
           w.timer = 5;
+          w.trappedTx = bearTrap.tx;
+          w.trappedTy = bearTrap.ty;
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
           this.playFoxAction(w, 'idle');
@@ -2015,6 +2037,7 @@ export class GameRuntime {
         this.playFoxAction(w, 'idle');
         w.timer -= dt;
         if (w.timer <= 0) {
+          this.resetFoxTrap(w);
           w.state = 'flee';
           this.playFoxAction(w, 'walk');
         }

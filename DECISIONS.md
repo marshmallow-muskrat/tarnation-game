@@ -40,3 +40,7 @@ When a fox reaches its assigned ring position, it now enters a short attack stat
 pack attack clip, a small inward lunge, and a restrained scale pulse before returning to the ring.
 The motion makes simultaneous attackers feel intentional without adding player damage to a system
 that does not yet expose player health.
+
+Bear traps re-arm after their capture window ends, and also recover if the caught fox is defeated or
+the raid is cleared at dawn. The cooldown and the model state therefore describe the same reusable
+ability instead of leaving a permanently closed prop behind.
