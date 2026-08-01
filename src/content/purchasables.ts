@@ -1,4 +1,5 @@
 import type { ModelKey } from './models';
+import { HOMESTEAD_UPGRADE_WOOD } from '../content';
 
 export type AssetId = string;
 export type AssetUseType = 'place' | 'equip' | 'apply';
@@ -210,7 +211,7 @@ export const PURCHASABLE_ASSETS = [
     price: 1,
     materialCost: { wood: 1 },
     description: 'An alternate four-tile field boundary section.',
-    availability: 'merchant',
+    availability: 'unreleased',
   }),
   place({
     id: 'gate',
@@ -377,10 +378,13 @@ export const PURCHASABLE_ASSETS = [
       facings: 4,
       blocksMovement: true,
       blocksEnclosure: true,
-      price: tier === 1 ? 0 : [0, 6, 12, 24, 48][tier]!,
-      materialCost: tier === 1 ? {} : { wood: [0, 6, 12, 24, 48][tier]! },
+      price: tier === 1 ? 0 : HOMESTEAD_UPGRADE_WOOD[tier - 1]!,
+      materialCost: tier === 1 ? {} : { wood: HOMESTEAD_UPGRADE_WOOD[tier - 1]! },
       description: `Homestead upgrade tier ${tier}.`,
-      availability: tier === 1 ? 'debug' : 'upgrade',
+      // The direct homestead path is still the current legacy behavior. These
+      // deed rows remain loadable for old saves, but are not production choices
+      // until CORE-05 gives the merchant/deed path one authored progression job.
+      availability: tier === 1 ? 'debug' : 'unreleased',
     }),
   ),
   // Fixed central encampment definitions. These are catalogued for shared model

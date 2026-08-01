@@ -140,7 +140,8 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
 {
   ok('wood is the unit of account', itemInfo(ITEM_WOOD).price === 1);
   const beet = itemInfo(cropItem('Beet')).price;
-  // A tree is 5 swings for 2 wood; a crop is a till + seed + water + 2 days.
+  // A completed tree is 5 swings plus a stump clear for 2 wood; a crop is a
+  // till + seed + water + 2 days.
   ok('a crop beats two days of chopping', beet >= 8, `beet ${beet}₫ vs wood 1₫`);
   ok(
     'crops are ordered by how demanding they are',

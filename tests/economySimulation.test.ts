@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_FIRST_SESSION_DAYS,
   DEFAULT_ECONOMY_SIMULATION_DAYS,
   DEFAULT_ECONOMY_SIMULATION_SEEDS,
   simulateEconomy,
@@ -15,6 +16,8 @@ describe('deterministic economy simulation diagnostics', () => {
     expect(first.days).toBe(DEFAULT_ECONOMY_SIMULATION_DAYS);
     expect(first.plantedCrops).toBe(DEFAULT_ECONOMY_SIMULATION_DAYS);
     expect(Number.isFinite(first.endingDuckettes)).toBe(true);
+    expect(first.malformedPurchases).toEqual([]);
+    expect(first.deadPurchases).toEqual([]);
     expect(first.purchaseObservations.length).toBeGreaterThan(0);
   });
 
@@ -33,7 +36,7 @@ describe('deterministic economy simulation diagnostics', () => {
     );
   });
 
-  it('reports starvation, runaway growth, and purchases that stay dead across a fixed seed cohort', () => {
+  it('reports starvation and runaway growth while keeping every released purchase live', () => {
     const report = simulateEconomyAcrossSeeds();
 
     expect(report.seeds).toEqual([...DEFAULT_ECONOMY_SIMULATION_SEEDS]);
@@ -44,12 +47,21 @@ describe('deterministic economy simulation diagnostics', () => {
     expect(report.maximumEndingDuckettes).toBeGreaterThanOrEqual(
       report.minimumEndingDuckettes,
     );
-    expect(
-      report.reports.every((run) => run.malformedPurchases.includes('housing:homestead:5')),
-    ).toBe(true);
-    expect(
-      report.reports.every((run) => run.deadPurchases.includes('housing:homestead:5')),
-    ).toBe(true);
+    expect(report.reports.every((run) => run.malformedPurchases.length === 0)).toBe(true);
+    expect(report.reports.every((run) => run.deadPurchases.length === 0)).toBe(true);
     expect(Object.keys(report.deadPurchaseCounts).every((id) => id.length > 0)).toBe(true);
+  });
+
+  it('reaches the first capability upgrade within the five-day target across the cohort', () => {
+    const report = simulateEconomyAcrossSeeds(DEFAULT_ECONOMY_SIMULATION_SEEDS, {
+      days: DEFAULT_FIRST_SESSION_DAYS,
+    });
+
+    expect(report.firstSessionUpgradeRuns).toBe(DEFAULT_ECONOMY_SIMULATION_SEEDS.length);
+    expect(report.firstMeaningfulUpgradeDays.every((day) => day <= DEFAULT_FIRST_SESSION_DAYS)).toBe(true);
+    expect(report.firstMeaningfulUpgradeDays).toEqual(
+      expect.arrayContaining([3, 4, 5]),
+    );
+    expect(report.reports.every((run) => run.firstCropSaleDay === 3)).toBe(true);
   });
 });
