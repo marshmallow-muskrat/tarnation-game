@@ -250,7 +250,7 @@ ok('2-day tree respawn', TREE_RESPAWN_DAYS === 2);
 console.log(results.join('\n'));
 
 // --------------------------------------------------------- save migration
-import { deserialize } from '../src/sim/save';
+import { deserialize, SAVE_VERSION } from '../src/sim/save';
 import { createGameState, loadFromSaveData } from '../src/sim/gameState';
 
 const legacy = JSON.stringify({
@@ -296,6 +296,17 @@ if (gsOld) {
   ok2('pity ledger starts empty', Object.keys(gsOld.dropPity).length === 0);
   ok2('inventory is open by default', gsOld.inventoryOpen === true);
 }
+const future = { ...(JSON.parse(legacy) as Record<string, unknown>), version: SAVE_VERSION + 1 };
+ok2('future save versions refuse cleanly', deserialize(JSON.stringify(future)) === null);
+const unknownEntries = {
+  ...(JSON.parse(legacy) as Record<string, unknown>),
+  version: SAVE_VERSION,
+  placedBuildings: [{ id: 'building:deleted-forever', x: 12, z: 12, rotation: 0 }],
+  inventory: [{ id: 'deed:deleted-forever', count: 2 }],
+};
+const filtered = deserialize(JSON.stringify(unknownEntries));
+ok2('unknown placed assets are skipped', !!filtered && filtered.placedBuildings.length === 0);
+ok2('unknown deeds are skipped', !!filtered && filtered.inventory.every((slot) => slot === null));
 console.log(m.join('\n'));
 
 const all = [...results, ...m];

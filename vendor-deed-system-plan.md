@@ -224,5 +224,5 @@ Each major deployment must have a clean `npx tsc --noEmit`, `npm run check`,
 - [x] Milestone 5 — placement mode QA and final placement polish.
 - [x] Milestone 6 — demolish/context QA and final interaction polish.
 - [x] Milestone 7 — gate/enclosure/fox QA and final pathing polish.
-- [ ] Milestone 8 — save/launch QA and migration messaging.
+- [x] Milestone 8 — save/launch QA and migration messaging.
 - [ ] Milestone 9 — F12 debug QA, production smoke tests, and release record.
