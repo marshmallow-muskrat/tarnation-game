@@ -45,3 +45,18 @@ npm run deploy   # Cloudflare Pages → tarnation.pages.dev
 - `src/game/` — WorldRenderer, Assets, Input, GameRuntime
 - `src/ui/` — React HUD
 - `public/models/` — drop `.glb` files; missing → primitive fallbacks
+
+## Design docs
+
+| Doc | What |
+|---|---|
+| [`IDEAS.md`](IDEAS.md) | The 78-entry idea sheet, triaged into build-now / later / defer / against, with implementation notes and a suggested order |
+| [`masterplans/`](masterplans/) | Full design history. `masterplan.md` is the whole game; `masterplan_alpha_v4.md` is the current build spec |
+| [`docs/AI_3D_ASSETS.md`](docs/AI_3D_ASSETS.md) | Getting 3D models for free — download → primitives → AI-generate |
+| [`CLAUDE.md`](CLAUDE.md) | Conventions our AI agents follow |
+
+**Design authority:** highest-numbered masterplan wins.
+
+> `public/basis/` holds the KTX2 transcoder. **Do not remove it** — the KayKit models
+> declare `EXT_meshopt_compression`, `KHR_mesh_quantization` and `KHR_texture_basisu`,
+> and a bare `GLTFLoader` throws on all three and silently falls back to primitives.
