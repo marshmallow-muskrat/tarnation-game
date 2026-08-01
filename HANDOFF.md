@@ -70,7 +70,6 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
@@ -117,7 +116,17 @@ The characterization baseline intentionally preserves current behavior for later
   runs (median day 3.5, range 3–5), and no dead or malformed purchase remains. The 30-day diagnostic
   reports startup resource starvation in 16/16 runs and one long-horizon runaway boundary hit; that
   boundary remains visible for later functional-building sinks. The integrated baseline is now 97
-  deterministic tests across 12 files; PERF-01/02 are next.
+  deterministic tests across 12 files; PERF-01 is now integrated below.
+
+- PERF-01 stages the 109-model manifest into typed `boot`, `first_play`, `nearby`, `catalog`, and
+  `optional` groups. Boot and first-play use a bounded four-worker loader, while nearby/catalog/
+  optional groups continue after the world is controllable. The loading surface reports group
+  progress, shows primitive-fallback failures with a retry action, and exposes a retryable startup
+  error screen. Catalog icons and build previews refresh when their real model becomes ready. The
+  local production preview showed `first-play` progress at 25/66 on a cold launch and 52/66 after a
+  warm reload; both reached Day 1/daylight with Saved HUD state and no console warnings/errors.
+  Asset group validation and the integrated deterministic baseline now total 101 tests across 13
+  files. PERF-02 is next; per-icon WebGL renderers remain intentionally unchanged.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

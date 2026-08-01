@@ -117,7 +117,13 @@ import {
   nearestEdgePoint,
   type FoxType,
 } from '../sim/raid';
-import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Assets';
+import {
+  cloneModel,
+  initAssetLoaders,
+  preloadGroup,
+  type AssetLoadProgress,
+  type ModelKey,
+} from './Assets';
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
@@ -776,7 +782,10 @@ export class GameRuntime {
   async mount(
     canvas: HTMLCanvasElement,
     onHud: (s: HudSnapshot) => void,
-    options: { newAdventure?: boolean } = {},
+    options: {
+      newAdventure?: boolean;
+      onAssetProgress?: (progress: AssetLoadProgress) => void;
+    } = {},
   ): Promise<void> {
     this.disposed = false;
     this.canvas = canvas;
@@ -788,7 +797,8 @@ export class GameRuntime {
     this.reducedMotion = localStorage.getItem('tarnation.reducedMotion') === '1';
     this.world.setReducedMotion(this.reducedMotion);
     initAssetLoaders(this.world.renderer);
-    await preloadAll();
+    await preloadGroup('boot', options.onAssetProgress);
+    await preloadGroup('first_play', options.onAssetProgress);
     // React development mode can dispose an effect while the asynchronous
     // asset preload is still in flight. Do not let that abandoned runtime
     // attach input handlers or render over the replacement runtime.
@@ -844,9 +854,30 @@ export class GameRuntime {
     this.persist();
     this.loop(performance.now());
     this.pushHud(true);
+    this.loadBackgroundAssets(options.onAssetProgress);
 
     // Dev handle: lets the browser console drive the game for spot checks.
     (window as unknown as { tarnation?: GameRuntime }).tarnation = this;
+  }
+
+  private loadBackgroundAssets(onProgress?: (progress: AssetLoadProgress) => void): void {
+    void preloadGroup('nearby', onProgress)
+      .then(() => {
+        if (this.disposed) return;
+        this.syncBuildings();
+      })
+      .then(() => preloadGroup('catalog', onProgress))
+      .then(() => {
+        if (this.disposed) return;
+        // A saved run may contain a building whose model belongs to the catalog
+        // group. Re-sync once that group is ready so the initial fallback is
+        // replaced without delaying first play.
+        this.syncBuildings();
+      })
+      .then(() => preloadGroup('optional', onProgress))
+      .catch((err: unknown) => {
+        console.error('[Assets] background load failed', err);
+      });
   }
 
   dispose(): void {

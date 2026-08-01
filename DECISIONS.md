@@ -103,3 +103,13 @@ The homestead wood cadence remains 6/12/24/48, the rare trophy remains 60₫ wit
 steps, and the released merchant choices are the functional irrigation, fence, and gate paths. The
 cosmetic fence variant and duplicate/nonfunctional homestead deed rows remain loadable legacy content
 but are unreleased until their functions and progression authority are complete.
+
+## 2026-08-01 — Stage manifest loading without hiding asset failures
+
+PERF-01 assigns all 109 manifest models to exactly one ordered load group: `boot`, `first_play`,
+`nearby`, `catalog`, or `optional`. The player is boot-critical; the playable first scene, starter
+controls, initial crops/trees/fox, ambient animals, fixtures, and homestead tier one are ready before
+the world becomes controllable. Later groups load in bounded four-request batches. Missing models
+retain primitive fallbacks, but first-play progress exposes the affected count and offers a retry;
+catalog icons and build previews re-render when their real model becomes available. Shared icon
+rendering and full GPU disposal remain separate PERF-02/03 work.
