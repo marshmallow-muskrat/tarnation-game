@@ -113,7 +113,9 @@ export class WorldRenderer {
     this.camera.position.copy(this.cameraTarget).add(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
 
-    this.scatter.update(startX, startZ);
+    // Scatter models are loaded by GameRuntime after this renderer is built.
+    // The first real scatter chunks are created by snapCamera once preloadAll()
+    // has completed; building here would permanently cache primitive fallbacks.
     this.renderer.shadowMap.needsUpdate = true;
   }
 
