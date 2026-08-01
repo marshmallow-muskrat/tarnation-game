@@ -10,3 +10,6 @@ assets-src/
 .env
 .env.local
 *.log
+
+# preview-only assets for picker.html — not shipped
+public/preview/
