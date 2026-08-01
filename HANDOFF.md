@@ -95,8 +95,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 ## 5. Release procedure
 
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
-production. Deploy after every major masterplan milestone with `npm run deploy`, then smoke-test
-the live site and record the URL/commit here.
+production. Every push to `main` automatically runs `npm run check`, `npm run assetcheck`, and
+`npm run build`, then deploys the verified `dist/` bundle through
+`.github/workflows/deploy.yml`. A failed check prevents deployment. Use `npm run deploy` only as a
+manual recovery path, then smoke-test the live site and record the URL/commit here.
 
 Last known production target: <https://tarnation.pages.dev/> (the canonical Cloudflare Pages URL;
 the release preview and commit are recorded below).
