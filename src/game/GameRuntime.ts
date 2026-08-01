@@ -158,6 +158,7 @@ type EconomyMetrics = {
   saleTransactions: number;
   duckettesEarned: number;
   upgrades: number;
+  firstUpgradeInGameSeconds: number | null;
   buildingsPlaced: number;
   cropsPlanted: number;
   cropsHarvested: number;
@@ -507,6 +508,7 @@ export class GameRuntime {
     saleTransactions: 0,
     duckettesEarned: 0,
     upgrades: 0,
+    firstUpgradeInGameSeconds: null,
     buildingsPlaced: 0,
     cropsPlanted: 0,
     cropsHarvested: 0,
@@ -788,6 +790,7 @@ export class GameRuntime {
     if (!this.nearMarket) return;
     const earned = sellEverything(this.gs);
     if (earned > 0) {
+      this.recordAction('sale');
       this.economyMetrics.saleTransactions++;
       this.economyMetrics.duckettesEarned += earned;
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
@@ -798,6 +801,7 @@ export class GameRuntime {
   }
 
   private afterSale(id: ItemId, earned: number): void {
+    this.recordAction('sale');
     this.economyMetrics.saleTransactions++;
     this.economyMetrics.duckettesEarned += earned;
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
@@ -1107,6 +1111,7 @@ export class GameRuntime {
     this.nearWater = this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE;
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('KeyE')) {
       fillBucket(this.gs);
+      this.recordAction('fill_bucket');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 2);
     }
 
@@ -1296,7 +1301,11 @@ export class GameRuntime {
     }
     if (cost > 0) takeFromInventory(this.gs, ITEM_WOOD, cost);
     this.gs.homesteadTier = nextTier;
+    this.recordAction('upgrade');
     this.economyMetrics.upgrades++;
+    if (this.economyMetrics.firstUpgradeInGameSeconds === null) {
+      this.economyMetrics.firstUpgradeInGameSeconds = this.gs.simTime;
+    }
     const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
     this.syncBuildings();
     this.persist();
@@ -1339,6 +1348,7 @@ export class GameRuntime {
       return;
     }
     takeFromInventory(this.gs, ITEM_WOOD, selected.cost);
+    this.recordAction('build');
     placeBuilding(this.gs, selected.id, wc.x, wc.z, this.headingTarget);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
@@ -1350,6 +1360,7 @@ export class GameRuntime {
   private useBucket(): void {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
       fillBucket(this.gs);
+      this.recordAction('fill_bucket');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
       return;
     }
@@ -1447,6 +1458,7 @@ export class GameRuntime {
         return;
       }
       if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
+        this.recordAction('till');
         this.beginMeleeAction('pickUp');
         this.world.syncFarmTiles(this.gs.tiles);
       }
@@ -1458,6 +1470,7 @@ export class GameRuntime {
         return;
       }
       if (plantTile(this.gs.tiles, tx, ty, seed)) {
+        this.recordAction('plant');
         this.economyMetrics.cropsPlanted++;
         this.beginMeleeAction('pickUp');
         this.rebuildCrops();
@@ -1472,6 +1485,7 @@ export class GameRuntime {
         this.beginMeleeAction('pickUp');
         const id = cropItem(res.seed.displayName);
         if (!addToInventory(this.gs, id, res.count)) return;
+        this.recordAction('harvest');
         this.economyMetrics.cropsHarvested += res.count;
         this.gs.stats.cropsHarvested += res.count;
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
@@ -1496,6 +1510,7 @@ export class GameRuntime {
       if (!useBucketWater(this.gs)) return;
     }
     if (waterTile(this.gs.tiles, tx, ty, this.gs.simTime)) {
+      this.recordAction('water');
       this.world.syncFarmTiles(this.gs.tiles);
     }
   }
@@ -1516,9 +1531,11 @@ export class GameRuntime {
       const swings = (this.treeChops.get(key) ?? 0) + 1;
       if (swings < STUMP_CHOPS) {
         this.treeChops.set(key, swings);
+        this.recordAction('chop');
         return true;
       }
       this.treeChops.delete(key);
+      this.recordAction('chop');
       clearStump(this.gs, tx, ty);
       trees.invalidateTile(tx, ty);
       this.world.markShadowsDirty();
@@ -1529,6 +1546,7 @@ export class GameRuntime {
     if (!trees.hasTree(tx, ty)) return false;
 
     const chops = (this.treeChops.get(key) ?? 0) + 1;
+    this.recordAction('chop');
     this.treeChops.set(key, chops);
     this.world.shake(0.05, 0.04);
 
@@ -1861,6 +1879,7 @@ export class GameRuntime {
     }
     w.dead = true;
     this.resetFoxTrap(w);
+    this.recordAction('fox_felled');
     this.gs.stats.foxesFelled += 1;
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
@@ -2022,6 +2041,7 @@ export class GameRuntime {
       if (w.state !== 'burrow' && w.state !== 'trapped') {
         const bearTrap = this.nearestOpenBearTrap(w.x, w.z);
         if (bearTrap && triggerBearTrap(this.gs.tiles, bearTrap.tx, bearTrap.ty)) {
+          this.recordAction('trap_catch');
           w.x = bearTrap.wx;
           w.z = bearTrap.wz;
           w.state = 'trapped';

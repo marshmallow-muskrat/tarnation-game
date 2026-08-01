@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; held-tool polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
