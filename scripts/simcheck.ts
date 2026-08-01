@@ -241,6 +241,7 @@ const gsOld = migrated ? loadFromSaveData(migrated) : null;
 ok2('v4 save still loads', !!gsOld);
 if (gsOld) {
   ok2('inventory survives', countItem(gsOld.inventory, ITEM_WOOD) === 37);
+  ok2('legacy trophies survive', countItem(gsOld.inventory, 'trophy:Marsh Stag') === 1);
   ok2('"ducketts" becomes "duckettes"', gsOld.duckettes === 250, `${gsOld.duckettes}₫`);
   ok2('chopped trees survive', Object.keys(gsOld.choppedTrees).length === 1);
   ok2('stump ledger starts empty', Object.keys(gsOld.clearedStumps).length === 0);

@@ -94,9 +94,19 @@ export function serialize(data: SaveData): string {
 }
 
 /** v4 moved the old counters and bag map into the current 24-slot inventory. */
-function migrateInventory(data: Record<string, unknown>): Inventory {
+function migrateInventory(data: Record<string, unknown>, incomingVersion: number): Inventory {
   const raw = data.inventory;
-  if (Array.isArray(raw)) return normalizeInventory(raw);
+  if (Array.isArray(raw)) {
+    const inv = normalizeInventory(raw);
+    // Pre-v5 saves kept trophies in a separate list. Current saves already
+    // include them in the inventory, so only fold the list in for older data.
+    if (incomingVersion < 5 && Array.isArray(data.trophies)) {
+      for (const t of data.trophies as string[]) {
+        if (typeof t === 'string') addItem(inv, trophyItem(t), 1);
+      }
+    }
+    return inv;
+  }
 
   const inv = createInventory();
   const wood = typeof data.wood === 'number' ? data.wood : 0;
@@ -184,7 +194,7 @@ export function deserialize(raw: string): SaveData | null {
     const incoming = typeof parsed.version === 'number' ? parsed.version : 0;
     const data = parsed as unknown as SaveData;
     data.version = SAVE_VERSION;
-    data.inventory = migrateInventory(parsed);
+    data.inventory = migrateInventory(parsed, incoming);
     data.weapon = migrateWeapon(parsed.weapon);
     data.unlockedWeapons = Array.from(new Set(['shotgun' as WeaponId, ...unlocked]));
     const savedTier = typeof parsed.homesteadTier === 'number' ? parsed.homesteadTier : 1;
