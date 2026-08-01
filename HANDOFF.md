@@ -41,13 +41,14 @@ browser debugging.
 
 ## 4. Current quality work
 
-Milestones 0 and 1 are implemented in the current branch. The next active work is Milestones 2–3
-in `masterplan.md`:
+Milestones 0–2 are implemented in the current branch, and the runtime now exposes economy session
+metrics through `window.tarn.debug().economy()`. The next active work is Milestone 3 in
+`masterplan.md`:
 
-- Continue the hand socket, item profiles, carry/action animation states, and tool contact moments
-  pass for shotgun, shovel, axe, bow, and melee.
-- Add stronger contact feedback and player-facing range/target/invalid-state explanations.
-- Improve fox attack telegraphs, trap feedback, and interaction result messaging.
+- Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
+  day progression to calibrate the first-session economy.
+- Add stronger contact feedback and player-facing range/target/invalid-state explanations as the
+  next interaction polish layer.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
