@@ -32,7 +32,6 @@ import {
   PLAYER_ACCEL,
   PLAYER_DAMP,
   PLAYER_SPEED,
-  SAVE_KEY,
   SHOT_LIFETIME,
   SHOTGUN_COOLDOWN,
   SHOTGUN_PELLETS,
@@ -64,12 +63,10 @@ import {
   fillBucket,
   isStumpCleared,
   isTreeChopped,
-  loadFromString,
   markTreeChopped,
   markWinShown,
   onNewDay,
   placeBuilding,
-  saveToString,
   selectedSeed,
   sellEverything,
   sellItem,
@@ -115,6 +112,7 @@ import { cloneModel, preloadAll, initAssetLoaders, type ModelKey } from './Asset
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
+import { browserSaveStorage, SaveService } from './SaveService';
 import { WorldRenderer } from './WorldRenderer';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
@@ -623,6 +621,8 @@ function itemIconModel(id: ItemId): ModelKey | null {
 }
 
 export class GameRuntime {
+  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+
   private gs!: GameState;
   private world!: WorldRenderer;
   private input = new InputController();
@@ -774,12 +774,18 @@ export class GameRuntime {
     // attach input handlers or render over the replacement runtime.
     if (this.disposed) return;
 
-    const raw = options.newAdventure ? null : localStorage.getItem(SAVE_KEY);
-    const loaded = raw ? loadFromString(raw) : null;
-    if (raw && !loaded) {
-      throw new Error('This save could not be loaded. Choose New Adventure to start a clean save.');
+    if (options.newAdventure) {
+      this.gs = createGameState();
+    } else {
+      const loaded = this.saveService.read();
+      if (loaded.status !== 'ok') {
+        throw new Error(loaded.message ?? 'This save could not be loaded. Choose New Adventure to start a clean save.');
+      }
+      if (!loaded.state) {
+        throw new Error('No valid save was found. Choose New Adventure to start a clean save.');
+      }
+      this.gs = loaded.state;
     }
-    this.gs = loaded ?? createGameState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -863,10 +869,9 @@ export class GameRuntime {
 
   private persist = (): void => {
     if (!this.gs) return;
-    try {
-      localStorage.setItem(SAVE_KEY, saveToString(this.gs));
-    } catch {
-      // ignore
+    const result = this.saveService.save(this.gs);
+    if (result.status !== 'ok') {
+      console.error(`[Save] ${result.status}: ${result.message ?? 'save was not written'}`);
     }
   };
 

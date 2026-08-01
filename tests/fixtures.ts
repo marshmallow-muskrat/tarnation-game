@@ -4,7 +4,7 @@ import { addItem, createInventory } from '../src/sim/inventory';
 import { cropItem, ITEM_WOOD } from '../src/sim/items';
 import { createGameState, type GameState } from '../src/sim/gameState';
 import { mulberry32 } from '../src/sim/rng';
-import { createNewSave, type SaveData } from '../src/sim/save';
+import { createNewSave, SAVE_VERSION, type SaveData } from '../src/sim/save';
 
 export const FIXTURE_SEED = 0x5eed_0202;
 export const MIDGAME_SEED = 0x4d1d_6a0e;
@@ -356,6 +356,6 @@ export function malformedSaveFixtures(): readonly { label: string; raw: string }
 export function futureSaveFixture(): string {
   return JSON.stringify({
     ...JSON.parse(priorVersionSaveFixture(7)),
-    version: 9,
+    version: SAVE_VERSION + 1,
   });
 }

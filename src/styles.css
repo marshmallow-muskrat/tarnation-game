@@ -987,6 +987,10 @@ kbd {
   justify-content: center;
 }
 
+.launch-save-actions {
+  margin-top: 10px;
+}
+
 .launch-actions button {
   min-width: 145px;
   padding: 11px 14px;
