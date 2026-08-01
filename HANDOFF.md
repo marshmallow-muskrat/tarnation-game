@@ -89,7 +89,8 @@ The characterization baseline intentionally preserves current behavior for later
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,084 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
-  warning threshold; v8 full-grid saves remain readable and migrate explicitly. SaveService,
+  warning threshold; v8 full-grid saves remain readable and migrate explicitly. PR #5 is integrated
+  on `agent/masterplan-v2-implementation`. SaveService,
   quota handling, recovery, and player-visible save state remain SAVE-02/03.
 - Purchases remain free by default unless the existing `paid` URL capability is present; honest
   production purchasing is ECON-01, not part of BASE-02.
