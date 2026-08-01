@@ -68,13 +68,13 @@ timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundat
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Make catalog availability explicit, then instrument and tune the honest economy (ECON-02–04).
+- Instrument and tune the honest economy (ECON-03–04).
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: 88 deterministic tests across 10 files,
+- BASE-02 characterization is now integrated with Vitest: 90 deterministic tests across 10 files,
   compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
   released save versions 3 through 7. PR #3 merged into the integration branch as `5ff922b`.
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
@@ -104,7 +104,10 @@ The characterization baseline intentionally preserves current behavior for later
 - ECON-01 now uses a typed Vite build capability: production builds always charge catalog costs, the
   development-only free sandbox is visibly labeled in the merchant panel, and public query
   parameters cannot change purchase policy. Pure quote/transaction coverage verifies exact
-  deduction and atomic failed purchases; the integrated branch is ready for ECON-02.
+  deduction and atomic failed purchases. ECON-02 now requires explicit starter, merchant, upgrade,
+  debug, unreleased, and fixture availability; starter tools and empty toolbar slots no longer
+  appear as merchant/build choices, and nonfunctional building entries remain loadable for legacy
+  save rendering/use without appearing as new choices. The integrated branch is ready for ECON-03.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

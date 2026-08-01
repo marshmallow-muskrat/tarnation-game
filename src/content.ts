@@ -128,7 +128,7 @@ export const BUCKET_CAPACITY = 10;
 
 // Inventory / toolbar
 export const INVENTORY_SLOTS = 24;
-export const TOOLBAR_SLOTS = 5;
+export const TOOLBAR_SLOTS = 3;
 
 // Abilities — their own slots to the left of the toolbar
 export const BOULDER_COOLDOWN = 12;
