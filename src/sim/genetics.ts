@@ -45,11 +45,11 @@ export function defaultTraits(species: BaseCropId): Traits {
       return { yield: 20, vigor: 70, thirst: 20, hardiness: 60, weirdness: 0 };
     case 'dandelion':
       return { yield: 35, vigor: 55, thirst: 25, hardiness: 45, weirdness: 5 };
-    case 'turnip':
+    case 'beet':
       return { yield: 50, vigor: 50, thirst: 50, hardiness: 50, weirdness: 8 };
     case 'carrot':
       return { yield: 55, vigor: 45, thirst: 55, hardiness: 40, weirdness: 10 };
-    case 'onion':
+    case 'lettuce':
       return { yield: 60, vigor: 40, thirst: 75, hardiness: 35, weirdness: 12 };
   }
 }
@@ -79,10 +79,10 @@ function nameHybrid(a: Seed, b: Seed, weird: number, rng: Rng): { name: string; 
     const absurd = [
       { name: 'Screaming Cabbage', mech: 'repel_weasels' as const },
       { name: 'Glowshroom Gourd', mech: 'portable_light' as const },
-      { name: 'Ironroot Turnip', mech: 'ironroot' as const },
+      { name: 'Ironroot Beet', mech: 'ironroot' as const },
       { name: 'Rubber Corn', mech: 'ricochet' as const },
       { name: 'Carrot Corn', mech: 'greed_crop' as const },
-      { name: 'Onionion', mech: 'repel_weasels' as const },
+      { name: 'Onilettuce', mech: 'repel_weasels' as const },
       { name: 'Screaming Cabbage', mech: 'repel_weasels' as const },
     ];
     return absurd[Math.floor(rng() * absurd.length)]!;

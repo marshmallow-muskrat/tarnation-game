@@ -979,12 +979,12 @@ export class GameRuntime {
     let ammo: string | null = null;
     const ammoId = findItem(this.gs.inventory, (i) => {
       const n = cropName(i);
-      return n === 'Rubber Corn' || n === 'Screaming Cabbage' || n === 'Ironroot Turnip';
+      return n === 'Rubber Corn' || n === 'Screaming Cabbage' || n === 'Ironroot Beet';
     });
     if (ammoId && takeFromInventory(this.gs, ammoId, 1)) ammo = cropName(ammoId);
 
     const color =
-      ammo === 'Screaming Cabbage' ? 0x80ff80 : ammo === 'Ironroot Turnip' ? 0x888899 : 0x8d8578;
+      ammo === 'Screaming Cabbage' ? 0x80ff80 : ammo === 'Ironroot Beet' ? 0x888899 : 0x8d8578;
 
     const mesh = new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.16, 0),

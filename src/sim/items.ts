@@ -49,9 +49,9 @@ export function cropName(id: ItemId): string | null {
 const BASE_CROPS: Record<string, { glyph: string; price: number; blurb: string }> = {
   Grass: { glyph: '🌿', price: 6, blurb: 'Fodder. Grows anywhere, sells for little.' },
   Dandelion: { glyph: '🌼', price: 8, blurb: 'Bitter greens. Somebody buys them.' },
-  Turnip: { glyph: '🥔', price: 10, blurb: 'Honest root. The backbone of a season.' },
-  Carrot: { glyph: '🥕', price: 12, blurb: 'Sweeter than a turnip, and priced like it.' },
-  Onion: { glyph: '🧅', price: 14, blurb: 'Thirsty, pungent, and worth the trouble.' },
+  Beet: { glyph: '🥬', price: 10, blurb: 'Honest root. The backbone of a season.' },
+  Carrot: { glyph: '🥕', price: 12, blurb: 'Sweeter than a beet, and priced like it.' },
+  Lettuce: { glyph: '🥗', price: 14, blurb: 'Thirsty, leafy, and worth the trouble.' },
 };
 
 export function itemInfo(id: ItemId): ItemInfo {

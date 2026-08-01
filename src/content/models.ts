@@ -99,20 +99,21 @@ export const MODELS = {
   fish_c: { path: 'fish/fish_c.glb', height: 0.2 },
 
   // ── Crops — one entry per species per stage ──────────────────────────────
-  // The pack ships 4 stages per species (_1.._4). Turnip uses Beet — the closest
-  // root vegetable in the pack — and Onion uses Lettuce; there is no onion model.
-  turnip_1: { path: 'crops/beet_1.glb', height: 0.18 },
-  turnip_2: { path: 'crops/beet_2.glb', height: 0.3 },
-  turnip_3: { path: 'crops/beet_3.glb', height: 0.42 },
-  turnip_4: { path: 'crops/beet_4.glb', height: 0.5 },
+  // 4 stages per species (_1.._4), named for the models that exist. The crop roster
+  // follows the art rather than the other way round — no forcing a turnip when the
+  // pack ships a beet.
+  beet_1: { path: 'crops/beet_1.glb', height: 0.18 },
+  beet_2: { path: 'crops/beet_2.glb', height: 0.3 },
+  beet_3: { path: 'crops/beet_3.glb', height: 0.42 },
+  beet_4: { path: 'crops/beet_4.glb', height: 0.5 },
   carrot_1: { path: 'crops/carrot_1.glb', height: 0.18 },
   carrot_2: { path: 'crops/carrot_2.glb', height: 0.3 },
   carrot_3: { path: 'crops/carrot_3.glb', height: 0.42 },
   carrot_4: { path: 'crops/carrot_4.glb', height: 0.5 },
-  onion_1: { path: 'crops/lettuce_1.glb', height: 0.18 },
-  onion_2: { path: 'crops/lettuce_2.glb', height: 0.3 },
-  onion_3: { path: 'crops/lettuce_3.glb', height: 0.42 },
-  onion_4: { path: 'crops/lettuce_4.glb', height: 0.5 },
+  lettuce_1: { path: 'crops/lettuce_1.glb', height: 0.18 },
+  lettuce_2: { path: 'crops/lettuce_2.glb', height: 0.3 },
+  lettuce_3: { path: 'crops/lettuce_3.glb', height: 0.42 },
+  lettuce_4: { path: 'crops/lettuce_4.glb', height: 0.5 },
   dandelion_1: { path: 'crops/flower_1.glb', height: 0.15 },
   dandelion_2: { path: 'crops/flower_2.glb', height: 0.25 },
   dandelion_3: { path: 'crops/flower_3.glb', height: 0.35 },
@@ -128,12 +129,13 @@ export const MODELS = {
   tomato_4: { path: 'crops/tomato_4.glb', height: 0.6 },
 
   // ── Nature — scatter. Keep these INSTANCED, see ASSETS.md ────────────────
-  tree_oak: { path: 'nature/common_tree_1.glb', height: 4.5 },
+  tree_oak: { path: 'nature/sn_common_tree_1.glb', height: 3.2 },
   tree_oak_2: { path: 'nature/common_tree_2.glb', height: 4.8 },
   tree_oak_3: { path: 'nature/common_tree_3.glb', height: 4.2 },
   tree_birch: { path: 'nature/birch_tree_1.glb', height: 4.6 },
   tree_birch_2: { path: 'nature/birch_tree_2.glb', height: 4.3 },
-  rock_a: { path: 'nature/rock_1.glb', height: 0.6 },
+  tree_stump: { path: 'nature/sn_dead_tree_1.glb', height: 0.5 },
+  rock_a: { path: 'nature/sn_rock_medium_1.glb', height: 0.6 },
   rock_b: { path: 'nature/rock_2.glb', height: 0.9 },
   rock_c: { path: 'nature/rock_3.glb', height: 0.5 },
   bush_a: { path: 'nature/bush_1.glb', height: 0.7 },

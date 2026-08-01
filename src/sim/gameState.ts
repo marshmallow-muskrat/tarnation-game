@@ -81,9 +81,9 @@ export function createGameState(seed?: number): GameState {
   const starter: Seed[] = [
     makeSeed('grass'),
     makeSeed('dandelion'),
-    makeSeed('turnip'),
+    makeSeed('beet'),
     makeSeed('carrot'),
-    makeSeed('onion'),
+    makeSeed('lettuce'),
   ];
   return {
     seed: s,
@@ -94,7 +94,7 @@ export function createGameState(seed?: number): GameState {
     unlockedWeapons: ['rock'],
     irrigationTier: 2,
     bucketFill: 0,
-    selectedCrop: 'turnip',
+    selectedCrop: 'beet',
     inventory: createInventory(),
     inventoryOpen: true,
     duckettes: 0,
@@ -112,7 +112,7 @@ export function createGameState(seed?: number): GameState {
     toast: '',
     toastTimer: 0,
     trophies: [],
-    selectedSeedIndex: 2, // turnip
+    selectedSeedIndex: 2, // beet
   };
 }
 
@@ -132,7 +132,7 @@ export function loadFromSaveData(data: SaveData): GameState {
     unlockedWeapons: data.unlockedWeapons ?? ['rock'],
     irrigationTier: Math.max(data.irrigationTier ?? 2, 2),
     bucketFill: Math.min(data.bucketFill ?? 0, BUCKET_CAPACITY),
-    selectedCrop: data.selectedCrop ?? 'turnip',
+    selectedCrop: data.selectedCrop ?? 'beet',
     inventory: normalizeInventory(data.inventory),
     inventoryOpen: data.inventoryOpen ?? true,
     duckettes: data.duckettes ?? 0,

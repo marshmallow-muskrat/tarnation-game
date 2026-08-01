@@ -278,3 +278,36 @@ export function cloneModel(key: ModelKey): {
 export function getTextureKey(_key: string): string | null {
   return null;
 }
+
+export type InstancedPart = {
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
+};
+
+/**
+ * Flatten a model into geometry/material pairs suitable for InstancedMesh.
+ *
+ * Scatter props render in the hundreds per chunk, so they must stay instanced —
+ * individual meshes will not hold 60fps. A glTF is a hierarchy of meshes, so each
+ * mesh's world matrix is baked into a cloned geometry and returned as its own part.
+ * Callers create one InstancedMesh per part and write the same per-instance matrix
+ * to all of them.
+ *
+ * Returns [] when the model is missing or is a primitive fallback, so callers can
+ * keep their existing primitive path.
+ */
+export function instancedParts(key: ModelKey): InstancedPart[] {
+  const entry = cache.get(key);
+  if (!entry || entry.isFallback) return [];
+
+  const parts: InstancedPart[] = [];
+  entry.scene.updateMatrixWorld(true);
+  entry.scene.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const geo = obj.geometry.clone();
+    geo.applyMatrix4(obj.matrixWorld);
+    const mat = Array.isArray(obj.material) ? obj.material[0]! : obj.material;
+    parts.push({ geometry: geo, material: mat });
+  });
+  return parts;
+}

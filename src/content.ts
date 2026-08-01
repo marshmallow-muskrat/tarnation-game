@@ -161,9 +161,9 @@ export const FARM_COLORS = {
 export const CROP_DEFS = {
   grass: { id: 'grass' as const, name: 'Grass', grow: PLANT_GROW_TIME, waterNeed: 0.25, color: 0x7cb342 },
   dandelion: { id: 'dandelion' as const, name: 'Dandelion', grow: PLANT_GROW_TIME, waterNeed: 0.3, color: 0xf0d060 },
-  turnip: { id: 'turnip' as const, name: 'Turnip', grow: PLANT_GROW_TIME, waterNeed: 0.5, color: 0xc4d64a },
+  beet: { id: 'beet' as const, name: 'Beet', grow: PLANT_GROW_TIME, waterNeed: 0.5, color: 0xc4d64a },
   carrot: { id: 'carrot' as const, name: 'Carrot', grow: PLANT_GROW_TIME, waterNeed: 0.55, color: 0xe88a30 },
-  onion: { id: 'onion' as const, name: 'Onion', grow: PLANT_GROW_TIME, waterNeed: 0.75, color: 0xd0c0e0 },
+  lettuce: { id: 'lettuce' as const, name: 'Lettuce', grow: PLANT_GROW_TIME, waterNeed: 0.75, color: 0xd0c0e0 },
 };
 
 export type BaseCropId = keyof typeof CROP_DEFS;

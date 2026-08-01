@@ -12,6 +12,7 @@ import {
   ROCK_TILE_FRACTION,
   TREE_CHUNK_RADIUS,
 } from '../content';
+import { instancedParts } from './Assets';
 import { standardMaterial } from './materials';
 import { hash2, smoothstep, valueNoise2D } from './noise';
 import { TERRAIN_SEED } from './terrain';
@@ -208,18 +209,58 @@ export class FarmTrees {
     this.root.add(chunk.group);
   }
 
+  /**
+   * Real tree/rock models, flattened for instancing. Resolved lazily on first chunk
+   * because Assets preloading finishes after the renderer is constructed. Empty
+   * means the model is missing and the primitive cone/cylinder path is used instead.
+   */
+  private modelParts: {
+    tree: ReturnType<typeof instancedParts>;
+    rock: ReturnType<typeof instancedParts>;
+    stump: ReturnType<typeof instancedParts>;
+  } | null = null;
+
+  private resolveModels(): void {
+    if (this.modelParts) return;
+    this.modelParts = {
+      tree: instancedParts('tree_oak'),
+      rock: instancedParts('rock_a'),
+      stump: instancedParts('tree_stump'),
+    };
+  }
+
   private buildChunk(cx: number, cz: number): Chunk | null {
+    this.resolveModels();
     const originX = cx * CHUNK_SIZE;
     const originZ = cz * CHUNK_SIZE;
     if (originX + CHUNK_SIZE < 0 || originZ + CHUNK_SIZE < 0) return null;
     if (originX >= GRID_W || originZ >= GRID_H) return null;
 
     const max = CHUNK_SIZE * CHUNK_SIZE;
-    const trunks = new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, max);
-    const canopy = new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, max * 2);
-    const stumps = new THREE.InstancedMesh(this.geoStump, this.matStump, max);
-    const boulders = new THREE.InstancedMesh(this.geoBoulder, this.matBoulder, max);
-    for (const m of [trunks, canopy, stumps, boulders]) {
+    const mp = this.modelParts!;
+
+    // One InstancedMesh per model part (a tree is trunk + leaves as separate meshes,
+    // each with its own material). Every part receives the same per-instance matrix.
+    const treeParts = mp.tree.length
+      ? mp.tree.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
+      : [
+          new THREE.InstancedMesh(this.geoTrunk, this.matTrunk, max),
+          new THREE.InstancedMesh(this.geoCanopy, this.matCanopy, max),
+        ];
+    const rockParts = mp.rock.length
+      ? mp.rock.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
+      : [new THREE.InstancedMesh(this.geoBoulder, this.matBoulder, max)];
+    const stumpParts = mp.stump.length
+      ? mp.stump.map((pt) => new THREE.InstancedMesh(pt.geometry, pt.material, max))
+      : [new THREE.InstancedMesh(this.geoStump, this.matStump, max)];
+
+    const trunks = treeParts[0]!;
+    const canopy = treeParts[1] ?? treeParts[0]!;
+    const stumps = stumpParts[0]!;
+    const boulders = rockParts[0]!;
+    const usingModels = mp.tree.length > 0;
+
+    for (const m of [...treeParts, ...rockParts, ...stumpParts]) {
       m.castShadow = true;
       m.receiveShadow = true;
     }
@@ -267,6 +308,18 @@ export class FarmTrees {
         this._e.set(lean, hash2(tx, ty, 0x66) * 6, lean * 0.6);
         this._q.setFromEuler(this._e);
 
+        if (usingModels) {
+          // The model already has trunk and foliage positioned relative to each
+          // other, so every part takes the identical ground-level matrix.
+          this._p.set(x, y, z);
+          this._s.set(sc, sc, sc);
+          this._m.compose(this._p, this._q, this._s);
+          for (const part of treeParts) part.setMatrixAt(ti, this._m);
+          ti++;
+          ci = ti;
+          continue;
+        }
+
         this._p.set(x, y + 0.62 * sc, z);
         this._s.set(sc, sc, sc);
         this._m.compose(this._p, this._q, this._s);
@@ -283,18 +336,24 @@ export class FarmTrees {
       }
     }
 
-    trunks.count = ti;
-    canopy.count = ci;
-    stumps.count = si;
-    boulders.count = bi;
-    for (const m of [trunks, canopy, stumps, boulders]) {
+    if (usingModels) {
+      for (const part of treeParts) part.count = ti;
+    } else {
+      trunks.count = ti;
+      canopy.count = ci;
+    }
+    for (const part of stumpParts) part.count = si;
+    for (const part of rockParts) part.count = bi;
+
+    const all = [...treeParts, ...stumpParts, ...rockParts];
+    for (const m of all) {
       m.instanceMatrix.needsUpdate = true;
       m.computeBoundingSphere();
     }
 
     const group = new THREE.Group();
     group.name = `trees_${cx},${cz}`;
-    group.add(trunks, canopy, stumps, boulders);
+    group.add(...all);
     return { key: `${cx},${cz}`, group };
   }
 }

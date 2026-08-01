@@ -378,7 +378,7 @@ export function tileCenter(tx: number, ty: number, tileSize: number): { x: numbe
   };
 }
 
-export function defaultSeed(species: BaseCropId = 'turnip'): Seed {
+export function defaultSeed(species: BaseCropId = 'beet'): Seed {
   return makeSeed(species);
 }
 

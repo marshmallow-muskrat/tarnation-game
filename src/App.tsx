@@ -15,6 +15,8 @@ export function App() {
 
     const runtime = new GameRuntime();
     runtimeRef.current = runtime;
+    // Console handle for debugging: window.tarn.teleport(x, z), .state, .world
+    (window as unknown as { tarn?: unknown }).tarn = runtime;
     let cancelled = false;
 
     runtime
