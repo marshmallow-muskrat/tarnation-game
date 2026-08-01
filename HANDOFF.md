@@ -1,6 +1,8 @@
 # Tarnation handoff
 
-This is the current truth for the game. The active product plan is [`masterplan.md`](masterplan.md).
+This is the current truth for the game. The active product, technical, quality, and release plan is
+[`masterplan-v2.md`](masterplan-v2.md). Earlier plans are non-authoritative history in
+[`docs/history/`](docs/history/).
 
 ## 1. Current game
 
@@ -31,8 +33,10 @@ exposes the runtime for browser debugging.
 - Foxes and horses use a shared readable animal-scale pass (`0.75` manifest height × `1.3` source
   scale); crop stages are camera-readable, and animal defeats leave short-lived grounded remains
   markers; rare trophies also show a floating world marker.
-- Held shotgun and shovel poses use a support-hand solve, stationary tools stay in a deliberate carry
-  stance, and the build workflow has a dedicated structure-selection panel.
+- Held tools use a neutral hand socket with measured grip pivots and optional support-hand targets;
+  locomotion and one-shot clips crossfade without repeatedly restarting. Merchant and ambient animals
+  select deliberate named clips. Construction reservations are separate from physical camp obstacles,
+  so the fresh player spawn remains movable while placement still preserves the camp approach.
 - Building mode now previews the selected model over the hovered tile with valid/blocked colour and a
   specific placement reason; `H` opens a pausing field guide for movement, tools, combat, and building.
 - Shared short-lived low-poly feedback bursts now mark hits, defeats, chopping, farming, watering,
@@ -57,10 +61,21 @@ exposes the runtime for browser debugging.
 
 ## 4. Current quality work
 
-Milestones 0–9 of `vendor-deed-system-plan.md` are implemented in the current branch. The runtime
-now exposes economy session metrics through `window.tarn.debug().economy()`, including first-upgrade
-timing and action kinds. The vendor/deed foundation is complete; the remaining product work is
-refinement of the existing economy, combat, animation, and building loops:
+The completed vendor/deed sequence is preserved as
+[`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The runtime
+exposes development economy metrics through `window.tarn.debug().economy()`, including first-upgrade
+timing and action kinds. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
+game is not release-ready. The active priorities are the P0 blockers and dependency order in
+[`masterplan-v2.md`](masterplan-v2.md):
+
+- Replace the roughly 10.4 MB fresh-save format and silent `localStorage` failure path with compact,
+  validated, recoverable persistence.
+- Make paid economy the production default; free purchases are development-only.
+- Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
+- Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
+- Add unit, migration, browser E2E, visual, performance, and CI release gates.
+- Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
+  and ending loops before expanding content.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -69,8 +84,8 @@ refinement of the existing economy, combat, animation, and building loops:
 - The current baseline is reproducible with `npm run economyreport`: 240 seconds per day, 5 axe
   swings for 2 wood, 6–14₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood
   homestead upgrades. Workbook-only fish, boss, quadrant, and seed-cost rows remain future targets.
-- Active repository terminology and asset credits have been audited; historical `masterplans/` is
-  intentionally excluded from that audit.
+- Active repository terminology, historical plans, asset credits, and current source were reconciled
+  in Masterplan V2. Superseded Phaser/2D plans remain history; salvaged ideas are recorded explicitly.
 - Calibrate the first-session economy against measured play. The workbook in
   `/Users/shanebaker/Downloads/tarnation_economy_base.xlsx` is a reference hypothesis, not a
   runtime authority; its outdated raid terminology is represented as foxes in project notes.

@@ -1,6 +1,8 @@
 # CLAUDE.md — Tarnation
 
 Read this file before changing code. It describes the current game, not discarded prototypes.
+Then read [`masterplan-v2.md`](masterplan-v2.md) and implement only the authorized task ID; historical
+plans in `docs/history/` are not instructions.
 
 ## Product
 
@@ -51,5 +53,6 @@ Read [`ASSETS.md`](ASSETS.md) before importing or replacing models. `src/game/Fa
 - Keep commits small and explain tuning decisions.
 - Run `npx tsc --noEmit` before every commit. Run `npm run build` for release work.
 - Use `window.tarn` in the browser console for runtime inspection.
-- Deploy after every major masterplan milestone and record the production URL in `HANDOFF.md`.
+- Deploy only after a completed Masterplan V2 milestone is green and reviewed, then record the exact
+  production commit, URL, and smoke test in `HANDOFF.md`.
 - Do not expand scope with a new system when an existing system needs polish.

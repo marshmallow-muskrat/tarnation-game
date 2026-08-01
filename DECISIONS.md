@@ -1,5 +1,19 @@
 # Decisions
 
+## 2026-08-01 — Make Masterplan V2 the sole active roadmap
+
+`masterplan-v2.md` is the authority for product, technical, quality, and release sequencing. Earlier
+plans are preserved under `docs/history/` as provenance only. Historic Phaser/2D implementation,
+weasel terminology, and un-gated full-game scope must not be reintroduced. Ideas worth retaining are
+explicitly classified in the V2 disposition ledger.
+
+## 2026-08-01 — Separate camp reservation from physical collision
+
+The central camp reserves its full approach against tilling and player construction, but only actual
+blocking fixtures and the merchant occupy actor-navigation tiles. This keeps the authored camp layout
+without trapping a player who spawns on open camp ground. Placement and pathing must use the appropriate
+set rather than a single overloaded occupancy mask.
+
 ## 2026-08-01 — Use Ultimate Nature models for chunk scatter
 
 Scatter keeps its existing deterministic counts and placement, but its grass, rocks, bushes,
