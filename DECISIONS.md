@@ -66,3 +66,10 @@ actions and meaningful clock boundaries, with a fixed-step 15-second fallback fo
 visibility and unload flushes are best-effort only. The HUD exposes Saving, Saved, and Save failed
 states through an accessible live region, and a failure has no timeout: it stays visible until a
 later successful save resolves it.
+
+## 2026-08-01 — Gate free purchases behind the build environment
+
+Production economy policy is selected from Vite's typed development capability, not from the public
+URL. Production builds always charge the authored duckette and material costs; only a visibly
+labelled development build may use free purchases. Purchase quotes and commits remain pure and
+atomic so a rejected transaction cannot consume currency, materials, or an inventory slot.

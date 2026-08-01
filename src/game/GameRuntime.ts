@@ -99,9 +99,9 @@ import {
   totalWeirdness,
 } from '../sim/farm';
 import { crossbreed } from '../sim/genetics';
-import { occupiedSlots } from '../sim/inventory';
-import { hasRoomFor } from '../sim/inventory';
+import { hasRoomFor, occupiedSlots } from '../sim/inventory';
 import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
+import { purchaseAsset, quotePurchase } from '../sim/economy';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
@@ -121,6 +121,7 @@ import {
   type SaveFeedbackState,
 } from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
+import { getEconomyCapability } from './EconomyCapability';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
   assetDefinition,
@@ -191,6 +192,9 @@ export type HudVendorAsset = {
   model: ModelKey;
   price: number;
   material: string;
+  owned: number;
+  canBuy: boolean;
+  lockReason: string;
 };
 
 export type HudVendor = {
@@ -198,6 +202,7 @@ export type HudVendor = {
   tab: AssetCategory;
   tabs: AssetCategory[];
   items: HudVendorAsset[];
+  economyLabel: string;
   message: string;
 };
 
@@ -633,6 +638,8 @@ function itemIconModel(id: ItemId): ModelKey | null {
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+
+  private readonly economyCapability = getEconomyCapability();
 
   private gs!: GameState;
   private world!: WorldRenderer;
@@ -1350,29 +1357,22 @@ export class GameRuntime {
     if (!this.nearMerchant) return;
     const asset = assetDefinition(id);
     if (!asset || asset.fixture || asset.availability === 'debug' || asset.availability === 'fixture') return;
-    const itemId = deedItemId(id);
-    const freePurchases = !new URLSearchParams(window.location.search).has('paid');
-    const reasons: string[] = [];
-    if (this.gs.duckettes < asset.price) reasons.push(`need ${asset.price} duckettes`);
-    const woodCost = asset.materialCost.wood ?? 0;
-    if (woodCount(this.gs) < woodCost) reasons.push(`need ${woodCost} Wood`);
-    if (!hasRoomFor(this.gs.inventory, itemId)) reasons.push('inventory has no free slot');
-    if (reasons.length && !freePurchases) {
-      this.vendorMessage = `Cannot buy ${asset.displayName}: ${reasons.join(' · ')}`;
+    const result = purchaseAsset(this.gs, asset, this.economyCapability);
+    if (!result.ok) {
+      this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
       setToast(this.gs, this.vendorMessage, 2.2);
       this.pushHud(true);
       return;
     }
-    if (!addToInventory(this.gs, itemId, 1)) {
-      this.vendorMessage = 'Inventory has no free slot';
-      this.pushHud(true);
-      return;
-    }
-    if (!freePurchases) {
-      this.gs.duckettes -= asset.price;
-      if (woodCost > 0) takeFromInventory(this.gs, ITEM_WOOD, woodCost);
-    }
-    this.vendorMessage = `${asset.displayName} deed added to inventory`;
+    const materialSummary = Object.entries(result.materialSpent)
+      .map(([material, cost]) => `${cost} ${material}`)
+      .join(', ');
+    const spentSummary = result.duckettesSpent > 0 || materialSummary
+      ? ` · spent ${result.duckettesSpent} duckettes${materialSummary ? ` + ${materialSummary}` : ''}`
+      : this.economyCapability.allowFreePurchases
+        ? ' · no currency cost in this sandbox'
+        : ' · no duckette or material cost';
+    this.vendorMessage = `${asset.displayName} deed added to inventory${spentSummary}`;
     this.recordAction('purchase');
     this.persist();
     this.pushHud(true);
@@ -4093,19 +4093,26 @@ export class GameRuntime {
         open: this.vendorOpen,
         tab: this.vendorTab,
         tabs: ['Housing', 'Weapons', 'Buildings', 'Upgrades'],
-        items: shopAssets(this.vendorTab).map((asset) => ({
-          id: asset.id,
-          name: asset.displayName,
-          description: asset.description,
-          footprint: `${asset.footprint.width}×${asset.footprint.height}`,
-          useType: asset.useType,
-          gate: asset.gate,
-          model: asset.modelKey,
-          price: asset.price,
-          material: Object.entries(asset.materialCost)
-            .map(([name, cost]) => `${cost} ${name}`)
-            .join(', ') || '—',
-        })),
+        economyLabel: this.economyCapability.label,
+        items: shopAssets(this.vendorTab).map((asset) => {
+          const quote = quotePurchase(this.gs, asset, this.economyCapability);
+          return {
+            id: asset.id,
+            name: asset.displayName,
+            description: asset.description,
+            footprint: `${asset.footprint.width}×${asset.footprint.height}`,
+            useType: asset.useType,
+            gate: asset.gate,
+            model: asset.modelKey,
+            price: asset.price,
+            material: Object.entries(asset.materialCost)
+              .map(([name, cost]) => `${cost} ${name}`)
+              .join(', ') || '—',
+            owned: quote.owned,
+            canBuy: quote.canBuy,
+            lockReason: quote.reasons.join(' · ') || 'Ready to buy',
+          };
+        }),
         message: this.vendorMessage,
       },
       contextMenu: { ...this.contextMenu },
