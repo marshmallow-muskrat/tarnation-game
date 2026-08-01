@@ -1,5 +1,20 @@
 # TARNATION — Masterplan ALPHA v2 (Draft 0.2 — "Make It Look Like A Game")
 
+> ## ⚠️ HISTORICAL — not build instruction
+>
+> This document predates the current design. It is kept for its systems thinking, which is
+> still useful, but **do not build from it**. Two things in it are dead:
+>
+> 1. **The Dark Woods, the Woodsman, the Attention meter, the bag-drop stake, and the "no jokes
+>    past the treeline" tonal contract** — all removed. Replaced by multiple maps of varying
+>    difficulty with triggered secret zones and boss/challenge/treasure zones.
+> 2. **Phaser, Electron, Steam SDK, the `packages/` layout** — the stack is Three.js + React +
+>    Vite on Cloudflare Pages.
+>
+> **Current design authority: [`../CLAUDE.md`](../CLAUDE.md), [`../ASSETS.md`](../ASSETS.md),
+> [`../IDEAS.md`](../IDEAS.md).**
+
+
 **This is a modification spec for an existing codebase**, not a rebuild. Draft 0 works
 mechanically — tilling, growth, the day clock, weasels, the woods, the bag stake all function.
 Do not rewrite them. This document fixes how it *looks* and *reads*.

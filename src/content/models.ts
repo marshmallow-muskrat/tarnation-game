@@ -13,6 +13,10 @@ export type ModelDef = {
   /** Path under public/models/ */
   path: string;
 
+  // NOTE ON SCALE: height-normalising a quadruped at its real shoulder height makes
+  // it read enormous next to the 1.6-unit player, because animals are far longer
+  // than they are tall. Stylised values well below life-size look correct here.
+
   /**
    * Normalise the model to this height in world units.
    *
@@ -79,19 +83,19 @@ export const MODELS = {
   // until the call sites are renamed.
   weasel: {
     path: 'animals/fox.glb',
-    height: 0.6,
+    height: 0.38,
     note: 'Fox. Quaternius Ultimate Animated Animals — animated, untinted.',
   },
-  donkey: { path: 'animals/donkey.glb', height: 1.35 },
-  cow: { path: 'animals/cow.glb', height: 1.4 },
-  bull: { path: 'animals/bull.glb', height: 1.45 },
-  horse: { path: 'animals/horse.glb', height: 1.7 },
-  alpaca: { path: 'animals/alpaca.glb', height: 1.2 },
-  deer: { path: 'animals/deer.glb', height: 1.5 },
-  stag: { path: 'animals/stag.glb', height: 1.7 },
-  fox: { path: 'animals/fox.glb', height: 0.6 },
-  wolf: { path: 'animals/wolf.glb', height: 0.9 },
-  husky: { path: 'animals/husky.glb', height: 0.7 },
+  donkey: { path: 'animals/donkey.glb', height: 0.95 },
+  cow: { path: 'animals/cow.glb', height: 1.0 },
+  bull: { path: 'animals/bull.glb', height: 1.05 },
+  horse: { path: 'animals/horse.glb', height: 1.2 },
+  alpaca: { path: 'animals/alpaca.glb', height: 0.9 },
+  deer: { path: 'animals/deer.glb', height: 1.0 },
+  stag: { path: 'animals/stag.glb', height: 1.15 },
+  fox: { path: 'animals/fox.glb', height: 0.38 },
+  wolf: { path: 'animals/wolf.glb', height: 0.6 },
+  husky: { path: 'animals/husky.glb', height: 0.5 },
 
   // ── Fish — ambient only, see ASSETS.md ───────────────────────────────────
   fish_a: { path: 'fish/fish_a.glb', height: 0.25, note: 'Ambient river/lake life. Not catchable.' },
@@ -129,13 +133,13 @@ export const MODELS = {
   tomato_4: { path: 'crops/tomato_4.glb', height: 0.6 },
 
   // ── Nature — scatter. Keep these INSTANCED, see ASSETS.md ────────────────
-  tree_oak: { path: 'nature/sn_common_tree_1.glb', height: 3.2 },
+  tree_oak: { path: 'nature/common_tree_1.glb', height: 3.4 },
   tree_oak_2: { path: 'nature/common_tree_2.glb', height: 4.8 },
   tree_oak_3: { path: 'nature/common_tree_3.glb', height: 4.2 },
   tree_birch: { path: 'nature/birch_tree_1.glb', height: 4.6 },
   tree_birch_2: { path: 'nature/birch_tree_2.glb', height: 4.3 },
-  tree_stump: { path: 'nature/sn_dead_tree_1.glb', height: 0.5 },
-  rock_a: { path: 'nature/sn_rock_medium_1.glb', height: 0.6 },
+  tree_stump: { path: 'nature/wood_log.glb', height: 0.45 },
+  rock_a: { path: 'nature/rock_1.glb', height: 0.6 },
   rock_b: { path: 'nature/rock_2.glb', height: 0.9 },
   rock_c: { path: 'nature/rock_3.glb', height: 0.5 },
   bush_a: { path: 'nature/bush_1.glb', height: 0.7 },
@@ -182,8 +186,8 @@ export const MODELS = {
   tree_woods: { path: 'nature/birch_tree_dead_1.glb', height: 4.2 },
   house1: { path: 'buildings/small_barn.glb', height: 2.6 },
   house2: { path: 'buildings/barn.glb', height: 4.4 },
-  animal_a: { path: 'animals/deer.glb', height: 1.1, tint: 0x8a6a4a, tintStrength: 0.55 },
-  animal_b: { path: 'animals/fox.glb', height: 1.0, tint: 0x6a7a5a, tintStrength: 0.55 },
+  animal_a: { path: 'animals/deer.glb', height: 1.0, tint: 0x8a6a4a, tintStrength: 0.55 },
+  animal_b: { path: 'animals/fox.glb', height: 0.38, tint: 0x6a7a5a, tintStrength: 0.55 },
   scatter: { path: 'scatter.glb', height: 0.4 },
   stalker: { path: 'monsters/guardian_a.glb', height: 1.75, silhouette: true },
 } satisfies Record<string, ModelDef>;
