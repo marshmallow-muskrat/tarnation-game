@@ -106,8 +106,8 @@ The characterization baseline intentionally preserves current behavior for later
   parameters cannot change purchase policy. Pure quote/transaction coverage verifies exact
   deduction and atomic failed purchases. ECON-02 now requires explicit starter, merchant, upgrade,
   debug, unreleased, and fixture availability; starter tools and empty toolbar slots no longer
-  appear as merchant/build choices, and nonfunctional building entries are retained only for legacy
-  save rendering. The integrated branch is ready for ECON-03.
+  appear as merchant/build choices, and nonfunctional building entries remain loadable for legacy
+  save rendering/use without appearing as new choices. The integrated branch is ready for ECON-03.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

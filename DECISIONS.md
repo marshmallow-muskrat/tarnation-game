@@ -79,6 +79,6 @@ atomic so a rejected transaction cannot consume currency, materials, or an inven
 Catalog entries must declare whether they are starter, merchant, upgrade, debug, unreleased, or
 fixed fixtures. Production vendor and build selectors admit only explicit merchant/upgrade entries;
 starter tools remain available through their authored controls, while nonfunctional buildings stay
-loadable for existing saves but are hidden from new production choices. Removing the two empty
+loadable and usable for existing saves but are hidden from new production choices. Removing the two empty
 toolbar slots remaps a legacy empty-slot selection to the last supported starter tool without
 changing the save wire shape.
