@@ -58,15 +58,15 @@ export const BLUNDER_PELLETS = 5;
 
 // Overworld trees — choppable, respawning, clustered into groves
 /** Share of world tiles that carry a tree, averaged over the whole map. */
-export const FARM_TREE_FRACTION = 0.15;
+export const FARM_TREE_FRACTION = 0.055;
 /**
  * Trees clump: a low-frequency grove field decides where woodland is, and the
  * per-tile roll is biased by it. Same average coverage, far more open ground.
  */
 export const GROVE_CELL = 34;
 /** Inside a copse / out on open ground. Both derive from the map-wide average. */
-export const GROVE_DENSE = FARM_TREE_FRACTION * 2.8;
-export const GROVE_SPARSE = FARM_TREE_FRACTION * 0.13;
+export const GROVE_DENSE = FARM_TREE_FRACTION * 2.2;
+export const GROVE_SPARSE = FARM_TREE_FRACTION * 0.06;
 /** Axe swings to fell a tree. */
 export const FARM_TREE_CHOPS = 5;
 /** Wood added to the inventory per felled tree. */

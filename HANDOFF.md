@@ -112,6 +112,13 @@ animations. Use this to choose models rather than opening Blender.
 **Crop roster follows the art, deliberately.** Grass, Dandelion, **Beet**, Carrot, **Lettuce** —
 named for the models that exist. Do not rename crops to something the pack lacks.
 
+**Tuning already done — don't undo it**
+- `FARM_TREE_FRACTION` was cut 0.15 → 0.055. Real tree models have far more canopy
+  volume than the thin cones those numbers were tuned for, and at 0.15 the map closed
+  into a solid roof with the player buried. If you swap tree models again, re-check
+  this number — canopy width, not model count, is what fills the screen.
+- Animal `height` values are well below life-size on purpose. See §3 rule 3.
+
 **Rejected, don't redo**
 - Stylized Nature MegaKit trees — converted and present under the `sn_` prefix in `nature/`, but
   they read wrong against the flat-shaded look. Ultimate Nature Pack is the house style.

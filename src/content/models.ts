@@ -133,7 +133,7 @@ export const MODELS = {
   tomato_4: { path: 'crops/tomato_4.glb', height: 0.6 },
 
   // ── Nature — scatter. Keep these INSTANCED, see ASSETS.md ────────────────
-  tree_oak: { path: 'nature/common_tree_1.glb', height: 3.4 },
+  tree_oak: { path: 'nature/common_tree_1.glb', height: 2.5 },
   tree_oak_2: { path: 'nature/common_tree_2.glb', height: 4.8 },
   tree_oak_3: { path: 'nature/common_tree_3.glb', height: 4.2 },
   tree_birch: { path: 'nature/birch_tree_1.glb', height: 4.6 },
