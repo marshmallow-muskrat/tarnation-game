@@ -912,7 +912,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 
 | Milestone | Tasks | Depends on | Status |
 |---|---|---|---|
-| M0 Trusted baseline | BASE-01, BASE-02 | — | BASE-01 implemented locally; final PR validation pending |
+| M0 Trusted baseline | BASE-01, BASE-02 | — | BASE-01 and BASE-02 implemented locally; final PR validation pending |
 | M1 Save safety | SAVE-01–03 | M0 | Not started |
 | M2 Honest economy | ECON-01–04 | M0, save transaction boundary | Not started |
 | M3 Runtime health | PERF-01–05 | M0 | Not started |

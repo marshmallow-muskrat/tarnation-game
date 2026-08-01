@@ -76,6 +76,19 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
+- BASE-02 characterization is now implemented locally with Vitest: 63 deterministic pure tests,
+  compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
+  released save versions 3 through 7. `npm run test:ci` is part of the main deployment verification
+  workflow before asset validation and build.
+
+The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
+
+- v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
+  `darkwood` is currently discarded because that retired item no longer has a current registry entry.
+- A fresh serialized game remains the audited roughly 10.4 MB full-grid save; compact persistence is
+  SAVE-01, not part of this test-only slice.
+- Purchases remain free by default unless the existing `paid` URL capability is present; honest
+  production purchasing is ECON-01, not part of BASE-02.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -95,7 +108,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 ## 5. Release procedure
 
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
-production. Every push to `main` automatically runs `npm run check`, `npm run assetcheck`, and
+production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`, and
 `npm run build`, then deploys the verified `dist/` bundle through
 `.github/workflows/deploy.yml`. A failed check prevents deployment. Use `npm run deploy` only as a
 manual recovery path, then smoke-test the live site and record the URL/commit here.
