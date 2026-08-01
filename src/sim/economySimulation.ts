@@ -22,6 +22,8 @@ export const ECONOMY_SIMULATION_LIMITS = {
 } as const;
 
 export const DEFAULT_ECONOMY_SIMULATION_DAYS = 30;
+export const DEFAULT_FIRST_SESSION_DAYS = 5;
+export const FIRST_MEANINGFUL_UPGRADE_ID = 'upgrade:irrigation';
 export const DEFAULT_ECONOMY_SIMULATION_SEEDS = [
   0x0000_1001,
   0x0000_1002,
@@ -65,6 +67,8 @@ export type EconomySimulationReport = {
   harvestedCropUnits: number;
   seedPacketsReturned: number;
   sales: number;
+  firstCropSaleDay: number | null;
+  firstMeaningfulUpgradeDay: number | null;
   duckettesEarned: number;
   endingDuckettes: number;
   endingWood: number;
@@ -88,6 +92,9 @@ export type EconomySimulationAggregate = {
   deadPurchaseCounts: Record<string, number>;
   totalSales: number;
   totalCompletedPurchases: number;
+  firstMeaningfulUpgradeDays: number[];
+  medianFirstMeaningfulUpgradeDay: number | null;
+  firstSessionUpgradeRuns: number;
   minimumEndingDuckettes: number;
   maximumEndingDuckettes: number;
 };
@@ -125,6 +132,14 @@ function hasResourceShortage(reasons: readonly string[]): boolean {
   return reasons.some((reason) => reason.startsWith('Need '));
 }
 
+function median(values: readonly number[]): number | null {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle]!;
+  return (sorted[middle - 1]! + sorted[middle]!) / 2;
+}
+
 /**
  * Run the current economy rules through a small, fixed farming policy.
  *
@@ -153,6 +168,8 @@ export function simulateEconomy(
   let harvestedCropUnits = 0;
   let seedPacketsReturned = 0;
   let sales = 0;
+  let firstCropSaleDay: number | null = null;
+  let firstMeaningfulUpgradeDay: number | null = null;
   let duckettesEarned = 0;
   let purchaseAttempts = 0;
   let rejectedPurchases = 0;
@@ -190,6 +207,7 @@ export function simulateEconomy(
       harvestedCropUnits += result.count;
       seedPacketsReturned += 1;
       sales += 1;
+      if (firstCropSaleDay === null) firstCropSaleDay = day;
       duckettesEarned += earned;
       planted.splice(i, 1);
     }
@@ -228,6 +246,12 @@ export function simulateEconomy(
       if (result.ok) {
         observation.completed += 1;
         completedPurchases += 1;
+        if (
+          target.id === FIRST_MEANINGFUL_UPGRADE_ID &&
+          firstMeaningfulUpgradeDay === null
+        ) {
+          firstMeaningfulUpgradeDay = day;
+        }
         continue;
       }
       observation.rejected += 1;
@@ -258,6 +282,8 @@ export function simulateEconomy(
     harvestedCropUnits,
     seedPacketsReturned,
     sales,
+    firstCropSaleDay,
+    firstMeaningfulUpgradeDay,
     duckettesEarned,
     endingDuckettes: state.duckettes,
     endingWood: countItem(state.inventory, ITEM_WOOD),
@@ -281,6 +307,9 @@ export function simulateEconomyAcrossSeeds(
   options: EconomySimulationOptions = {},
 ): EconomySimulationAggregate {
   const reports = seeds.map((seed) => simulateEconomy(seed, options));
+  const firstMeaningfulUpgradeDays = reports
+    .map((report) => report.firstMeaningfulUpgradeDay)
+    .filter((day): day is number => day !== null);
   const deadPurchaseCounts: Record<string, number> = {};
   for (const report of reports) {
     for (const id of report.deadPurchases) {
@@ -298,6 +327,11 @@ export function simulateEconomyAcrossSeeds(
       (total, report) => total + report.completedPurchases,
       0,
     ),
+    firstMeaningfulUpgradeDays,
+    medianFirstMeaningfulUpgradeDay: median(firstMeaningfulUpgradeDays),
+    firstSessionUpgradeRuns: firstMeaningfulUpgradeDays.filter(
+      (day) => day <= DEFAULT_FIRST_SESSION_DAYS,
+    ).length,
     minimumEndingDuckettes: Math.min(...reports.map((report) => report.endingDuckettes)),
     maximumEndingDuckettes: Math.max(...reports.map((report) => report.endingDuckettes)),
   };

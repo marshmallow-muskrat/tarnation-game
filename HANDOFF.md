@@ -70,7 +70,6 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Tune the honest economy after instrumentation (ECON-04).
 - Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
 - Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
@@ -111,16 +110,21 @@ The characterization baseline intentionally preserves current behavior for later
   appear as merchant/build choices, and nonfunctional building entries remain loadable for legacy
   save rendering/use without appearing as new choices. ECON-03 adds local-only outcome counters and
   a pure fixed-seed diagnostic cohort: 16 seeds × 30 days, with current crop, wood, sale, and paid
-  purchase rules. The cohort reports resource starvation in 16/16 runs, runaway growth in 1/16, and
-  `housing:homestead:5` as a dead purchase in 16/16 because its catalog price is non-finite. The
-  integrated baseline is now 96 deterministic tests across 12 files; ECON-04 is next.
+  purchase rules. ECON-04 then tuned tree yield from 2 to 1 wood per felled tree (the existing stump
+  clear still adds one), reduced base crop prices to 4–12₫, corrected finite legacy homestead costs,
+  and hid cosmetic/nonfunctional fence and homestead deed rows from new production choices. Across
+  the cohort, the first crop sale is day 3 for every run, irrigation is acquired by day 5 in 16/16
+  runs (median day 3.5, range 3–5), and no dead or malformed purchase remains. The 30-day diagnostic
+  reports startup resource starvation in 16/16 runs and one long-horizon runaway boundary hit; that
+  boundary remains visible for later functional-building sinks. The integrated baseline is now 97
+  deterministic tests across 12 files; PERF-01/02 are next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
 - Continue fox/trap telegraphs and audio hooks, then calibrate the first-session economy against
   measured play.
 - The current baseline is reproducible with `npm run economyreport`: 240 seconds per day, 5 axe
-  swings for 2 wood, 6–14₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood
+  swings for 1 wood plus 1 stump wood, 4–12₫ base crops, 60₫ trophies with 1% pity steps, and 6/12/24/48 wood
   homestead upgrades. Workbook-only fish, boss, quadrant, and seed-cost rows remain future targets.
 - Active repository terminology, historical plans, asset credits, and current source were reconciled
   in Masterplan V2. Superseded Phaser/2D plans remain history; salvaged ideas are recorded explicitly.
@@ -129,10 +133,12 @@ The characterization baseline intentionally preserves current behavior for later
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
 - Keep the active code and documentation vocabulary aligned with the accepted crop, wildlife, and
   building assets; obsolete prototype entries have been removed while save loading remains safe.
-- ECON-03 intentionally quarantines the malformed `housing:homestead:5` catalog cost instead of
-  correcting it in an instrumentation task. Its tier-five price currently evaluates to `undefined`
-  at runtime, which can make a paid purchase produce `NaN` currency; this is a deferred
-  catalog/economy follow-up for ECON-04 or a later scoped task.
+- ECON-04 intentionally leaves the parallel `U` homestead shortcut in place until CORE-05 makes
+  merchant/deeds the single progression authority. Homestead deed rows now have finite legacy costs
+  but remain unreleased, so existing saves can render/use them without presenting a duplicate or
+  nonfunctional progression purchase to new players. The 30-day diagnostic still shows one rare
+  runaway boundary hit because current released sinks are intentionally small; functional buildings
+  are a later CORE-06 dependency, not silently invented here.
 
 ## 5. Release procedure
 

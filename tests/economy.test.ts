@@ -38,11 +38,11 @@ describe('economy values and current purchasing inputs', () => {
     ];
 
     expect(payoutSnapshot).toEqual([
-      ['Grass', 6],
-      ['Dandelion', 8],
-      ['Beet', 10],
-      ['Carrot', 12],
-      ['Lettuce', 14],
+      ['Grass', 4],
+      ['Dandelion', 6],
+      ['Beet', 8],
+      ['Carrot', 10],
+      ['Lettuce', 12],
       ['Hybrid', 26],
       ['Trophy', 60],
       ['Wood', 1],
@@ -56,11 +56,11 @@ describe('economy values and current purchasing inputs', () => {
     game.duckettes = 5;
     addItem(game.inventory, cropItem('Beet'), 3);
 
-    expect(sellItem(game, cropItem('Beet'), false)).toBe(10);
+    expect(sellItem(game, cropItem('Beet'), false)).toBe(8);
     expect(countItem(game.inventory, cropItem('Beet'))).toBe(2);
-    expect(game.duckettes).toBe(15);
+    expect(game.duckettes).toBe(13);
     expect(sellItem(game, 'crop:Missing', true)).toBe(0);
-    expect(game.duckettes).toBe(15);
+    expect(game.duckettes).toBe(13);
     expect(countItem(game.inventory, 'crop:Missing')).toBe(0);
   });
 
@@ -72,8 +72,8 @@ describe('economy values and current purchasing inputs', () => {
     addItem(game.inventory, cropItem('Lettuce'), 2);
     addItem(game.inventory, deedItemId('fence'), 1);
 
-    expect(sellEverything(game)).toBe(4 + 2 * 14);
-    expect(game.duckettes).toBe(32);
+    expect(sellEverything(game)).toBe(4 + 2 * 12);
+    expect(game.duckettes).toBe(28);
     expect(game.inventory.every((slot) => slot === null)).toBe(true);
   });
 
@@ -88,6 +88,7 @@ describe('economy values and current purchasing inputs', () => {
     expect(shop.some((asset) => asset.availability === 'starter')).toBe(false);
     expect(shop.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(shop.some((asset) => asset.id === 'housing:homestead:1')).toBe(false);
+    expect(shop.map((asset) => asset.id)).toEqual(['upgrade:irrigation', 'fence', 'gate']);
     expect(placeable.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(TOOLBAR_SLOTS).toBe(3);
     expect(placeable.some((asset) => asset.id === 'gate')).toBe(true);
@@ -105,6 +106,7 @@ describe('economy values and current purchasing inputs', () => {
     ]);
     expect(PURCHASABLE_ASSETS.filter((asset) => asset.availability === 'unreleased').map((asset) => asset.id)).toEqual([
       'well',
+      'fence2',
       'chicken_coop',
       'small_barn',
       'open_barn',
@@ -115,7 +117,15 @@ describe('economy values and current purchasing inputs', () => {
       'tower_windmill',
       'water_tower',
       'big_barn',
+      'housing:homestead:2',
+      'housing:homestead:3',
+      'housing:homestead:4',
+      'housing:homestead:5',
     ]);
+    expect(PURCHASABLE_ASSETS.every((asset) => Number.isFinite(asset.price))).toBe(true);
+    expect(PURCHASABLE_ASSETS.every((asset) =>
+      Object.values(asset.materialCost).every((cost) => Number.isFinite(cost)),
+    )).toBe(true);
   });
 
   it('uses both duckette and wood costs for a paid fence deed and requires a stackable inventory slot', () => {

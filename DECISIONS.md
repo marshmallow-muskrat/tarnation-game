@@ -92,3 +92,14 @@ introduced. The seeded economy diagnostic uses a fixed 16-seed cohort and a 30-d
 observation thresholds for starvation, runaway accumulation, and inventory pressure. Malformed catalog
 costs are reported as dead purchases and quarantined by the diagnostic rather than silently repaired in
 the instrumentation task.
+
+## 2026-08-01 — Tune the first-session economy from a seeded distribution
+
+ECON-04 uses the fixed 16-seed cohort rather than a single hand-played run. The accepted baseline is a
+five-day first-session target: the first crop sale arrives on day 3, and the irrigation capability
+upgrade is affordable by day 5 across the cohort. A completed tree now yields one felled-tree wood plus
+the existing one-wood stump-clear bonus; base crop payouts are 4/6/8/10/12₫ from grass through lettuce.
+The homestead wood cadence remains 6/12/24/48, the rare trophy remains 60₫ with 1% base and 1% pity
+steps, and the released merchant choices are the functional irrigation, fence, and gate paths. The
+cosmetic fence variant and duplicate/nonfunctional homestead deed rows remain loadable legacy content
+but are unreleased until their functions and progression authority are complete.

@@ -26,10 +26,11 @@ export interface ItemInfo {
 /**
  * Prices are pinned to wood = 1 duckette.
  *
- * A tree is 5 axe swings for 2 wood, so wood is the low, always-available floor.
+ * A tree is 5 axe swings for 1 wood, with one more wood from clearing its stump,
+ * so wood remains the low, always-available floor.
  * A crop costs a till, a seed, a bucket trip and two full days on one tile, so a
  * planted tile has to beat two days of chopping by a clear margin — base crops
- * land at 6–14, and anything out of the breeding bed is worth more again.
+ * land at 4–12, and anything out of the breeding bed is worth more again.
  */
 
 export const ITEM_WOOD = 'wood';
@@ -48,11 +49,11 @@ export function cropName(id: ItemId): string | null {
 }
 
 const BASE_CROPS: Record<string, { glyph: string; price: number; blurb: string }> = {
-  Grass: { glyph: 'G', price: 6, blurb: 'Fodder. Grows anywhere, sells for little.' },
-  Dandelion: { glyph: 'D', price: 8, blurb: 'Bitter greens. Somebody buys them.' },
-  Beet: { glyph: 'B', price: 10, blurb: 'Honest root. The backbone of a season.' },
-  Carrot: { glyph: 'C', price: 12, blurb: 'Sweeter than a beet, and priced like it.' },
-  Lettuce: { glyph: 'L', price: 14, blurb: 'Thirsty, leafy, and worth the trouble.' },
+  Grass: { glyph: 'G', price: 4, blurb: 'Fodder. Grows anywhere, sells for little.' },
+  Dandelion: { glyph: 'D', price: 6, blurb: 'Bitter greens. Somebody buys them.' },
+  Beet: { glyph: 'B', price: 8, blurb: 'Honest root. The backbone of a season.' },
+  Carrot: { glyph: 'C', price: 10, blurb: 'Sweeter than a beet, and priced like it.' },
+  Lettuce: { glyph: 'L', price: 12, blurb: 'Thirsty, leafy, and worth the trouble.' },
 };
 
 export function itemInfo(id: ItemId): ItemInfo {
