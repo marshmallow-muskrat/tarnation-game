@@ -33,15 +33,22 @@ npm run dev
 | B | Bear trap |
 | R | Cycle weapon |
 | U | Homestead upgrade |
-| P | Build mode |
+| P | Build mode / merchant shop when nearby |
+| X | Demolish mode |
 | I | Inventory |
 | `[` / `]` | Cycle seed |
 | `+` / `-` | Camera zoom |
 | M | Reduced motion |
 | V | Toggle sound feedback |
 | Left click | Use the selected tool |
-| Right click / Space | Use the selected ranged weapon |
-| E | Fill the bucket at water |
+| Right click / Space | Use the selected ranged weapon; rotate in placement; context actions on placed assets |
+| E | Fill the bucket at water or open the merchant shop when nearby |
+| F12 | Toggle the labelled grid debugger |
+| Esc | Cancel the active mode, close menus, or pause when idle |
+
+Double-click a deed in the inventory to place, equip, or apply it. Right-click an inventory stack
+to delete one item after confirmation. The merchant shop keeps its four category tabs open after a
+purchase so several deeds can be bought during one visit.
 
 ## Architecture
 

@@ -225,4 +225,9 @@ Each major deployment must have a clean `npx tsc --noEmit`, `npm run check`,
 - [x] Milestone 6 — demolish/context QA and final interaction polish.
 - [x] Milestone 7 — gate/enclosure/fox QA and final pathing polish.
 - [x] Milestone 8 — save/launch QA and migration messaging.
-- [ ] Milestone 9 — F12 debug QA, production smoke tests, and release record.
+- [x] Milestone 9 — F12 debug QA, production smoke tests, and release record.
+
+Release QA completed on the final milestone-8 preview before the release candidate: the launch
+screen shows a disabled Continue button when no save exists, New Adventure enters the world, and
+the live HUD exposes the catalog-backed shotgun, shovel, axe, boulder, bear trap, and bucket slots.
+The final milestone-9 deployment is recorded in `HANDOFF.md` after publication.

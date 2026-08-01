@@ -28,8 +28,9 @@ exposes the runtime for browser debugging.
 - Bear traps on `B` with open/closed models and fox capture; `Q` remains the separate boulder.
 - Weapon progression is asset-led: ranged shotgun/bow work, with axe/melee as the close option.
 - Farm building models are wired to homestead tiers and the first placeable building set.
-- Foxes now use readable manifest scale (`0.48` height), crop stages are camera-readable, and animal
-  defeats leave short-lived grounded remains markers; rare trophies also show a floating world marker.
+- Foxes and horses use a shared readable animal-scale pass (`0.75` manifest height × `1.3` source
+  scale); crop stages are camera-readable, and animal defeats leave short-lived grounded remains
+  markers; rare trophies also show a floating world marker.
 - Held shotgun and shovel poses use a support-hand solve, stationary tools stay in a deliberate carry
   stance, and the build workflow has a dedicated structure-selection panel.
 - Building mode now previews the selected model over the hovered tile with valid/blocked colour and a
@@ -56,10 +57,10 @@ exposes the runtime for browser debugging.
 
 ## 4. Current quality work
 
-Milestones 0–4 of `vendor-deed-system-plan.md` are implemented in the current branch. The runtime
+Milestones 0–9 of `vendor-deed-system-plan.md` are implemented in the current branch. The runtime
 now exposes economy session metrics through `window.tarn.debug().economy()`, including first-upgrade
-timing and action kinds. The next active work is placement and interaction polish in Milestones 5–9
-of `vendor-deed-system-plan.md`:
+timing and action kinds. The vendor/deed foundation is complete; the remaining product work is
+refinement of the existing economy, combat, animation, and building loops:
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -82,11 +83,17 @@ Before each commit: check `git status`, run `npx tsc --noEmit`, and build when t
 production. Deploy after every major masterplan milestone with `npm run deploy`, then smoke-test
 the live site and record the URL/commit here.
 
-Last known production target: <https://tarnation.pages.dev/> (audio-feedback release `cbac5ba`;
-preview <https://c98d7f82.tarnation.pages.dev/>; merchant/deed checkpoint `75b69c7`).
+Last known production target: <https://tarnation.pages.dev/> (the canonical Cloudflare Pages URL;
+the release preview and commit are recorded below).
 
 Deployment record:
 
 - `fb4d5f7` — direct tree/catalog/save foundation — <https://4b009596.tarnation.pages.dev>
 - `75b69c7` — stationary merchant, fixed encampment, stacked deeds, shop tabs, launch scaffolding —
   <https://c98d7f82.tarnation.pages.dev>
+- `1c09257` — placement preview, rotation, demolish mode, and context actions —
+  <https://5ed8ffee.tarnation.pages.dev>
+- `2625c1a` — gates, cached enclosure calculation, and fox pathing —
+  <https://2307ce5a.tarnation.pages.dev>
+- `97eac34` — save compatibility, migration coverage, and launch validation —
+  <https://8adc4535.tarnation.pages.dev>
