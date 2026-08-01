@@ -105,7 +105,14 @@ export function purchaseAsset(
     duckettesSpent = asset.price;
     for (const [material, cost] of Object.entries(asset.materialCost)) {
       if (!removeItem(candidate, materialItemId(material), cost)) {
-        return { ok: false, quote };
+        return {
+          ok: false,
+          quote: {
+            ...quote,
+            reasons: [`Need ${cost} ${materialName(material)} (have ${countItem(state.inventory, materialItemId(material))})`],
+            canBuy: false,
+          },
+        };
       }
       materialSpent[material] = cost;
     }
