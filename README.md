@@ -48,8 +48,11 @@ npm run deploy   # Cloudflare Pages → tarnation.pages.dev
 
 ## Design docs
 
+**New here? Read [`HANDOFF.md`](HANDOFF.md) first — it is the current truth.**
+
 | Doc | What |
 |---|---|
+| **[`HANDOFF.md`](HANDOFF.md)** | **Current state, asset pipeline gotchas, next tasks** |
 | [`ASSETS.md`](ASSETS.md) | The Quaternius asset plan — which packs, where files live, the manifest system, order of work |
 | [`IDEAS.md`](IDEAS.md) | The 78-entry idea sheet, triaged into build-now / later / defer / against, with implementation notes and a suggested order |
 | [`masterplans/`](masterplans/) | Full design history. `masterplan.md` is the whole game; `masterplan_alpha_v4.md` is the current build spec |
