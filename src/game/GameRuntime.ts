@@ -134,6 +134,14 @@ export type HudToolbarSlot = {
   empty: boolean;
 };
 
+export type HudBuildOption = {
+  index: number;
+  name: string;
+  model: ModelKey;
+  cost: number;
+  canAfford: boolean;
+};
+
 export type HudMarket = {
   open: boolean;
   items: { id: ItemId; name: string; glyph: string; model: ModelKey | null; count: number; price: number }[];
@@ -176,6 +184,12 @@ export type HudSnapshot = {
   inventoryOpen: boolean;
   duckettes: number;
   toolbar: HudToolbarSlot[];
+  build: {
+    active: boolean;
+    selectedIndex: number;
+    wood: number;
+    options: HudBuildOption[];
+  };
   toolSlot: {
     name: string;
     glyph: string;
@@ -290,6 +304,24 @@ type PlainsAnimal = {
   name: string;
 };
 
+type DeathMarker = {
+  root: THREE.Group;
+  age: number;
+  lifetime: number;
+  fadeAt: number;
+  materials: THREE.Material[];
+  patchMaterial: THREE.Material;
+  patchGeometry: THREE.BufferGeometry;
+};
+
+type LootMarker = {
+  root: THREE.Object3D;
+  age: number;
+  lifetime: number;
+  x: number;
+  z: number;
+};
+
 type ToolMode = 'farm' | 'trench' | 'breed';
 
 type PlayerClip =
@@ -316,6 +348,12 @@ type ToolProfile = {
   actionScale: number;
   /** Some carry clips are authored for a particular silhouette. */
   runClip: 'walkCarry' | 'runCarry';
+  /** Optional second-hand contact point in the model's local coordinates. */
+  supportGrip?: readonly [number, number, number];
+  /** Override the carry grip for a one-shot action such as digging. */
+  actionSupportGrip?: readonly [number, number, number];
+  /** How strongly the left arm follows the support grip, 0..1. */
+  supportBlend?: number;
 };
 
 const CROP_MODEL_BASE: Record<keyof typeof CROP_DEFS, string> = {
@@ -336,12 +374,12 @@ const PLAINS_ANIMALS: readonly { model: ModelKey; name: string }[] = [
 
 const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
   axe: {
-    scale: 1.15,
-    carryPosition: [0.02, -0.34, 0.03],
+    scale: 1.35,
+    carryPosition: [0.02, -0.1, 0.03],
     carryRotation: [0, 0, -0.55],
-    actionPosition: [0.25, 0.1, -0.3],
+    actionPosition: [0.25, 0.14, -0.3],
     actionRotation: [0, 0, -0.55],
-    actionScale: 1.25,
+    actionScale: 1.15,
     runClip: 'runCarry',
   },
   bow_wooden: {
@@ -354,29 +392,33 @@ const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
     runClip: 'walkCarry',
   },
   shotgun_2: {
-    scale: 0.4,
-    // The Survival shotgun's source origin is at the rear of the stock. A
-    // neutral hand attachment leaves it hanging at the knees and reads upside
-    // down during the carry clips. Raise it into the hand/chest silhouette and
-    // roll it across the body so the barrel, receiver, and stock stay legible.
-    carryPosition: [0.02, 0.12, 0.08],
-    carryRotation: [0, 0, 0.7],
-    actionPosition: [0.02, 0.12, 0.08],
-    actionRotation: [0, 0, 0.7],
+    scale: 0.45,
+    // The source is an X-axis prop: the negative end is the stock and the
+    // positive end is the barrel. Put the stock in the right hand and use the
+    // fore-end as a real left-hand target instead of letting the gun float from
+    // the wrist or hang upside down.
+    carryPosition: [0.2, 0, 0],
+    carryRotation: [0, 0, 0],
+    actionPosition: [0.2, 0, 0],
+    actionRotation: [0, 0, 0],
     actionScale: 1,
     runClip: 'runCarry',
+    supportGrip: [0.55, 0, 0],
   },
   shovel: {
-    // Carry it across the body so the blade and shaft stay readable while
-    // idle or running; the source's vertical default disappears inside the
-    // cowboy's torso from the isometric camera.
-    scale: 1,
-    carryPosition: [0.16, -0.02, -0.18],
-    carryRotation: [0, 0, -0.62],
-    actionPosition: [0.2, 0, -0.25],
+    // The shovel's source is vertical. Rotate it across the body for carry so
+    // the upper shaft sits in the right hand and the lower shaft meets the
+    // left hand; the action pose then returns it toward the soil.
+    scale: 1.2,
+    carryPosition: [0.84, 0.02, -0.04],
+    carryRotation: [0, 0, Math.PI / 2],
+    actionPosition: [0.45, 0, -0.25],
     actionRotation: [0, 0, -0.62],
     actionScale: 1,
     runClip: 'runCarry',
+    supportGrip: [0, 0.35, 0],
+    actionSupportGrip: [0, 0.05, 0],
+    supportBlend: 0.82,
   },
 };
 
@@ -463,6 +505,9 @@ export class GameRuntime {
   private playerActions: Partial<Record<PlayerClip, THREE.AnimationAction>> = {};
   private oneShotAction: THREE.AnimationAction | null = null;
   private handBone: THREE.Object3D | null = null;
+  private leftHandBone: THREE.Object3D | null = null;
+  private leftUpperArmBone: THREE.Object3D | null = null;
+  private leftLowerArmBone: THREE.Object3D | null = null;
   private equippedToolRoot: THREE.Object3D | null = null;
   private equippedToolKey: EquippedToolKey | null = null;
   private equippedToolSourceScale = 1;
@@ -477,6 +522,8 @@ export class GameRuntime {
   private placeableBuildingIndex = 0;
 
   private foxes: Fox[] = [];
+  private deathMarkers: DeathMarker[] = [];
+  private lootMarkers: LootMarker[] = [];
   private shots: Shot[] = [];
   private boulders: Boulder[] = [];
   private shotCd = 0;
@@ -516,6 +563,16 @@ export class GameRuntime {
     foxesFelled: 0,
     daysReached: 1,
   };
+
+  private readonly supportTarget = new THREE.Vector3();
+  private readonly supportJoint = new THREE.Vector3();
+  private readonly supportEffector = new THREE.Vector3();
+  private readonly supportToTarget = new THREE.Vector3();
+  private readonly supportToEffector = new THREE.Vector3();
+  private readonly supportAxis = new THREE.Vector3();
+  private readonly supportWorldQuaternion = new THREE.Quaternion();
+  private readonly supportParentQuaternion = new THREE.Quaternion();
+  private readonly supportLocalQuaternion = new THREE.Quaternion();
 
   async mount(canvas: HTMLCanvasElement, onHud: (s: HudSnapshot) => void): Promise<void> {
     this.disposed = false;
@@ -572,6 +629,8 @@ export class GameRuntime {
     this.disposed = true;
     this.running = false;
     cancelAnimationFrame(this.raf);
+    this.clearDeathMarkers();
+    this.clearLootMarkers();
     this.input.dispose();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
@@ -641,6 +700,9 @@ export class GameRuntime {
       this.idleAction.play();
     }
     this.handBone = this.findRightHand(root);
+    this.leftHandBone = this.findPlayerBone(root, /^(fist|hand)[._ -]?l$|left.?hand|hand.?left/i);
+    this.leftUpperArmBone = this.findPlayerBone(root, /^(upper.?arm|arm)[._ -]?l$|left.?upper.?arm/i);
+    this.leftLowerArmBone = this.findPlayerBone(root, /^(lower.?arm|forearm|arm)[._ -]?l$|left.?forearm/i);
     this.refreshEquippedTool();
   }
 
@@ -651,6 +713,15 @@ export class GameRuntime {
       if (/^(fist|hand)[._ -]?r$|right.?hand|hand.?right/i.test(obj.name)) hand = obj;
     });
     return hand;
+  }
+
+  private findPlayerBone(root: THREE.Object3D, pattern: RegExp): THREE.Object3D | null {
+    let bone: THREE.Object3D | null = null;
+    root.traverse((obj) => {
+      if (bone || !(obj instanceof THREE.Bone) || !obj.name) return;
+      if (pattern.test(obj.name)) bone = obj;
+    });
+    return bone;
   }
 
   private refreshEquippedTool(): void {
@@ -680,18 +751,12 @@ export class GameRuntime {
     root.position.set(...profile.carryPosition);
     root.rotation.set(...profile.carryRotation);
     if (desired === 'axe' || desired === 'shovel') {
-      // These thin, dark tools otherwise disappear behind the cowboy's torso
-      // during the carry and slash clips. They are hand-held presentation
-      // props, so draw them after the body while retaining their shadow casters.
+      // Draw the narrow dark props after the body, but retain depth testing so a
+      // correctly placed handle can still pass behind the torso naturally.
       root.renderOrder = 3;
       root.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) return;
         obj.renderOrder = 3;
-        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
-        for (const material of materials) {
-          material.depthTest = false;
-          material.depthWrite = false;
-        }
       });
     }
     this.handBone.add(root);
@@ -709,6 +774,79 @@ export class GameRuntime {
     this.equippedToolRoot.scale.setScalar(
       this.equippedToolSourceScale * profile.scale * (action ? profile.actionScale : 1),
     );
+  }
+
+  /**
+   * The Cowboy rig has authored carry clips, but the tool props are not part of
+   * that rig. A small two-bone solve keeps the left hand on the fore-end/shaft
+   * after the mixer has posed the body. It is intentionally renderer-only: the
+   * simulation never needs to know where a hand is.
+   */
+  private applySupportHandPose(): void {
+    if (
+      !this.equippedToolRoot ||
+      !this.equippedToolKey ||
+      !this.leftHandBone ||
+      !this.leftUpperArmBone ||
+      !this.leftLowerArmBone
+    ) return;
+
+    const profile = TOOL_PROFILES[this.equippedToolKey];
+    const oneShot = this.oneShotAction;
+    const oneShotActive = oneShot?.isRunning() ?? false;
+    // The one-handed shooting clip is authored around the right arm. Let the
+    // left hand return to the animation rather than pulling it toward the gun.
+    if (oneShotActive && this.equippedToolKey === 'shotgun_2') return;
+    const grip = oneShotActive ? profile.actionSupportGrip : profile.supportGrip;
+    if (!grip) return;
+
+    this.playerRoot.updateMatrixWorld(true);
+    this.equippedToolRoot.updateMatrixWorld(true);
+    this.supportTarget.set(...grip);
+    this.equippedToolRoot.localToWorld(this.supportTarget);
+
+    const blend = (profile.supportBlend ?? 0.7) * (oneShotActive ? 0.58 : 1);
+    for (let i = 0; i < 3; i++) {
+      this.rotateArmJointToward(this.leftLowerArmBone, blend);
+      this.rotateArmJointToward(this.leftUpperArmBone, blend * 0.9);
+    }
+  }
+
+  private rotateArmJointToward(joint: THREE.Object3D, blend: number): void {
+    if (!this.leftHandBone) return;
+    joint.updateMatrixWorld(true);
+    this.leftHandBone.updateMatrixWorld(true);
+    joint.getWorldPosition(this.supportJoint);
+    this.leftHandBone.getWorldPosition(this.supportEffector);
+    this.supportToEffector.subVectors(this.supportEffector, this.supportJoint);
+    this.supportToTarget.subVectors(this.supportTarget, this.supportJoint);
+    const effectorLength = this.supportToEffector.length();
+    const targetLength = this.supportToTarget.length();
+    if (effectorLength < 0.0001 || targetLength < 0.0001) return;
+
+    const cosine = THREE.MathUtils.clamp(
+      this.supportToEffector.dot(this.supportToTarget) / (effectorLength * targetLength),
+      -1,
+      1,
+    );
+    const angle = Math.acos(cosine);
+    this.supportAxis.crossVectors(this.supportToEffector, this.supportToTarget);
+    if (this.supportAxis.lengthSq() < 0.000001 || angle < 0.002) return;
+    this.supportAxis.normalize();
+
+    this.supportWorldQuaternion.setFromAxisAngle(
+      this.supportAxis,
+      Math.min(angle, 1.1) * THREE.MathUtils.clamp(blend, 0, 1),
+    );
+    joint.getWorldQuaternion(this.supportLocalQuaternion);
+    this.supportLocalQuaternion.premultiply(this.supportWorldQuaternion);
+    if (joint.parent) {
+      joint.parent.getWorldQuaternion(this.supportParentQuaternion);
+      this.supportParentQuaternion.invert();
+      this.supportLocalQuaternion.premultiply(this.supportParentQuaternion);
+    }
+    joint.quaternion.copy(this.supportLocalQuaternion);
+    joint.updateMatrixWorld(true);
   }
 
   /** The market stall is the only structure on the map. */
@@ -834,6 +972,32 @@ export class GameRuntime {
     this.pushHud(true);
   }
 
+  toggleBuildMode(): void {
+    this.buildingMode = !this.buildingMode;
+    this.toolMode = 'farm';
+    this.cancelPlayerAction();
+    this.clearShots();
+    this.gs.toolSlotActive = false;
+    this.refreshEquippedTool();
+    setToast(
+      this.gs,
+      this.buildingMode
+        ? `Build mode · choose a structure, then click clear ground`
+        : 'Build mode off',
+      1.6,
+    );
+    this.pushHud(true);
+  }
+
+  selectBuild(index: number): void {
+    if (index < 0 || index >= PLACEABLE_BUILDINGS.length) return;
+    this.placeableBuildingIndex = index;
+    if (!this.buildingMode) this.buildingMode = true;
+    this.toolMode = 'farm';
+    setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[index]!.name}`, 1.2);
+    this.pushHud(true);
+  }
+
   toggleInventory(): void {
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
     this.pushHud(true);
@@ -883,6 +1047,8 @@ export class GameRuntime {
       skipDay: () => {
         this.gs.clock = { ...this.gs.clock, day: this.gs.clock.day + 1 };
         const res = onNewDay(this.gs);
+        this.clearDeathMarkers();
+        this.clearLootMarkers();
         this.world.getFarmTrees()?.rebuildAll();
         this.world.syncFarmTiles(this.gs.tiles);
         this.pushHud(true);
@@ -951,6 +1117,8 @@ export class GameRuntime {
     for (const a of this.animals) a.mixer?.update(dt);
     this.world.update(dt);
     this.stepPopups(dt);
+    this.stepDeathMarkers(dt);
+    this.stepLootMarkers(dt);
 
     const moving = Math.hypot(this.velX, this.velZ) > 0.4;
     this.updateAnim(moving);
@@ -972,6 +1140,7 @@ export class GameRuntime {
       this.headingTarget,
     );
     this.playerRoot.quaternion.slerp(targetQuat, 1 - Math.exp(-dt * 10));
+    this.applySupportHandPose();
 
     this.world.render();
     this.input.endFrame();
@@ -1001,18 +1170,32 @@ export class GameRuntime {
     const carryAction = profile?.runClip === 'walkCarry'
       ? this.playerActions.walkCarry ?? this.walkAction
       : this.playerActions.runCarry ?? this.playerActions.walkCarry ?? this.walkAction;
+    const carryIdle = carry ? this.playerActions.walkCarry ?? this.walkAction : null;
     const locomotion = moving
       ? carry
         ? speed > PLAYER_SPEED * 0.72
           ? carryAction
           : this.playerActions.walkCarry ?? this.walkAction
         : this.playerActions.walk ?? this.walkAction
-      : this.playerActions.idle ?? this.idleAction;
+      : carry
+        ? carryIdle ?? this.playerActions.idle ?? this.idleAction
+        : this.playerActions.idle ?? this.idleAction;
     for (const action of Object.values(this.playerActions)) {
-      if (action) action.setEffectiveWeight(action === locomotion ? 1 : 0);
+      if (!action) continue;
+      action.setEffectiveWeight(action === locomotion ? 1 : 0);
+      if (action !== locomotion) action.paused = false;
     }
     locomotion.enabled = true;
     if (!locomotion.isRunning()) locomotion.play();
+    // There is no authored Idle_Carry clip. Freeze Walk_Carry at a calm frame
+    // while stationary so both arms remain intentionally posed around a tool
+    // instead of dropping back to the empty-handed idle.
+    if (carry && !moving && locomotion === carryIdle) {
+      locomotion.time = locomotion.getClip().duration * 0.34;
+      locomotion.paused = true;
+    } else {
+      locomotion.paused = false;
+    }
   }
 
   private playPlayerAction(clip: PlayerClip): void {
@@ -1058,15 +1241,10 @@ export class GameRuntime {
     }
     if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
     if (this.input.justPressed('KeyP')) {
-      this.buildingMode = !this.buildingMode;
-      this.toolMode = 'farm';
-      setToast(
-        this.gs,
-        this.buildingMode
-          ? `Build: ${PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!.name} · click to place`
-          : 'Build mode off',
-        1.6,
-      );
+      this.toggleBuildMode();
+    }
+    if (this.buildingMode && this.input.justPressed('Escape')) {
+      this.toggleBuildMode();
     }
     if (this.buildingMode && this.input.justPressed('KeyN')) {
       this.placeableBuildingIndex = (this.placeableBuildingIndex + 1) % PLACEABLE_BUILDINGS.length;
@@ -1151,6 +1329,8 @@ export class GameRuntime {
     if (clock.becameDay) {
       this.economyMetrics.daysReached = this.gs.clock.day;
       this.clearFoxes();
+      this.clearDeathMarkers();
+      this.clearLootMarkers();
       const { lostTilth, regrown } = onNewDay(this.gs);
       setToast(
         this.gs,
@@ -1884,7 +2064,8 @@ export class GameRuntime {
     this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
-    w.root.removeFromParent();
+    w.actions.mixer?.stopAllAction();
+    this.spawnDeathMarker(w.root, w.baseScale, w.x, w.z, w.root.rotation.y, 'fox');
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
     // Dead is dead — drop it now rather than waiting for the next sweep.
     this.foxes = this.foxes.filter((o) => !o.dead);
@@ -1898,9 +2079,146 @@ export class GameRuntime {
       a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
       return;
     }
-    a.root.removeFromParent();
+    a.mixer?.stopAllAction();
+    this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
     this.animals = this.animals.filter((o) => o !== a);
     this.rollTrophy(`animal:${a.name}`, a.name, a.x, a.z);
+  }
+
+  /** Leave a short-lived, grounded carcass marker instead of making a kill pop. */
+  private spawnDeathMarker(
+    corpse: THREE.Object3D,
+    baseScale: number,
+    x: number,
+    z: number,
+    heading: number,
+    kind: 'fox' | 'animal',
+  ): void {
+    corpse.removeFromParent();
+    corpse.scale.setScalar(baseScale);
+    corpse.position.set(0, 0.06, 0);
+    corpse.rotation.set(0, heading, Math.PI / 2);
+
+    const materials: THREE.Material[] = [];
+    corpse.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const source = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const copies = source.map((material) => {
+        const copy = material.clone();
+        copy.transparent = true;
+        copy.opacity = 1;
+        materials.push(copy);
+        return copy;
+      });
+      obj.material = copies.length === 1 ? copies[0]! : copies;
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+    });
+
+    const group = new THREE.Group();
+    group.name = `remains_${kind}`;
+    group.position.set(x, this.world.heightAt(x, z), z);
+    group.add(corpse);
+
+    // A subtle low-poly patch gives the player a readable defeat location even
+    // when the animal silhouette is partly hidden by terrain or foliage.
+    const radius = kind === 'fox' ? 0.48 : 0.7;
+    const patchGeometry = new THREE.CircleGeometry(radius, 12);
+    const patchMaterial = new THREE.MeshStandardMaterial({
+      color: 0x6c382b,
+      transparent: true,
+      opacity: 0.48,
+      roughness: 0.96,
+      depthWrite: false,
+    });
+    const patch = new THREE.Mesh(patchGeometry, patchMaterial);
+    patch.rotation.x = -Math.PI / 2;
+    patch.position.y = 0.018;
+    patch.receiveShadow = true;
+    group.add(patch);
+
+    this.world.getFarmActors().add(group);
+    this.deathMarkers.push({
+      root: group,
+      age: 0,
+      lifetime: 12,
+      fadeAt: 9.5,
+      materials,
+      patchMaterial,
+      patchGeometry,
+    });
+    while (this.deathMarkers.length > 28) {
+      this.removeDeathMarker(this.deathMarkers[0]!);
+      this.deathMarkers.shift();
+    }
+    this.world.markShadowsDirty();
+  }
+
+  private removeDeathMarker(marker: DeathMarker): void {
+    marker.root.removeFromParent();
+    for (const material of marker.materials) material.dispose();
+    marker.patchMaterial.dispose();
+    marker.patchGeometry.dispose();
+  }
+
+  private clearDeathMarkers(): void {
+    for (const marker of this.deathMarkers) this.removeDeathMarker(marker);
+    this.deathMarkers = [];
+  }
+
+  private stepDeathMarkers(dt: number): void {
+    for (let i = this.deathMarkers.length - 1; i >= 0; i--) {
+      const marker = this.deathMarkers[i]!;
+      marker.age += dt;
+      if (marker.age >= marker.lifetime) {
+        this.removeDeathMarker(marker);
+        this.deathMarkers.splice(i, 1);
+        continue;
+      }
+      if (marker.age < marker.fadeAt) continue;
+      const alpha = THREE.MathUtils.clamp(
+        1 - (marker.age - marker.fadeAt) / (marker.lifetime - marker.fadeAt),
+        0,
+        1,
+      );
+      for (const material of marker.materials) material.opacity = alpha;
+      marker.patchMaterial.opacity = alpha * 0.48;
+    }
+  }
+
+  /** A rare trophy is immediately visible in the world as well as in inventory. */
+  private spawnLootMarker(x: number, z: number): void {
+    const root = cloneModel('trophy').root;
+    root.scale.multiplyScalar(0.78);
+    root.position.set(x, this.world.heightAt(x, z) + 0.12, z);
+    root.name = 'trophy_drop_marker';
+    this.world.getFarmActors().add(root);
+    this.lootMarkers.push({ root, age: 0, lifetime: 9, x, z });
+    while (this.lootMarkers.length > 12) {
+      this.lootMarkers[0]!.root.removeFromParent();
+      this.lootMarkers.shift();
+    }
+    this.world.markShadowsDirty();
+  }
+
+  private clearLootMarkers(): void {
+    for (const marker of this.lootMarkers) marker.root.removeFromParent();
+    this.lootMarkers = [];
+  }
+
+  private stepLootMarkers(dt: number): void {
+    for (let i = this.lootMarkers.length - 1; i >= 0; i--) {
+      const marker = this.lootMarkers[i]!;
+      marker.age += dt;
+      if (marker.age >= marker.lifetime) {
+        marker.root.removeFromParent();
+        this.lootMarkers.splice(i, 1);
+        continue;
+      }
+      marker.root.position.y =
+        this.world.heightAt(marker.x, marker.z) + 0.18 + Math.sin(marker.age * 4.2) * 0.06;
+      marker.root.rotation.y += dt * 1.8;
+    }
   }
 
   /**
@@ -1915,12 +2233,15 @@ export class GameRuntime {
     this.gs.stats.trophies += 1;
     setToast(this.gs, `Trophy: ${label}!`, 3);
     this.popup(`+1 ${label} Trophy`, x, z);
+    this.spawnLootMarker(x, z);
   }
 
   // ----------------------------------------------------------------- raids
 
   private spawnRaid(): void {
     this.clearFoxes();
+    this.clearDeathMarkers();
+    this.clearLootMarkers();
     const spawns = generateWave(
       this.gs.clock.day,
       this.gs.seed,
@@ -2475,6 +2796,18 @@ export class GameRuntime {
       inventoryOpen: this.gs.inventoryOpen,
       duckettes: this.gs.duckettes,
       toolbar,
+      build: {
+        active: this.buildingMode,
+        selectedIndex: this.placeableBuildingIndex,
+        wood: woodCount(this.gs),
+        options: PLACEABLE_BUILDINGS.map((entry, index) => ({
+          index,
+          name: entry.name,
+          model: entry.model,
+          cost: entry.cost,
+          canAfford: woodCount(this.gs) >= entry.cost,
+        })),
+      },
       toolSlot: {
         name: 'Bucket',
         glyph: '🪣',

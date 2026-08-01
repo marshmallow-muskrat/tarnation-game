@@ -2,7 +2,7 @@
 
 **Status:** active product plan  
 **Scope:** refine and deepen the current game before adding major new systems  
-**Progress:** Milestones 0–2 implemented; held-tool polish shipped; Milestone 3 calibration is in progress
+**Progress:** Milestones 0–2 implemented; scale, held-tool, defeat-feedback, and build-panel polish shipped; Milestone 3 calibration is in progress
 **Last reviewed:** 2026-08-01
 
 ## Product brief
@@ -113,8 +113,9 @@ simulation checks pass; a fresh save and a migrated save both load.
 
 **Goal:** make every equipped item look deliberately held and animated.
 
-- Establish a named right-hand socket and per-item grip profiles: scale, local offset, rotation,
-  carry pose, action pose, and shadow policy. Do not tune four unrelated literals in the runtime.
+- Establish named hand sockets and per-item grip profiles: scale, local offset, rotation, carry pose,
+  action pose, support-hand target, and shadow policy. Do not tune four unrelated literals in the
+  runtime.
 - Validate the shotgun, shovel, red survival axe, bow, and future melee items in idle, walk, run,
   turn, water crossing, camera rotation, and one-shot action poses.
 - Use the rig’s carry clips for locomotion and a consistent action state machine for pickup,
@@ -128,6 +129,8 @@ simulation checks pass; a fresh save and a migrated save both load.
   footprint, readable open/closed states, and correct shadows.
 - Frame toolbar model icons for recognition first; use the model where it reads better than an
   emoji, while retaining the bucket glyph where it is clearer.
+- Keep animal scale, crop-stage scale, and defeat feedback readable at the normal camera distance;
+  a defeated animal should leave a grounded remains marker instead of vanishing in a frame.
 
 **Exit criteria:** no visible item penetrates the player or drags at the feet in the standard camera
 view; each equipped item is recognizable in a one-second screenshot while idle and running; only
@@ -182,6 +185,8 @@ two income paths are competitive; the measured first-session curve is documented
   completion response.
 - Make placeable buildings snap predictably, show valid/invalid footprints, avoid water and overlap,
   and persist across reloads.
+- Use a dedicated build panel with structure selection, model preview, wood cost, affordability, and
+  placement instructions; do not make the action bar carry the entire town-building workflow.
 - Use the existing barn, silo, windmill, well, coop, fence, and tower assets to create useful
   choices before adding a larger city-building catalog.
 - Add lightweight ambient life and state changes to upgraded spaces rather than expanding the map

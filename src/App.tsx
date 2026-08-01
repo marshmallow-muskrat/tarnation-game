@@ -59,6 +59,8 @@ export function App() {
         onDismissWin={() => runtimeRef.current?.dismissWin()}
         onSelectSlot={(i) => runtimeRef.current?.selectSlot(i)}
         onSelectToolSlot={() => runtimeRef.current?.selectToolSlot()}
+        onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
+        onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onUltimate={() => runtimeRef.current?.useUltimate()}
         onBearTrap={() => runtimeRef.current?.useBearTrap()}
         onToggleInventory={() => runtimeRef.current?.toggleInventory()}

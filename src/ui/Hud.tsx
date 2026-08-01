@@ -9,6 +9,8 @@ type Props = {
   onDismissWin: () => void;
   onSelectSlot: (index: number) => void;
   onSelectToolSlot: () => void;
+  onToggleBuild: () => void;
+  onSelectBuild: (index: number) => void;
   onUltimate: () => void;
   onBearTrap: () => void;
   onToggleInventory: () => void;
@@ -102,6 +104,8 @@ export function Hud({
   onDismissWin,
   onSelectSlot,
   onSelectToolSlot,
+  onToggleBuild,
+  onSelectBuild,
   onUltimate,
   onBearTrap,
   onToggleInventory,
@@ -168,7 +172,7 @@ export function Hud({
         <span className="inv-toggle-key">I</span>
       </button>
 
-      {hud.inventoryOpen && (
+      {hud.inventoryOpen && !hud.build.active && (
         <div className="panel hud-inventory">
           <p className="label">
             Inventory · {filled}/{hud.inventory.length}
@@ -243,13 +247,61 @@ export function Hud({
         </div>
       )}
 
+      {hud.build.active && (
+        <div className="panel build-panel">
+          <div className="build-panel-heading">
+            <div>
+              <p className="label">Town building</p>
+              <h2>Choose a structure</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onToggleBuild}>
+              Close
+            </button>
+          </div>
+
+          {(() => {
+            const selected = hud.build.options[hud.build.selectedIndex];
+            if (!selected) return null;
+            return (
+              <div className="build-selected">
+                <ModelIcon model={selected.model} className="build-preview-icon" size={72} />
+                <div className="build-selected-copy">
+                  <p className="build-selected-name">{selected.name}</p>
+                  <p className={`build-cost ${selected.canAfford ? '' : 'short'}`}>
+                    {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
+                  </p>
+                  <p className="build-selected-help">Click a clear tile to place</p>
+                </div>
+              </div>
+            );
+          })()}
+
+          <div className="build-options" role="list" aria-label="Placeable buildings">
+            {hud.build.options.map((option) => (
+              <button
+                type="button"
+                role="listitem"
+                key={`build-${option.index}`}
+                className={`build-option ${option.index === hud.build.selectedIndex ? 'selected' : ''} ${option.canAfford ? '' : 'unaffordable'}`}
+                onClick={() => onSelectBuild(option.index)}
+              >
+                <span className="build-option-index">{option.index + 1}</span>
+                <span className="build-option-name">{option.name}</span>
+                <span className="build-option-cost">{option.cost}W</span>
+              </button>
+            ))}
+          </div>
+          <p className="build-panel-help">P / Esc close · N next · click ground to place</p>
+        </div>
+      )}
+
       <div className="hud-bottom-center">
         {hud.toast && (
           <div className="toast">
             <span>{hud.toast}</span>
           </div>
         )}
-        <p className="hint">{hud.hint}</p>
+        {!hud.toast && <p className="hint">{hud.hint}</p>}
         <div className="toolbar">
           <button
             type="button"

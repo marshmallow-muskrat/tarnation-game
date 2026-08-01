@@ -27,6 +27,10 @@ browser debugging.
 - Bear traps on `B` with open/closed models and fox capture; `Q` remains the separate boulder.
 - Weapon progression is asset-led: ranged shotgun/bow work, with axe/melee as the close option.
 - Farm building models are wired to homestead tiers and the first placeable building set.
+- Foxes now use readable manifest scale (`0.48` height), crop stages are camera-readable, and animal
+  defeats leave short-lived grounded remains markers; rare trophies also show a floating world marker.
+- Held shotgun and shovel poses use a support-hand solve, stationary tools stay in a deliberate carry
+  stance, and the build workflow has a dedicated structure-selection panel.
 
 ## 3. Asset rules that save time
 
@@ -62,5 +66,5 @@ Before each commit: check `git status`, run `npx tsc --noEmit`, and build when t
 production. Deploy after every major masterplan milestone with `npm run deploy`, then smoke-test
 the live site and record the URL/commit here.
 
-Last known production target: <https://tarnation.pages.dev/> (release `6c857de`; preview
-<https://0643e994.tarnation.pages.dev/>).
+Last known production target: <https://tarnation.pages.dev/> (release `6c857de`; this polish batch is
+pending deployment).
