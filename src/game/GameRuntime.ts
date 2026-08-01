@@ -151,6 +151,21 @@ export type HudPopup = {
   life: number;
 };
 
+type EconomyMetrics = {
+  sessionStartedAt: number;
+  actions: number;
+  actionKinds: Record<string, number>;
+  saleTransactions: number;
+  duckettesEarned: number;
+  upgrades: number;
+  buildingsPlaced: number;
+  cropsPlanted: number;
+  cropsHarvested: number;
+  treesFelled: number;
+  foxesFelled: number;
+  daysReached: number;
+};
+
 export type HudSnapshot = {
   day: number;
   phase: 'day' | 'night';
@@ -479,6 +494,20 @@ export class GameRuntime {
   private onHud: ((s: HudSnapshot) => void) | null = null;
   private lastHudJson = '';
   private winShownLocal = false;
+  private economyMetrics: EconomyMetrics = {
+    sessionStartedAt: performance.now(),
+    actions: 0,
+    actionKinds: {},
+    saleTransactions: 0,
+    duckettesEarned: 0,
+    upgrades: 0,
+    buildingsPlaced: 0,
+    cropsPlanted: 0,
+    cropsHarvested: 0,
+    treesFelled: 0,
+    foxesFelled: 0,
+    daysReached: 1,
+  };
 
   async mount(canvas: HTMLCanvasElement, onHud: (s: HudSnapshot) => void): Promise<void> {
     this.disposed = false;
@@ -753,6 +782,8 @@ export class GameRuntime {
     if (!this.nearMarket) return;
     const earned = sellEverything(this.gs);
     if (earned > 0) {
+      this.economyMetrics.saleTransactions++;
+      this.economyMetrics.duckettesEarned += earned;
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
       this.popup(`+${earned}₫`, this.playerX, this.playerZ);
       this.persist();
@@ -761,6 +792,8 @@ export class GameRuntime {
   }
 
   private afterSale(id: ItemId, earned: number): void {
+    this.economyMetrics.saleTransactions++;
+    this.economyMetrics.duckettesEarned += earned;
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
     this.popup(`+${earned}₫`, this.playerX, this.playerZ);
     this.persist();
@@ -797,10 +830,12 @@ export class GameRuntime {
   }
 
   useUltimate(): void {
+    this.recordAction('boulder');
     this.tryBoulderRoll();
   }
 
   useBearTrap(): void {
+    this.recordAction('bear_trap');
     this.tryBearTrap();
   }
 
@@ -809,6 +844,7 @@ export class GameRuntime {
     return {
       state: this.gs,
       world: this.world,
+      economy: () => this.economySnapshot(),
       teleport: (x: number, z: number) => {
         this.playerX = x;
         this.playerZ = z;
@@ -861,6 +897,21 @@ export class GameRuntime {
         this.meleeSwing(AXE_DAMAGE);
         return this.foxes.length;
       },
+    };
+  }
+
+  private recordAction(kind: string): void {
+    this.economyMetrics.actions++;
+    this.economyMetrics.actionKinds[kind] = (this.economyMetrics.actionKinds[kind] ?? 0) + 1;
+  }
+
+  private economySnapshot(): EconomyMetrics & { sessionSeconds: number; inGameSeconds: number; day: number } {
+    return {
+      ...this.economyMetrics,
+      actionKinds: { ...this.economyMetrics.actionKinds },
+      sessionSeconds: (performance.now() - this.economyMetrics.sessionStartedAt) / 1000,
+      inGameSeconds: this.gs.simTime,
+      day: this.gs.clock.day,
     };
   }
 
@@ -1087,6 +1138,7 @@ export class GameRuntime {
       this.persist();
     }
     if (clock.becameDay) {
+      this.economyMetrics.daysReached = this.gs.clock.day;
       this.clearFoxes();
       const { lostTilth, regrown } = onNewDay(this.gs);
       setToast(
@@ -1189,6 +1241,7 @@ export class GameRuntime {
   }
 
   private useSelectedTool(): void {
+    this.recordAction('tool');
     if (this.gs.toolSlotActive) {
       this.useBucket();
       return;
@@ -1210,6 +1263,7 @@ export class GameRuntime {
 
   /** Combat input must respect the selected toolbar slot. */
   private useCombatAction(): void {
+    this.recordAction('combat');
     if (this.gs.toolSlotActive) return;
     if (this.gs.toolbarSlot === SLOT_SHOTGUN) {
       this.fireWeapon();
@@ -1236,6 +1290,7 @@ export class GameRuntime {
     }
     if (cost > 0) takeFromInventory(this.gs, ITEM_WOOD, cost);
     this.gs.homesteadTier = nextTier;
+    this.economyMetrics.upgrades++;
     const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
     this.syncBuildings();
     this.persist();
@@ -1279,6 +1334,7 @@ export class GameRuntime {
     }
     takeFromInventory(this.gs, ITEM_WOOD, selected.cost);
     placeBuilding(this.gs, selected.id, wc.x, wc.z, this.headingTarget);
+    this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
     this.syncBuildings();
     this.persist();
@@ -1396,6 +1452,7 @@ export class GameRuntime {
         return;
       }
       if (plantTile(this.gs.tiles, tx, ty, seed)) {
+        this.economyMetrics.cropsPlanted++;
         this.beginMeleeAction('pickUp');
         this.rebuildCrops();
         this.world.syncFarmTiles(this.gs.tiles);
@@ -1409,6 +1466,7 @@ export class GameRuntime {
         this.beginMeleeAction('pickUp');
         const id = cropItem(res.seed.displayName);
         if (!addToInventory(this.gs, id, res.count)) return;
+        this.economyMetrics.cropsHarvested += res.count;
         this.gs.stats.cropsHarvested += res.count;
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
         this.rebuildCrops();
@@ -1479,6 +1537,7 @@ export class GameRuntime {
     trees.invalidateTile(tx, ty);
     this.world.markShadowsDirty();
     this.gs.stats.woodGathered += FARM_TREE_WOOD;
+    this.economyMetrics.treesFelled++;
     this.world.shake(0.14, 0.12);
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
     return true;
@@ -1792,6 +1851,7 @@ export class GameRuntime {
     }
     w.dead = true;
     this.gs.stats.foxesFelled += 1;
+    this.economyMetrics.foxesFelled++;
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
     w.root.removeFromParent();
