@@ -9,7 +9,7 @@ import {
 } from './inventory';
 import { cropItem, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
-import { assetDefinition, type AssetId } from '../content/purchasables';
+import { assetDefinition, deedAssetId, type AssetId } from '../content/purchasables';
 
 export const SAVE_VERSION = 8;
 
@@ -90,6 +90,14 @@ function migrateInventory(data: Record<string, unknown>, incomingVersion: number
   const raw = data.inventory;
   if (Array.isArray(raw)) {
     const inv = normalizeInventory(raw);
+    for (let index = 0; index < inv.length; index++) {
+      const slot = inv[index];
+      const assetId = slot ? deedAssetId(slot.id) : null;
+      if (assetId && !assetDefinition(assetId)) {
+        console.warn(`[Save] Skipping unknown deed asset id: ${assetId}`);
+        inv[index] = null;
+      }
+    }
     // Pre-v5 saves kept trophies in a separate list. Current saves already
     // include them in the inventory, so only fold the list in for older data.
     if (incomingVersion < 5 && Array.isArray(data.trophies)) {
@@ -162,6 +170,10 @@ export function deserialize(raw: string): SaveData | null {
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object') return null;
+    if (typeof parsed.version === 'number' && parsed.version > SAVE_VERSION) {
+      console.error(`[Save] Save version ${parsed.version} is newer than supported version ${SAVE_VERSION}`);
+      return null;
+    }
     if (typeof parsed.seed !== 'number') return null;
     if (typeof parsed.day !== 'number') return null;
     if (parsed.phase !== 'day' && parsed.phase !== 'night') return null;

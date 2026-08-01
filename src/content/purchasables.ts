@@ -161,6 +161,19 @@ export const PURCHASABLE_ASSETS = [
     availability: 'keybind',
     keybind: 'B',
   }),
+  apply({
+    id: 'upgrade:irrigation',
+    displayName: 'Irrigation Upgrade',
+    category: 'Upgrades',
+    modelKey: 'well',
+    footprint: { width: 1, height: 1 },
+    facings: 1,
+    blocksMovement: false,
+    blocksEnclosure: false,
+    price: 12,
+    materialCost: { wood: 12 },
+    description: 'Unlocks reliable tier-three irrigation for every crop tile.',
+  }),
   place({
     id: 'well',
     displayName: 'Well',
@@ -448,7 +461,8 @@ export function assetDefinition(id: AssetId): PurchasableAsset | null {
 export function shopAssets(category?: AssetCategory): PurchasableAsset[] {
   return PURCHASABLE_ASSETS.filter(
     (asset) =>
-      asset.availability === 'shop' &&
+      asset.availability !== 'debug' &&
+      asset.availability !== 'fixture' &&
       !asset.fixture &&
       (!category || asset.category === category),
   );
@@ -491,4 +505,3 @@ export function validatePurchasableCatalog(): string[] {
   }
   return problems;
 }
-

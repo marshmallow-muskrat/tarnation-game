@@ -91,7 +91,7 @@ export const GROVE_SPARSE = FARM_TREE_FRACTION * 0.06;
 export const FARM_TREE_CHOPS = 5;
 /** Wood added to the inventory per felled tree. */
 export const FARM_TREE_WOOD = 2;
-/** Stumps clear in one swing and give nothing. */
+/** Stumps clear in one swing and leave one extra log for the economy. */
 export const STUMP_CHOPS = 1;
 /** Share of tiles carrying a boulder. Boulders can't be tilled through. */
 export const ROCK_TILE_FRACTION = 0.035;

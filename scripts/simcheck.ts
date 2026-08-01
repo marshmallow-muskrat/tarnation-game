@@ -29,6 +29,14 @@ import { cropItem, itemInfo, ITEM_WOOD } from '../src/sim/items';
 import { dropChance, rollDrop, TROPHY_ODDS } from '../src/sim/luck';
 import { mulberry32 } from '../src/sim/rng';
 import { hash2, smoothstep, valueNoise2D } from '../src/game/noise';
+import { assetDefinition, deedItemId, validatePurchasableCatalog } from '../src/content/purchasables';
+import {
+  calculateEnclosedTiles,
+  orientedFootprint,
+  placementStatus,
+  tileIsEnclosed,
+  tileKey,
+} from '../src/sim/placement';
 
 const day = DAY_LENGTH + NIGHT_LENGTH;
 const results: string[] = [];
@@ -79,6 +87,41 @@ for (const [id, def] of Object.entries(CROP_DEFS)) {
   ok('rejects a 25th distinct item', addItem(inv, 'overflow', 1) === false);
   removeItem(inv, 'filler:0', 1);
   ok('freed slot accepts again', addItem(inv, 'overflow', 1) === true);
+}
+
+// ------------------------------------------------------ catalog + placement
+{
+  const catalogProblems = validatePurchasableCatalog();
+  ok('purchasable ids are stable and unique', catalogProblems.length === 0, catalogProblems.join('; '));
+  const fence = assetDefinition('fence');
+  const gate = assetDefinition('gate');
+  const grass = createEmptyGrid();
+  if (fence && gate) {
+    const rotated = orientedFootprint(fence, 1);
+    ok('rotating a fence swaps its footprint', rotated.width === 1 && rotated.height === 4);
+    const status = placementStatus({ asset: fence, origin: { tx: 20, ty: 20 }, rotation: 0, tiles: grass, placed: [] });
+    ok('clear grass accepts a placed asset footprint', status.valid && status.tiles.length === 4);
+    const blocked = placementStatus({
+      asset: gate,
+      origin: { tx: 20, ty: 20 },
+      rotation: 0,
+      tiles: grass,
+      placed: [{ id: 'well', x: 20.5, z: 20.5, rotation: 0 }],
+    });
+    ok('placed assets reject overlapping footprints', !blocked.valid && blocked.reason.includes('overlaps'));
+    ok('deeds retain the asset id', deedItemId('fence') === 'deed:fence');
+    const boundary = new Set<string>();
+    for (let x = 40; x <= 44; x++) {
+      boundary.add(tileKey(x, 40));
+      boundary.add(tileKey(x, 44));
+    }
+    for (let y = 41; y < 44; y++) {
+      boundary.add(tileKey(40, y));
+      boundary.add(tileKey(44, y));
+    }
+    const enclosed = calculateEnclosedTiles(boundary);
+    ok('enclosure flood fill protects the inside of a closed fence', tileIsEnclosed(enclosed, 42, 42));
+  }
 }
 
 // ------------------------------------------------------------- economy

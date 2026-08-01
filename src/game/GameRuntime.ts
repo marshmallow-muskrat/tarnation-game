@@ -179,6 +179,8 @@ export type HudVendorAsset = {
   name: string;
   description: string;
   footprint: string;
+  useType: PurchasableAsset['useType'];
+  gate: boolean;
   model: ModelKey;
   price: number;
   material: string;
@@ -198,6 +200,8 @@ export type HudContextMenu = {
   y: number;
   name: string;
   placedIndex: number;
+  gate: boolean;
+  gateOpen: boolean;
 };
 
 /** Floating "+3 Wood" that rises off whatever you just gathered. */
@@ -516,26 +520,38 @@ const HOMESTEAD_MODEL_KEYS = [
   'house_5',
 ] as const;
 
+const PLACEABLE_BUILDING_IDS = [
+  'well',
+  'chicken_coop',
+  'silo',
+  'windmill',
+  'tower_windmill',
+  'water_tower',
+  'fence',
+  'fence2',
+  'gate',
+  'small_barn',
+  'open_barn',
+  'barn',
+  'silo_house',
+  'big_barn',
+] as const;
+
 const PLACEABLE_BUILDINGS: {
   id: BuildingId;
   model: ModelKey;
   name: string;
   cost: number;
-}[] = [
-  { id: 'well', model: 'well', name: 'Well', cost: 3 },
-  { id: 'chicken_coop', model: 'chicken_coop', name: 'Chicken Coop', cost: 5 },
-  { id: 'silo', model: 'silo', name: 'Silo', cost: 7 },
-  { id: 'windmill', model: 'windmill', name: 'Windmill', cost: 8 },
-  { id: 'tower_windmill', model: 'tower_windmill', name: 'Tower Windmill', cost: 12 },
-  { id: 'water_tower', model: 'water_tower', name: 'Water Tower', cost: 10 },
-  { id: 'fence', model: 'fence', name: 'Fence', cost: 1 },
-  { id: 'fence2', model: 'fence2', name: 'Fence 2', cost: 1 },
-  { id: 'small_barn', model: 'small_barn', name: 'Small Barn', cost: 5 },
-  { id: 'open_barn', model: 'open_barn', name: 'Open Barn', cost: 7 },
-  { id: 'barn', model: 'barn', name: 'Barn', cost: 10 },
-  { id: 'silo_house', model: 'silo_house', name: 'Silo House', cost: 14 },
-  { id: 'big_barn', model: 'big_barn', name: 'Big Barn', cost: 18 },
-];
+}[] = PLACEABLE_BUILDING_IDS.flatMap((id) => {
+  const asset = assetDefinition(id);
+  if (!asset) return [];
+  return [{
+    id,
+    model: asset.modelKey,
+    name: asset.displayName,
+    cost: asset.materialCost.wood ?? asset.price,
+  }];
+});
 
 const HOMESTEAD_X = HOMESTEAD_MIN_X + 8;
 const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
@@ -549,13 +565,23 @@ const SLOT_SHOTGUN = 0;
 const SLOT_SHOVEL = 1;
 const SLOT_AXE = 2;
 
-const TOOLBAR: { name: string; glyph: string; model: ModelKey | null; empty: boolean }[] = [
-  { name: 'Shotgun', glyph: '', model: 'shotgun_2', empty: false },
-  { name: 'Shovel', glyph: '', model: 'shovel', empty: false },
-  { name: 'Axe', glyph: '', model: 'axe', empty: false },
-  { name: '', glyph: '', model: null, empty: true },
-  { name: '', glyph: '', model: null, empty: true },
-];
+const TOOLBAR_ASSET_IDS = [
+  'tool:shotgun',
+  'tool:shovel',
+  'tool:axe',
+  null,
+  null,
+] as const;
+
+const TOOLBAR = TOOLBAR_ASSET_IDS.map((id) => {
+  const asset = id ? assetDefinition(id) : null;
+  return {
+    name: asset?.displayName ?? '',
+    glyph: '',
+    model: asset?.modelKey ?? null,
+    empty: !asset,
+  };
+});
 
 const CROP_ICON_MODELS: Record<string, ModelKey> = {
   Grass: 'grasscrop_4',
@@ -617,7 +643,15 @@ export class GameRuntime {
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
   private vendorMessage = '';
-  private contextMenu: HudContextMenu = { open: false, x: 0, y: 0, name: '', placedIndex: -1 };
+  private contextMenu: HudContextMenu = {
+    open: false,
+    x: 0,
+    y: 0,
+    name: '',
+    placedIndex: -1,
+    gate: false,
+    gateOpen: false,
+  };
 
   private foxes: Fox[] = [];
   private deathMarkers: DeathMarker[] = [];
@@ -640,6 +674,7 @@ export class GameRuntime {
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
   private bearTrapRoots = new Map<string, THREE.Object3D>();
+  private gateCloseTimers = new Map<number, number>();
   /** In-progress chops, keyed "tx,ty". */
   private treeChops = new Map<string, number>();
   private fixtureReservations = fixtureTiles(CENTRAL_CAMP_FIXTURES);
@@ -1104,6 +1139,7 @@ export class GameRuntime {
     this.buildingMode = false;
     this.placementAssetId = null;
     this.demolishMode = false;
+    this.gs.inventoryOpen = false;
     this.closeContextMenu();
     this.cancelPlayerAction();
     if (index !== SLOT_SHOTGUN) this.clearShots();
@@ -1191,6 +1227,7 @@ export class GameRuntime {
     this.buildingMode = false;
     this.placementAssetId = null;
     this.demolishMode = false;
+    this.gs.inventoryOpen = false;
     this.closeContextMenu();
     this.velX = 0;
     this.velZ = 0;
@@ -1213,7 +1250,7 @@ export class GameRuntime {
   buyAsset(id: AssetId): void {
     if (!this.nearMerchant) return;
     const asset = assetDefinition(id);
-    if (!asset || asset.fixture || asset.availability !== 'shop') return;
+    if (!asset || asset.fixture || asset.availability === 'debug' || asset.availability === 'fixture') return;
     const itemId = deedItemId(id);
     const freePurchases = !new URLSearchParams(window.location.search).has('paid');
     const reasons: string[] = [];
@@ -1260,6 +1297,19 @@ export class GameRuntime {
     if (asset.useType === 'equip') {
       const equipped = this.equipCatalogAsset(asset);
       if (equipped) takeFromInventory(this.gs, id, 1);
+      this.pushHud(true);
+      return;
+    }
+    if (asset.id === 'upgrade:irrigation') {
+      if (this.gs.irrigationTier >= 3) {
+        setToast(this.gs, 'Irrigation is already fully upgraded', 1.6);
+        return;
+      }
+      this.gs.irrigationTier = 3;
+      takeFromInventory(this.gs, id, 1);
+      setToast(this.gs, 'Irrigation upgraded · crops no longer need bucket water', 2.2);
+      this.recordAction('upgrade_irrigation');
+      this.persist();
       this.pushHud(true);
       return;
     }
@@ -1352,8 +1402,16 @@ export class GameRuntime {
     }
   }
 
-  private closeContextMenu(): void {
-    this.contextMenu = { open: false, x: 0, y: 0, name: '', placedIndex: -1 };
+  closeContextMenu(): void {
+    this.contextMenu = {
+      open: false,
+      x: 0,
+      y: 0,
+      name: '',
+      placedIndex: -1,
+      gate: false,
+      gateOpen: false,
+    };
     this.pushHud(true);
   }
 
@@ -1382,6 +1440,8 @@ export class GameRuntime {
       y: pointer.y,
       name: asset.displayName,
       placedIndex: index,
+      gate: asset.gate,
+      gateOpen: this.gs.placedBuildings[index]!.gateOpen === true,
     };
     this.pushHud(true);
     return true;
@@ -1418,6 +1478,21 @@ export class GameRuntime {
     const index = this.contextMenu.placedIndex;
     this.closeContextMenu();
     this.destroyPlacedIndex(index);
+  }
+
+  contextToggleGate(): void {
+    const index = this.contextMenu.placedIndex;
+    const placed = this.gs.placedBuildings[index];
+    const asset = placed ? assetDefinition(placed.id) : null;
+    if (!placed || !asset?.gate) return this.closeContextMenu();
+    placed.gateOpen = placed.gateOpen !== true;
+    if (placed.gateOpen) this.gateCloseTimers.set(index, 3.5);
+    else this.gateCloseTimers.delete(index);
+    this.syncBuildings();
+    this.recalculateEnclosure();
+    this.persist();
+    setToast(this.gs, placed.gateOpen ? 'Gate opened' : 'Gate closed', 1.1);
+    this.closeContextMenu();
   }
 
   private destroyAtPointer(): void {
@@ -1784,6 +1859,7 @@ export class GameRuntime {
       Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ) <= MARKET_RANGE;
     this.nearMerchant =
       Math.hypot(this.playerX - this.merchantX, this.playerZ - this.merchantZ) <= MARKET_RANGE;
+    this.stepGateTimers(dt);
     if (this.nearMerchant && this.input.justPressed('KeyE')) this.openVendor();
     if (this.vendorOpen && !this.nearMerchant) {
       this.vendorOpen = false;
@@ -1938,7 +2014,8 @@ export class GameRuntime {
   }
 
   private openGateAt(tx: number, ty: number): boolean {
-    for (const placed of this.gs.placedBuildings) {
+    for (let index = 0; index < this.gs.placedBuildings.length; index++) {
+      const placed = this.gs.placedBuildings[index]!;
       const asset = assetDefinition(placed.id);
       if (!asset?.gate || placed.gateOpen) continue;
       const origin = {
@@ -1947,13 +2024,52 @@ export class GameRuntime {
       };
       if (!footprintTiles(asset, origin, placed.rotation).some((tile) => tile.tx === tx && tile.ty === ty)) continue;
       placed.gateOpen = true;
+      this.gateCloseTimers.set(index, 3.5);
       this.syncBuildings();
       this.recalculateEnclosure();
+      this.persist();
       this.audio.play('build');
       setToast(this.gs, 'Gate opened', 1.1);
       return true;
     }
     return false;
+  }
+
+  private stepGateTimers(dt: number): void {
+    if (this.gateCloseTimers.size === 0) return;
+    const playerTile = this.worldToFarmTile(this.playerX, this.playerZ);
+    let changed = false;
+    for (const [index, remaining] of [...this.gateCloseTimers.entries()]) {
+      const placed = this.gs.placedBuildings[index];
+      const asset = placed ? assetDefinition(placed.id) : null;
+      if (!placed || !asset?.gate || placed.gateOpen !== true) {
+        this.gateCloseTimers.delete(index);
+        continue;
+      }
+      const origin = placedOrigin(placed, placed.rotation, asset);
+      const playerStillInGate = playerTile
+        ? footprintTiles(asset, origin, placed.rotation).some(
+            (tile) => tile.tx === playerTile.tx && tile.ty === playerTile.ty,
+          )
+        : false;
+      if (playerStillInGate) {
+        this.gateCloseTimers.set(index, 3.5);
+        continue;
+      }
+      const next = remaining - dt;
+      if (next > 0) {
+        this.gateCloseTimers.set(index, next);
+        continue;
+      }
+      placed.gateOpen = false;
+      this.gateCloseTimers.delete(index);
+      changed = true;
+    }
+    if (!changed) return;
+    this.syncBuildings();
+    this.recalculateEnclosure();
+    this.persist();
+    setToast(this.gs, 'Gate closed', 1.1);
   }
 
   /** The grid only lights up for the shovel — the tool that actually works soil. */
@@ -3682,6 +3798,8 @@ export class GameRuntime {
           name: asset.displayName,
           description: asset.description,
           footprint: `${asset.footprint.width}×${asset.footprint.height}`,
+          useType: asset.useType,
+          gate: asset.gate,
           model: asset.modelKey,
           price: asset.price,
           material: Object.entries(asset.materialCost)

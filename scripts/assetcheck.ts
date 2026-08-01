@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MODEL_KEYS, modelDef } from '../src/content/models';
+import { PURCHASABLE_ASSETS, validatePurchasableCatalog } from '../src/content/purchasables';
 
 const root = resolve(process.cwd(), 'public', 'models');
 const missing: string[] = [];
@@ -30,4 +31,16 @@ if (missing.length) {
   if (duplicates.length) {
     console.log(`Manifest aliases retained intentionally: ${duplicates.length} shared paths.`);
   }
+}
+
+const catalogProblems = validatePurchasableCatalog();
+for (const asset of PURCHASABLE_ASSETS) {
+  if (!MODEL_KEYS.includes(asset.modelKey)) catalogProblems.push(`unknown model key: ${asset.id} → ${asset.modelKey}`);
+}
+if (catalogProblems.length) {
+  console.error(`Purchasable catalog check failed (${catalogProblems.length}):`);
+  for (const problem of catalogProblems) console.error(`  ${problem}`);
+  process.exitCode = 1;
+} else {
+  console.log(`Purchasable catalog passed: ${PURCHASABLE_ASSETS.length} stable asset ids.`);
 }

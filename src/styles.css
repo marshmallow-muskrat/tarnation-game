@@ -945,6 +945,351 @@ kbd {
   pointer-events: none;
 }
 
+/* ---------------------------------------------------------- launch screen */
+.launch-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(circle at 50% 42%, rgba(38, 74, 48, 0.48), rgba(7, 13, 12, 0.94) 72%);
+}
+
+.launch-card {
+  width: min(460px, 100%);
+  padding: 30px;
+  text-align: center;
+  pointer-events: auto;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.42);
+}
+
+.launch-card h1 {
+  margin: 4px 0 12px;
+  color: var(--amber);
+  font-family: var(--serif);
+  font-size: 52px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.launch-copy {
+  margin: 0 auto 24px;
+  max-width: 350px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.launch-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.launch-actions button {
+  min-width: 145px;
+  padding: 11px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.launch-actions button.primary {
+  border-color: var(--teal-deep);
+  background: rgba(152, 216, 201, 0.13);
+  color: var(--teal);
+}
+
+.launch-actions button:hover:not(:disabled) {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.launch-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.launch-note {
+  margin: 18px 0 0;
+  color: var(--faint);
+  font-size: 11px;
+}
+
+/* -------------------------------------------------------- inventory actions */
+.inv-slot.filled {
+  cursor: pointer;
+}
+
+.delete-confirm {
+  position: absolute;
+  z-index: 24;
+  top: calc(100% + 5px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 86px;
+  padding: 6px;
+  transform: translateX(-50%);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: rgba(7, 13, 12, 0.97);
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.5);
+  color: var(--muted);
+  font-size: 9px;
+  text-align: center;
+}
+
+.delete-confirm button {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  padding: 3px 4px;
+}
+
+.delete-confirm button:first-of-type {
+  color: var(--red);
+}
+
+/* ----------------------------------------------------------- merchant shop */
+.vendor-panel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(620px, calc(100vw - 36px));
+  max-height: min(710px, calc(100vh - 44px));
+  overflow-y: auto;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  z-index: 21;
+  padding: 18px;
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.45);
+}
+
+.vendor-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.vendor-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 600;
+}
+
+.vendor-intro,
+.vendor-footer {
+  margin: 8px 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.vendor-tabs {
+  display: flex;
+  gap: 5px;
+  margin: 12px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+}
+
+.vendor-tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 8px 9px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.vendor-tabs button.selected,
+.vendor-tabs button:hover {
+  border-bottom-color: var(--teal);
+  color: var(--teal);
+}
+
+.vendor-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.vendor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 68px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.vendor-row:hover {
+  border-color: var(--line-strong);
+  background: rgba(152, 216, 201, 0.06);
+}
+
+.vendor-model-icon {
+  flex: 0 0 46px;
+  width: 46px;
+  height: 46px;
+  pointer-events: none;
+}
+
+.vendor-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.vendor-name,
+.vendor-description,
+.vendor-meta {
+  margin: 0;
+}
+
+.vendor-name {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.vendor-description {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.vendor-meta {
+  margin-top: 3px;
+  color: var(--faint);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+/* Reserved for real prices/materials when the economy gate is enabled. */
+.vendor-cost-placeholder {
+  display: block;
+  width: 92px;
+  height: 6px;
+  margin-top: 4px;
+  opacity: 0;
+}
+
+.vendor-buy {
+  flex: 0 0 auto;
+  min-width: 58px;
+  border: 1px solid var(--teal-deep);
+  border-radius: 6px;
+  background: rgba(152, 216, 201, 0.1);
+  color: var(--teal);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  padding: 7px 9px;
+  text-transform: uppercase;
+}
+
+.vendor-buy:hover {
+  border-color: var(--teal);
+  background: rgba(152, 216, 201, 0.2);
+}
+
+.vendor-message {
+  margin: 12px 0 0;
+  color: var(--teal);
+  font-size: 11px;
+}
+
+.vendor-footer {
+  margin-bottom: 0;
+  color: var(--faint);
+  font-style: italic;
+}
+
+/* --------------------------------------------------------- object context */
+.context-menu {
+  position: absolute;
+  z-index: 26;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 144px;
+  padding: 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: rgba(7, 13, 12, 0.96);
+  box-shadow: 0 7px 24px rgba(0, 0, 0, 0.52);
+  pointer-events: auto;
+}
+
+.context-menu p {
+  margin: 2px 4px 4px;
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.context-menu button {
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  padding: 6px 7px;
+  text-align: left;
+}
+
+.context-menu button:hover {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.context-menu button.danger:hover {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.context-menu .context-cancel {
+  color: var(--faint);
+}
+
+.demolish-badge {
+  padding: 5px 10px;
+  border: 1px solid rgba(186, 91, 78, 0.6);
+  border-radius: 6px;
+  background: rgba(64, 19, 17, 0.78);
+  color: #e6a49a;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 680px) {
   .hud-top-left {
     top: 10px;
@@ -990,5 +1335,26 @@ kbd {
   .help-grid {
     grid-template-columns: 1fr;
     gap: 4px;
+  }
+
+  .launch-card {
+    padding: 22px 16px;
+  }
+
+  .launch-card h1 {
+    font-size: 42px;
+  }
+
+  .launch-actions {
+    flex-direction: column-reverse;
+  }
+
+  .launch-actions button {
+    width: 100%;
+  }
+
+  .vendor-panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
   }
 }

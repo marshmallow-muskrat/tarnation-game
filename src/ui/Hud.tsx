@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { cloneModel, type ModelKey } from '../game/Assets';
 import type { HudSlot, HudSnapshot } from '../game/GameRuntime';
 import type { ItemId } from '../sim/items';
+import type { AssetCategory, AssetId } from '../content/purchasables';
 
 type Props = {
   hud: HudSnapshot | null;
@@ -18,6 +19,15 @@ type Props = {
   onSellOne: (id: ItemId) => void;
   onSellStack: (id: ItemId) => void;
   onSellAll: () => void;
+  onVendorTab: (tab: AssetCategory) => void;
+  onVendorBuy: (id: AssetId) => void;
+  onVendorClose: () => void;
+  onUseInventory: (id: ItemId) => void;
+  onDeleteInventory: (id: ItemId) => void;
+  onContextRotate: () => void;
+  onContextToggleGate: () => void;
+  onContextDestroy: () => void;
+  onContextClose: () => void;
 };
 
 type Tip = { slot: HudSlot; x: number; y: number } | null;
@@ -114,8 +124,18 @@ export function Hud({
   onSellOne,
   onSellStack,
   onSellAll,
+  onVendorTab,
+  onVendorBuy,
+  onVendorClose,
+  onUseInventory,
+  onDeleteInventory,
+  onContextRotate,
+  onContextToggleGate,
+  onContextDestroy,
+  onContextClose,
 }: Props) {
   const [tip, setTip] = useState<Tip>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<ItemId | null>(null);
 
   if (!hud) return null;
 
@@ -177,7 +197,7 @@ export function Hud({
         <span className="inv-toggle-key">I</span>
       </button>
 
-      {hud.inventoryOpen && !hud.build.active && (
+      {hud.inventoryOpen && !hud.build.active && !hud.vendor.open && (
         <div className="panel hud-inventory">
           <p className="label">
             Inventory · {filled}/{hud.inventory.length}
@@ -187,6 +207,13 @@ export function Hud({
               <div
                 key={`slot-${i}`}
                 className={`inv-slot ${slot.id ? 'filled' : ''}`}
+                onDoubleClick={() => slot.id && onUseInventory(slot.id)}
+                onContextMenu={(e) => {
+                  if (!slot.id) return;
+                  e.preventDefault();
+                  setTip(null);
+                  setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id);
+                }}
                 onMouseEnter={(e) =>
                   slot.id &&
                   setTip({ slot, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().top })
@@ -197,6 +224,23 @@ export function Hud({
                   <>
                     {slot.model ? <ModelIcon model={slot.model} className="inv-model-icon" /> : <span className="inv-glyph">{slot.glyph}</span>}
                     <span className="inv-count">{slot.count}</span>
+                    {deleteConfirm === slot.id && (
+                      <span className="delete-confirm" onClick={(e) => e.stopPropagation()}>
+                        <span>Delete 1?</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onDeleteInventory(slot.id!);
+                            setDeleteConfirm(null);
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button type="button" onClick={() => setDeleteConfirm(null)}>
+                          Cancel
+                        </button>
+                      </span>
+                    )}
                   </>
                 )}
               </div>
@@ -249,6 +293,70 @@ export function Hud({
               </button>
             </>
           )}
+        </div>
+      )}
+
+      {hud.vendor.open && (
+        <div className="panel vendor-panel">
+          <div className="vendor-heading">
+            <div>
+              <p className="label">Stationary trading post</p>
+              <h2>Traveling Merchant</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onVendorClose}>
+              Close
+            </button>
+          </div>
+          <p className="vendor-intro">The merchant stays at this encampment. Buy a deed, then double-click it in your inventory to use it.</p>
+          <div className="vendor-tabs" role="tablist" aria-label="Merchant categories">
+            {hud.vendor.tabs.map((tab) => (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={tab === hud.vendor.tab}
+                className={tab === hud.vendor.tab ? 'selected' : ''}
+                key={tab}
+                onClick={() => onVendorTab(tab)}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+          <div className="vendor-list">
+            {hud.vendor.items.map((item) => (
+              <div className="vendor-row" key={item.id}>
+                <ModelIcon model={item.model} className="vendor-model-icon" size={46} />
+                <div className="vendor-copy">
+                  <p className="vendor-name">{item.name}</p>
+                  <p className="vendor-description">{item.description}</p>
+                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType}</p>
+                  <span className="vendor-cost-placeholder" aria-hidden="true" />
+                </div>
+                <button type="button" className="vendor-buy" onClick={() => onVendorBuy(item.id)}>
+                  Buy
+                </button>
+              </div>
+            ))}
+          </div>
+          {hud.vendor.message && <p className="vendor-message">{hud.vendor.message}</p>}
+          <p className="vendor-footer">Free purchases are testing scaffolding. Price, material, and inventory checks remain wired for paid mode.</p>
+        </div>
+      )}
+
+      {hud.contextMenu.open && (
+        <div
+          className="context-menu"
+          style={{ left: `${Math.max(8, hud.contextMenu.x)}px`, top: `${Math.max(8, hud.contextMenu.y)}px` }}
+        >
+          <p>{hud.contextMenu.name}</p>
+          <button type="button" onClick={onContextRotate}>Rotate</button>
+          {hud.contextMenu.gate && (
+            <button type="button" onClick={onContextToggleGate}>
+              {hud.contextMenu.gateOpen ? 'Close gate' : 'Open gate'}
+            </button>
+          )}
+          <button type="button" className="danger" onClick={onContextDestroy}>Destroy</button>
+          <button type="button" className="context-cancel" onClick={onContextClose}>Esc · Close</button>
         </div>
       )}
 
@@ -347,6 +455,7 @@ export function Hud({
       )}
 
       <div className="hud-bottom-center">
+        {hud.demolishMode && <div className="demolish-badge">Demolish mode · click placed assets · Esc exits</div>}
         {hud.toast && (
           <div className="toast">
             <span>{hud.toast}</span>
