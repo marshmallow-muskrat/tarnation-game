@@ -9,16 +9,18 @@ import {
   WORLD_SIZE,
 } from '../content';
 import type { Tile } from '../sim/farm';
-import { cloneModel, type ModelKey } from './Assets';
+import { cloneModel, isModelReady, type ModelKey } from './Assets';
 import { FarmTrees } from './FarmTrees';
 import { standardMaterial } from './materials';
 import { hash2 } from './noise';
 import { ScatterChunks } from './ScatterChunks';
 import { buildTerrain, SOIL_NONE, SOIL_TILLED, SOIL_WATERED, type TerrainSystem } from './terrain';
+import { disposeCloneOwnedMaterials, disposeModelClone, disposeObjectResources } from './ResourceDisposal';
 
 const _matrix = new THREE.Matrix4();
 const _color = new THREE.Color();
 const _pos = new THREE.Vector3();
+const SHADOW_ANCHOR_STEP = 0.25;
 
 /**
  * Three.js scene — one world, no zones. Worked soil is painted into the terrain's
@@ -70,12 +72,26 @@ export class WorldRenderer {
   private moteVel: Float32Array | null = null;
 
   private fogTarget = new THREE.Color(FARM_COLORS.fog);
+  private readonly fogDay = new THREE.Color(FARM_COLORS.fog);
+  private readonly fogNight = new THREE.Color(0x1a2840);
+  private readonly waterStructureColor = new THREE.Color(FARM_COLORS.water);
+  private readonly trenchStructureColor = new THREE.Color(FARM_COLORS.trench);
+  private readonly shadowAnchor = new THREE.Vector3(Number.NaN, Number.NaN, Number.NaN);
+  private readonly groundRaycaster = new THREE.Raycaster();
+  private readonly groundNdc = new THREE.Vector2();
+  private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  private readonly groundHit = new THREE.Vector3();
+  private readonly screenForward = new THREE.Vector3(-1, 0, -1).normalize();
+  private readonly screenRight = new THREE.Vector3(1, 0, -1).normalize();
+  private readonly screenAngleFrom = new THREE.Vector3();
+  private readonly screenAngleTarget = new THREE.Vector3();
   private shakeTime = 0;
   private shakeAmp = 0;
   private time = 0;
 
   private actors = new THREE.Group();
   private farmActors = new THREE.Group();
+  private disposed = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -124,8 +140,9 @@ export class WorldRenderer {
     this.camera.lookAt(this.cameraTarget);
 
     // Scatter models are loaded by GameRuntime after this renderer is built.
-    // The first real scatter chunks are created by snapCamera once preloadAll()
-    // has completed; building here would permanently cache primitive fallbacks.
+    // The first real scatter chunks are created by snapCamera once the
+    // first_play group has completed; building here would permanently cache
+    // primitive fallbacks.
     this.renderer.shadowMap.needsUpdate = true;
   }
 
@@ -263,6 +280,10 @@ export class WorldRenderer {
     return this.farmTrees;
   }
 
+  setInteractiveOccupancy(blocked: ReadonlySet<string>, version: number): void {
+    this.scatter.setInteractiveOccupancy(blocked, version);
+  }
+
   /**
    * A single thin outline on the hovered tile — not a filled quad, which would
    * wash out the tile's own colour.
@@ -341,7 +362,7 @@ export class WorldRenderer {
 
         if (si >= maxT) continue;
         if (t.state === 'trench') {
-          _color.set(FARM_COLORS.trench).lerp(new THREE.Color(FARM_COLORS.water), 0.45);
+          _color.copy(this.trenchStructureColor).lerp(this.waterStructureColor, 0.45);
         } else if (t.state === 'breeding') {
           _color.set(0x8a5ab0);
         } else {
@@ -374,9 +395,7 @@ export class WorldRenderer {
     this.keyLight.intensity = THREE.MathUtils.lerp(2.2, 0.55, night);
     this.hemisphere.intensity = THREE.MathUtils.lerp(1.1, 0.45, night);
     this.heroLight.intensity = THREE.MathUtils.lerp(3.0, 5.5, night);
-    const fogDay = new THREE.Color(FARM_COLORS.fog);
-    const fogNight = new THREE.Color(0x1a2840);
-    this.fogTarget.copy(fogDay).lerp(fogNight, night);
+    this.fogTarget.copy(this.fogDay).lerp(this.fogNight, night);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.density = THREE.MathUtils.lerp(0.012, 0.028, night);
     }
@@ -424,10 +443,13 @@ export class WorldRenderer {
       this.removeBuildPreview();
       return;
     }
-    if (!this.buildPreviewRoot || this.buildPreviewKey !== key) {
+    const needsLoadedModelRefresh =
+      this.buildPreviewRoot?.userData.assetFallback === true && isModelReady(key);
+    if (!this.buildPreviewRoot || this.buildPreviewKey !== key || needsLoadedModelRefresh) {
       this.removeBuildPreview();
       const { root } = cloneModel(key);
       root.name = `build_preview_${key}`;
+      root.userData.assetFallback = !isModelReady(key);
       root.renderOrder = 4;
       root.traverse((obj) => {
         if (!(obj instanceof THREE.Mesh)) return;
@@ -449,6 +471,7 @@ export class WorldRenderer {
           this.buildPreviewMaterials.push({ material: copy, color });
           return copy;
         });
+        disposeCloneOwnedMaterials(source);
         obj.material = copies.length === 1 ? copies[0]! : copies;
       });
       this.buildPreviewRoot = root;
@@ -501,9 +524,11 @@ export class WorldRenderer {
 
   private removeBuildPreview(): void {
     if (!this.buildPreviewRoot) return;
-    this.buildPreviewRoot.removeFromParent();
+    const root = this.buildPreviewRoot;
+    root.removeFromParent();
     for (const entry of this.buildPreviewMaterials) entry.material.dispose();
     this.buildPreviewMaterials = [];
+    disposeModelClone(root);
     this.buildPreviewRoot = null;
     this.buildPreviewKey = null;
     if (this.buildPreviewFootprint) {
@@ -528,11 +553,7 @@ export class WorldRenderer {
     const targetZ = z + leadZ;
     const hy = this.terrain.heightAt(x, z);
 
-    // The shadow camera is only ±40 wide, so it travels with the player.
-    this.keyLight.position.set(x - 6, hy + 13, z + 4);
-    this.keyLight.target.position.set(x, hy, z);
-    this.keyLight.target.updateMatrixWorld();
-    this.renderer.shadowMap.needsUpdate = true;
+    this.updateShadowAnchor(x, z, hy);
     this.cameraTarget.x = THREE.MathUtils.damp(this.cameraTarget.x, targetX, 4.5, dt);
     this.cameraTarget.z = THREE.MathUtils.damp(this.cameraTarget.z, targetZ, 4.5, dt);
     this.cameraTarget.y = THREE.MathUtils.damp(this.cameraTarget.y, hy, 4.5, dt);
@@ -565,6 +586,7 @@ export class WorldRenderer {
 
   snapCamera(x: number, z: number): void {
     const hy = this.terrain.heightAt(x, z);
+    this.updateShadowAnchor(x, z, hy);
     this.cameraTarget.set(x, hy, z);
     this.camera.position.copy(this.cameraTarget).add(this.cameraOffset);
     this.camera.lookAt(this.cameraTarget);
@@ -692,18 +714,19 @@ export class WorldRenderer {
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {
-    const forward = new THREE.Vector3(-1, 0, -1).normalize();
-    const right = new THREE.Vector3(1, 0, -1).normalize();
-    return { forward, right };
+    return { forward: this.screenForward, right: this.screenRight };
   }
 
   /** Screen-space direction from one world point to another, in radians. */
   screenAngleTo(fromX: number, fromZ: number, toX: number, toZ: number): number {
-    const a = new THREE.Vector3(fromX, this.terrain.heightAt(fromX, fromZ), fromZ).project(
-      this.camera,
+    this.screenAngleFrom
+      .set(fromX, this.terrain.heightAt(fromX, fromZ), fromZ)
+      .project(this.camera);
+    this.screenAngleTarget.set(toX, this.terrain.heightAt(toX, toZ), toZ).project(this.camera);
+    return Math.atan2(
+      this.screenAngleTarget.x - this.screenAngleFrom.x,
+      this.screenAngleTarget.y - this.screenAngleFrom.y,
     );
-    const b = new THREE.Vector3(toX, this.terrain.heightAt(toX, toZ), toZ).project(this.camera);
-    return Math.atan2(b.x - a.x, b.y - a.y);
   }
 
   resize(w: number, h: number): void {
@@ -757,6 +780,37 @@ export class WorldRenderer {
     this.renderer.render(this.scene, this.camera);
   }
 
+  /** Release procedural world resources and the renderer exactly once. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.setGridDebug(false);
+    this.removeBuildPreview();
+    this.farmTrees?.dispose();
+    this.scatter.dispose();
+
+    disposeObjectResources(this.terrain.mesh, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.terrain.water, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.terrain.bankScatter, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.structureTiles, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.hoverGroup, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.motePoints, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.sky, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.horizonGroup, { geometries: true, materials: true, textures: true });
+
+    for (const root of [...this.actors.children, ...this.farmActors.children]) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
+    this.scene.clear();
+    this.overworldRoot.clear();
+    this.actors.clear();
+    this.farmActors.clear();
+    this.renderer.renderLists.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
+  }
+
   getFarmActors(): THREE.Group {
     return this.farmActors;
   }
@@ -770,21 +824,19 @@ export class WorldRenderer {
     root.position.set(x, this.terrain.heightAt(x, z), z);
     root.scale.multiplyScalar(scale);
     parent.add(root);
-    this.renderer.shadowMap.needsUpdate = true;
+    this.markShadowsDirty();
     return root;
   }
 
   raycastGround(ndcX: number, ndcY: number): { x: number; z: number } | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.camera);
-    const hits = raycaster.intersectObject(this.terrain.mesh, false);
+    this.groundNdc.set(ndcX, ndcY);
+    this.groundRaycaster.setFromCamera(this.groundNdc, this.camera);
+    const hits = this.groundRaycaster.intersectObject(this.terrain.mesh, false);
     if (hits.length > 0 && hits[0]) {
       return { x: hits[0].point.x, z: hits[0].point.z };
     }
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const hit = new THREE.Vector3();
-    if (raycaster.ray.intersectPlane(plane, hit)) {
-      return { x: hit.x, z: hit.z };
+    if (this.groundRaycaster.ray.intersectPlane(this.groundPlane, this.groundHit)) {
+      return { x: this.groundHit.x, z: this.groundHit.z };
     }
     return null;
   }
@@ -795,6 +847,27 @@ export class WorldRenderer {
 
   markShadowsDirty(): void {
     this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  private updateShadowAnchor(x: number, z: number, y: number): void {
+    const anchorX = Math.round(x / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
+    const anchorY = Math.round(y / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
+    const anchorZ = Math.round(z / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
+    if (
+      this.shadowAnchor.x === anchorX &&
+      this.shadowAnchor.y === anchorY &&
+      this.shadowAnchor.z === anchorZ
+    ) {
+      return;
+    }
+    this.shadowAnchor.set(anchorX, anchorY, anchorZ);
+    // The shadow camera is only ±40 wide, so it travels with the player. The
+    // quantized anchor also prevents sub-texel camera churn from rebuilding the
+    // 2048px shadow map every render frame.
+    this.keyLight.position.set(anchorX - 6, anchorY + 13, anchorZ + 4);
+    this.keyLight.target.position.set(anchorX, anchorY, anchorZ);
+    this.keyLight.target.updateMatrixWorld();
+    this.markShadowsDirty();
   }
 
   getWorldBounds(): { minX: number; maxX: number; minZ: number; maxZ: number } {

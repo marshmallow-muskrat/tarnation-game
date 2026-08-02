@@ -60,6 +60,9 @@ export type ModelDef = {
   note?: string;
 };
 
+/** Ordered loading stages used by the runtime asset pipeline. */
+export type AssetLoadGroup = 'boot' | 'first_play' | 'nearby' | 'catalog' | 'optional';
+
 /** Sensible defaults so most entries stay one line. */
 export const DEFAULT_CLIPS = {
   idle: /idle/i,
@@ -221,6 +224,83 @@ export type ModelKey = keyof typeof MODELS;
 
 /** Every key, for preloading or validation. */
 export const MODEL_KEYS = Object.keys(MODELS) as ModelKey[];
+
+const BOOT_MODEL_KEYS = ['player'] as const satisfies readonly ModelKey[];
+
+const FIRST_PLAY_MODEL_KEYS = [
+  'donkey', 'bull', 'deer', 'stag', 'fox',
+  'beet_1', 'beet_2', 'beet_3', 'beet_4',
+  'carrot_1', 'carrot_2', 'carrot_3', 'carrot_4',
+  'lettuce_1', 'lettuce_2', 'lettuce_3', 'lettuce_4',
+  'dandelion_1', 'dandelion_2', 'dandelion_3', 'dandelion_4',
+  'grasscrop_1', 'grasscrop_2', 'grasscrop_3', 'grasscrop_4',
+  'tree_oak', 'tree_oak_2', 'tree_oak_3', 'tree_oak_4', 'tree_oak_5',
+  'tree_oak_6', 'tree_oak_7', 'tree_oak_8', 'tree_oak_9', 'tree_oak_10',
+  'tree_birch', 'tree_birch_2', 'tree_stump',
+  'rock_1', 'rock_2', 'rock_3', 'rock_a',
+  'bush_1', 'bush_2', 'plant_1', 'plant_2', 'plant_3', 'plant_4', 'plant_5',
+  'grass', 'grass_2', 'grass_short', 'flowers',
+  'house_1', 'market_stall', 'tent', 'chest_closed', 'wood_log', 'pouch', 'trophy',
+  'shotgun_2', 'shovel', 'axe', 'backpack', 'bear_trap_open', 'bear_trap_closed',
+] as const satisfies readonly ModelKey[];
+
+const NEARBY_MODEL_KEYS = [
+  'cow', 'horse', 'alpaca', 'wolf', 'husky',
+  'rock_b', 'rock_c', 'bush_a', 'bush_b', 'grass_tuft', 'bonfire',
+] as const satisfies readonly ModelKey[];
+
+const CATALOG_MODEL_KEYS = [
+  'house_2', 'house_3', 'house_4', 'house_5',
+  'silo', 'windmill', 'tower_windmill', 'water_tower', 'well',
+  'chicken_coop', 'fence', 'fence2', 'small_barn', 'open_barn',
+  'silo_house', 'barn', 'big_barn',
+  'bow_wooden', 'arrow', 'axe_small', 'axe_double', 'hammer_double',
+  'sword', 'dagger', 'knife', 'pan',
+] as const satisfies readonly ModelKey[];
+
+const assignedLoadKeys = [
+  ...BOOT_MODEL_KEYS,
+  ...FIRST_PLAY_MODEL_KEYS,
+  ...NEARBY_MODEL_KEYS,
+  ...CATALOG_MODEL_KEYS,
+];
+const assignedLoadKeySet = new Set<ModelKey>();
+for (const key of assignedLoadKeys) {
+  if (assignedLoadKeySet.has(key)) throw new Error(`Duplicate asset load-group entry: ${key}`);
+  assignedLoadKeySet.add(key);
+}
+
+/**
+ * The remaining manifest entries are intentionally optional: they are spare
+ * crops, future creatures, or unused item/monster art. Keeping this derived
+ * makes adding a model fail loudly only when it is accidentally duplicated;
+ * the asset check still verifies that every entry has exactly one group.
+ */
+const OPTIONAL_MODEL_KEYS = MODEL_KEYS.filter((key) => !assignedLoadKeySet.has(key));
+
+export const MODEL_LOAD_GROUPS = {
+  boot: BOOT_MODEL_KEYS,
+  first_play: FIRST_PLAY_MODEL_KEYS,
+  nearby: NEARBY_MODEL_KEYS,
+  catalog: CATALOG_MODEL_KEYS,
+  optional: OPTIONAL_MODEL_KEYS,
+} as const satisfies Record<AssetLoadGroup, readonly ModelKey[]>;
+
+const loadGroupByModel = new Map<ModelKey, AssetLoadGroup>();
+for (const group of Object.keys(MODEL_LOAD_GROUPS) as AssetLoadGroup[]) {
+  for (const key of MODEL_LOAD_GROUPS[group]) loadGroupByModel.set(key, group);
+}
+for (const key of MODEL_KEYS) {
+  if (!loadGroupByModel.has(key)) throw new Error(`Asset has no load group: ${key}`);
+}
+
+export function modelLoadGroup(key: ModelKey): AssetLoadGroup {
+  return loadGroupByModel.get(key)!;
+}
+
+export function modelKeysForLoadGroup(group: AssetLoadGroup): readonly ModelKey[] {
+  return MODEL_LOAD_GROUPS[group];
+}
 
 export function modelDef(key: ModelKey): ModelDef {
   return MODELS[key];

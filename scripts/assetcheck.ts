@@ -1,7 +1,7 @@
 /** Verify that every manifest entry has a committed public model file. */
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MODEL_KEYS, modelDef } from '../src/content/models';
+import { MODEL_KEYS, modelDef, modelLoadGroup } from '../src/content/models';
 import { PURCHASABLE_ASSETS, validatePurchasableCatalog } from '../src/content/purchasables';
 
 const root = resolve(process.cwd(), 'public', 'models');
@@ -20,6 +20,12 @@ const duplicates = [...duplicatePaths.entries()]
   .filter(([, keys]) => keys.length > 1)
   .map(([path, keys]) => `${path} ← ${keys.join(', ')}`);
 
+const loadGroupCounts = new Map<string, number>();
+for (const key of MODEL_KEYS) {
+  const group = modelLoadGroup(key);
+  loadGroupCounts.set(group, (loadGroupCounts.get(group) ?? 0) + 1);
+}
+
 if (missing.length) {
   if (missing.length) {
     console.error(`Missing manifest files (${missing.length}):`);
@@ -31,6 +37,7 @@ if (missing.length) {
   if (duplicates.length) {
     console.log(`Manifest aliases retained intentionally: ${duplicates.length} shared paths.`);
   }
+  console.log(`Asset load groups: ${[...loadGroupCounts.entries()].map(([group, count]) => `${group}=${count}`).join(', ')}.`);
 }
 
 const catalogProblems = validatePurchasableCatalog();

@@ -15,6 +15,7 @@ export class InputController {
   private rmbPressed = false;
   private canvas: HTMLCanvasElement | null = null;
   private onGesture: (() => void) | null = null;
+  private disposed = false;
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
@@ -36,6 +37,8 @@ export class InputController {
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
@@ -46,6 +49,14 @@ export class InputController {
       this.canvas.removeEventListener('pointermove', this.onPointerMove);
       this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     }
+    this.canvas = null;
+    this.held.clear();
+    this.pressed.clear();
+    this.lmb = false;
+    this.rmb = false;
+    this.lmbPressed = false;
+    this.rmbPressed = false;
+    this.onGesture = null;
   }
 
   /** Call once per frame after consuming JustPressed flags. */

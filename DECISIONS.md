@@ -103,3 +103,100 @@ The homestead wood cadence remains 6/12/24/48, the rare trophy remains 60₫ wit
 steps, and the released merchant choices are the functional irrigation, fence, and gate paths. The
 cosmetic fence variant and duplicate/nonfunctional homestead deed rows remain loadable legacy content
 but are unreleased until their functions and progression authority are complete.
+
+## 2026-08-01 — Stage manifest loading without hiding asset failures
+
+PERF-01 assigns all 109 manifest models to exactly one ordered load group: `boot`, `first_play`,
+`nearby`, `catalog`, or `optional`. The player is boot-critical; the playable first scene, starter
+controls, initial crops/trees/fox, ambient animals, fixtures, and homestead tier one are ready before
+the world becomes controllable. Later groups load in bounded four-request batches. Missing models
+retain primitive fallbacks, but first-play progress exposes the affected count and offers a retry;
+catalog icons and build previews re-render when their real model becomes available. PERF-03 now
+defines the separate ownership and teardown boundary for the world GPU resources.
+
+## 2026-08-01 — Render model icons through one bounded shared context
+
+`ModelIcon` display canvases now use a single offscreen WebGL renderer to produce 96px thumbnails,
+then copy those pixels into ordinary 2D canvases. A 32-entry least-recently-used cache prevents
+repeated toolbar, inventory, merchant, and building icons from rerendering or creating their own
+contexts. App teardown clears cached thumbnails and disposes the shared renderer. The game renderer
+and the asset-picker renderer remain separate owners; PERF-03 separately owns world GPU/resource
+disposal.
+
+## 2026-08-01 — Make runtime resource ownership explicit
+
+The shared asset cache owns loaded glTF geometry, materials, and textures. World and runtime owners
+dispose their procedural geometry/materials, dynamic projectile/effect resources, animation mixers,
+listeners, and renderer exactly once. A model clone may dispose only clone-owned materials; shared
+asset references use a release callback so a retired fallback remains alive until its last clone is
+gone. App teardown invalidates abandoned async loads and releases the cache, while repeated React
+development remounts and New Adventure cycles create fresh world/input/runtime owners without changing
+simulation or save behavior. The asset-picker remains a separate explicitly scoped renderer owner.
+
+## 2026-08-01 — Make world updates incremental without changing simulation rules
+
+PERF-04 keeps all gameplay state and deterministic rules in their existing pure simulation modules.
+Raid navigation now uses shared reverse route fields keyed by target and an explicit movement-topology
+version; fields expand under a fixed per-step budget and are cleared when buildings or gates change.
+Crop visuals reconcile only changed tiles and use instance groups for compatible model/stage/tint
+combinations, with primitive fallback roots retained for missing assets. Decorative scatter receives a
+versioned occupancy mask for camp reservations, physical buildings, and worked/cropped tiles and
+rebuilds only affected live chunks. Renderer scratch objects are reused, shadow updates use quantized
+player/light anchors, and asset cloning selects native `Object3D.clone()` for static scenes while
+reserving `SkeletonUtils.clone()` for rigged scenes. No `src/sim` behavior, save format, timestep, or
+seeded RNG behavior changes in this task.
+
+## 2026-08-01 — Keep player animation and equipment ownership out of the composition root
+
+The first PERF-05 extraction slice gives player animation transitions and held-tool scene ownership
+to separate renderer-facing controllers. `PlayerActionController` owns the player mixer, one-shot
+actions, locomotion crossfades, and the existing stationary carry pose. `EquipmentController` owns
+slot-to-model selection, measured grip profiles, the hand socket, support-hand solve, and clone
+disposal. `GameRuntime` remains the composition root and still owns fixed-step movement and gameplay
+effects. No simulation rule, save field, input binding, clip name, asset fallback, or timing contract
+changes; remaining PERF-05 responsibility extractions stay separate.
+
+## 2026-08-01 — Keep pointer-action priority in a dedicated interaction boundary
+
+The second PERF-05 extraction slice gives pointer-button priority and selected-tool/combat dispatch to
+`InteractionSystem`. Building rotation/place, demolish, placed-asset context opening, combat fallback,
+bucket/tool selection, and attempt recording remain ordered as they were in `GameRuntime`; the runtime
+continues to own the callbacks that mutate gameplay and presentation state. The system has no DOM or
+simulation dependency, so its routing contract is characterized with deterministic fake input. No save,
+fixed-timestep, seeded-RNG, or gameplay-rule changes are introduced.
+
+## 2026-08-01 — Keep fox direction and navigation ownership separate from the raid state machine
+
+The third PERF-05 extraction slice gives `FoxDirector` ownership of the existing incremental
+navigation field, target selection, role speed mapping, route following, and actor separation. The
+`GameRuntime` remains the composition root for fox state transitions, traps, crop effects, animation,
+audio, feedback, and save/economy callbacks. The director preserves the fixed 4,096-node navigation
+budget, topology invalidation, seeded target/raid behavior, and the current exact-overlap nudge; the
+last behavior is documented as a follow-up rather than silently corrected.
+
+## 2026-08-01 — Keep placement preview policy separate from placement mutations
+
+The fourth PERF-05 extraction slice gives `PlacementCoordinator` ownership of the existing placeable
+catalog, selected building/deed state, quarter-turn rotation, preview center, and player-visible
+placement validation. `GameRuntime` remains responsible for the placement commit, inventory/currency
+transactions, demolition, gate state, and presentation side effects. The coordinator accepts
+read-only reservation and simulation views, so the `src/sim` placement rules remain pure and the
+legacy heading orientation, deed rotation, homestead clearance, and wood-cost behavior are preserved
+without gameplay changes.
+
+## 2026-08-01 — Keep runtime metrics local and outside the game state
+
+The fifth PERF-05 extraction slice gives `RuntimeMetrics` ownership of the existing local economy
+and action counters, first-completion timing, progression totals, and cloned debug snapshots.
+`GameRuntime` remains responsible for recording the event at the existing gameplay boundary and for
+providing current simulation time/day values. Metrics are not serialized, do not consume seeded
+simulation randomness, and accept explicit clock values in tests so characterization remains
+deterministic.
+
+## 2026-08-01 — Keep HUD view-model assembly separate from React and gameplay
+
+The final PERF-05 extraction slice gives `HudPresenter` ownership of the existing `HudSnapshot` type,
+inventory/market/vendor/build mapping, HUD JSON deduplication, and transient-array copies. React still
+renders the same typed snapshot, while `GameRuntime` supplies live world bearings, save feedback,
+placement status, economy capability, and interaction hints as callbacks. The presenter has no DOM,
+Three.js, save mutation, or simulation-rule authority; its deterministic tests use fixed game state.

@@ -1,7 +1,18 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { GameRuntime, type HudSnapshot } from './game/GameRuntime';
+import { GameRuntime } from './game/GameRuntime';
+import type { HudSnapshot } from './game/HudPresenter';
+import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './game/Assets';
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
+import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
+
+const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
+  boot: 'boot assets',
+  first_play: 'first-play assets',
+  nearby: 'nearby assets',
+  catalog: 'catalog assets',
+  optional: 'optional assets',
+};
 
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -14,8 +25,16 @@ export function App() {
   const [launchChoice, setLaunchChoice] = useState<null | 'continue' | 'new'>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [assetProgress, setAssetProgress] = useState<AssetLoadProgress | null>(null);
+  const [mountAttempt, setMountAttempt] = useState(0);
+  const [retryChoice, setRetryChoice] = useState<null | 'continue' | 'new'>(null);
   const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
   const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
+
+  useEffect(() => () => {
+    disposeModelIconRenderer();
+    disposeAssetCache();
+  }, []);
 
   useEffect(() => {
     setSaveRead(saveService.read());
@@ -34,7 +53,12 @@ export function App() {
     runtime
       .mount(canvas, (snap) => {
         if (!cancelled) setHud(snap);
-      }, { newAdventure: launchChoice === 'new' })
+      }, {
+        newAdventure: launchChoice === 'new',
+        onAssetProgress: (progress) => {
+          if (!cancelled) setAssetProgress(progress);
+        },
+      })
       .then(() => {
         if (!cancelled) setLoading(false);
       })
@@ -43,6 +67,7 @@ export function App() {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : 'Failed to start');
           setLoading(false);
+          setRetryChoice(launchChoice);
           setLaunchChoice(null);
         }
       });
@@ -54,14 +79,35 @@ export function App() {
       const handles = window as unknown as { tarn?: unknown };
       if (handles.tarn === runtime) delete handles.tarn;
     };
-  }, [launchChoice]);
+  }, [launchChoice, mountAttempt]);
 
   const beginAdventure = (choice: 'continue' | 'new') => {
     if (choice === 'continue' && !hasSave) return;
     if (choice === 'new' && hasSave && !window.confirm('Start a new adventure? This will replace the current active save.')) return;
     setError(null);
+    setAssetProgress(null);
+    setRetryChoice(null);
     setLoading(true);
     setLaunchChoice(choice);
+  };
+
+  const retryMount = () => {
+    const choice = retryChoice;
+    if (!choice) return;
+    resetFailedAssets();
+    setError(null);
+    setAssetProgress(null);
+    setRetryChoice(null);
+    setLoading(true);
+    setLaunchChoice(choice);
+  };
+
+  const retryActiveAssets = () => {
+    if (!launchChoice) return;
+    resetFailedAssets();
+    setAssetProgress(null);
+    setLoading(true);
+    setMountAttempt((attempt) => attempt + 1);
   };
 
   const recoverSave = () => {
@@ -153,10 +199,47 @@ export function App() {
           </div>
         </div>
       )}
-      {loading && <div className="loading">Tarnation</div>}
+      {loading && (
+        <div className="loading" role="status" aria-live="polite">
+          <div className="loading-card">
+            <p className="loading-title">Tarnation</p>
+            <p className="loading-label">
+              {assetProgress
+                ? `Loading ${ASSET_GROUP_LABELS[assetProgress.group]} · ${assetProgress.loaded}/${assetProgress.total}`
+                : 'Preparing the homestead…'}
+            </p>
+            {assetProgress && (
+              <progress
+                className="loading-progress"
+                value={assetProgress.loaded}
+                max={Math.max(assetProgress.total, 1)}
+                aria-label={`Loading ${ASSET_GROUP_LABELS[assetProgress.group]}`}
+              />
+            )}
+            {assetProgress && assetProgress.fallbackKeys.length > 0 && (
+              <>
+                <p className="loading-error" role="alert">
+                  {assetProgress.fallbackKeys.length} model{assetProgress.fallbackKeys.length === 1 ? '' : 's'} using primitive fallback.
+                </p>
+                <button type="button" className="loading-retry" onClick={retryActiveAssets}>
+                  Retry failed assets
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
       {error && (
-        <div className="loading" style={{ color: 'var(--red)' }}>
-          {error}
+        <div className="loading" role="alert">
+          <div className="loading-card loading-card-error">
+            <p className="loading-title">Unable to start</p>
+            <p className="loading-error">{error}</p>
+            {retryChoice && (
+              <button type="button" className="loading-retry" onClick={retryMount}>
+                Retry
+              </button>
+            )}
+          </div>
         </div>
       )}
       <Hud

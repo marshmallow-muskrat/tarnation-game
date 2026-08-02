@@ -66,6 +66,7 @@ export class FarmTrees {
   private lastCx = Number.NaN;
   private lastCz = Number.NaN;
   private hooks: FarmTreeHooks;
+  private disposed = false;
 
   private readonly geoTrunk = new THREE.CylinderGeometry(0.13, 0.2, 1.25, 6);
   private readonly geoCanopy = new THREE.ConeGeometry(0.7, 1.3, 7);
@@ -82,6 +83,8 @@ export class FarmTrees {
   private readonly _q = new THREE.Quaternion();
   private readonly _s = new THREE.Vector3();
   private readonly _e = new THREE.Euler();
+  private readonly pickRaycaster = new THREE.Raycaster();
+  private readonly pickNdc = new THREE.Vector2();
 
   constructor(hooks: FarmTreeHooks) {
     this.hooks = hooks;
@@ -89,6 +92,29 @@ export class FarmTrees {
 
   getRoot(): THREE.Group {
     return this.root;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.root.clear();
+    this.live.clear();
+    const modelGeometries = new Set<THREE.BufferGeometry>();
+    for (const parts of this.modelParts?.trees ?? []) {
+      for (const part of parts) modelGeometries.add(part.geometry);
+    }
+    for (const part of this.modelParts?.rock ?? []) modelGeometries.add(part.geometry);
+    for (const part of this.modelParts?.stump ?? []) modelGeometries.add(part.geometry);
+    for (const geometry of modelGeometries) geometry.dispose();
+    this.geoTrunk.dispose();
+    this.geoCanopy.dispose();
+    this.geoStump.dispose();
+    this.geoBoulder.dispose();
+    this.matTrunk.dispose();
+    this.matCanopy.dispose();
+    this.matStump.dispose();
+    this.matBoulder.dispose();
+    this.modelParts = null;
   }
 
   /** Clearings kept around the stall and the spawn point. */
@@ -160,9 +186,9 @@ export class FarmTrees {
 
   /** Pick a standing tree instance directly from the cursor. */
   pickTree(ndcX: number, ndcY: number, camera: THREE.Camera): { tx: number; ty: number } | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-    const hits = raycaster.intersectObject(this.root, true);
+    this.pickNdc.set(ndcX, ndcY);
+    this.pickRaycaster.setFromCamera(this.pickNdc, camera);
+    const hits = this.pickRaycaster.intersectObject(this.root, true);
     for (const hit of hits) {
       const targets = (hit.object as THREE.InstancedMesh).userData.farmTreeTargets as
         | TreeInstanceTarget[]

@@ -70,14 +70,14 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Stage the roughly 24 MB active asset load instead of blocking launch on the whole manifest.
-- Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
+- Continue the remaining runtime-responsibility work (PERF-05).
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: 90 deterministic tests across 10 files,
-  compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
-  released save versions 3 through 7. PR #3 merged into the integration branch as `5ff922b`.
+- BASE-02 characterization is now integrated with Vitest: the current baseline has 109 deterministic
+  tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
+  migration fixtures for released save versions 3 through 7. PR #3 merged into the integration
+  branch as `5ff922b`.
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
   and build.
 
@@ -117,7 +117,101 @@ The characterization baseline intentionally preserves current behavior for later
   runs (median day 3.5, range 3–5), and no dead or malformed purchase remains. The 30-day diagnostic
   reports startup resource starvation in 16/16 runs and one long-horizon runaway boundary hit; that
   boundary remains visible for later functional-building sinks. The integrated baseline is now 97
-  deterministic tests across 12 files; PERF-01/02 are next.
+  deterministic tests across 12 files; PERF-01 is now integrated below.
+
+- PERF-01 stages the 109-model manifest into typed `boot`, `first_play`, `nearby`, `catalog`, and
+  `optional` groups. Boot and first-play use a bounded four-worker loader, while nearby/catalog/
+  optional groups continue after the world is controllable. The loading surface reports group
+  progress, shows primitive-fallback failures with a retry action, and exposes a retryable startup
+  error screen. Catalog icons and build previews refresh when their real model becomes ready. The
+  local production preview showed `first-play` progress at 25/66 on a cold launch and 52/66 after a
+  warm reload; both reached Day 1/daylight with Saved HUD state and no console warnings/errors.
+  Asset group validation and the integrated deterministic baseline now total 101 tests across 13
+  files. PERF-02 is now integrated below; PERF-03 completes the remaining GPU/runtime disposal
+  ownership work.
+
+- PERF-02 replaces the per-`ModelIcon` WebGL renderer with one shared offscreen renderer and a
+  bounded 32-entry least-recently-used cache of 96px thumbnails. Visible icon canvases are 2D
+  displays of those thumbnails, so repeated toolbar, inventory, merchant, and building icons do
+  not allocate additional WebGL contexts. App teardown clears the cache and disposes the shared
+  renderer. The built local preview reached Day 1/daylight with the starter icon set and no console
+  warnings/errors; the source-level renderer audit leaves only the game renderer, this one shared
+  icon renderer, and the intentionally separate asset-picker renderer. The integrated baseline is
+  now 103 deterministic tests across 14 files. PERF-03 follows as the completed lifecycle/disposal
+  slice below.
+
+- PERF-03 gives the runtime, world renderer, procedural scatter/tree owners, dynamic effects, animation
+  mixers, input/audio listeners, shared icon renderer, and model cache idempotent teardown paths.
+  Asset-cache geometry/material/texture ownership is separated from clone-owned materials, and a
+  retired fallback remains valid until its last active clone releases it. Stale async loads are
+  generation-guarded so React development cleanup cannot repopulate a torn-down cache. The built
+  production preview completed three fresh Continue/remount cycles and three New Adventure cycles to
+  Day 1/daylight with Saved HUD state and no console warnings/errors. The deterministic baseline is
+  now 106 tests across 15 files;
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` all pass. PERF-04 follows as the completed incremental
+  world-update slice below.
+
+- PERF-04 replaces per-fox full-grid BFS with shared reverse route fields keyed by target and topology
+  version, expanded under a fixed 4,096-node budget per simulation step. Crop state now reconciles by
+  dirty tile and batches compatible species/stage/tint models through `InstancedMesh`, while primitive
+  fallbacks remain available. Interactive camp/building/farm occupancy masks only the affected live
+  scatter chunks. World raycasters, screen vectors, day/night colours, tree picking scratch state, and
+  shadow anchors are reused; shadow maps follow quantized 0.25-unit anchors rather than every render
+  frame. Asset cloning now uses `SkeletonUtils.clone()` only for scenes containing `SkinnedMesh`.
+  The integrated deterministic baseline is 109 tests across 16 files. The built preview reached Day 1
+  daylight through Continue and New Adventure with no console errors or warnings. All required unit,
+  smoke, asset, build, strict TypeScript, diff, and production-audit checks pass. PERF-05 follows below.
+
+- PERF-05's first extraction slice moves player animation transitions and held-tool selection/socket
+  posing out of `GameRuntime` into `PlayerActionController` and `EquipmentController`. The fixed-step
+  movement authority, existing clip names, measured grip profiles, support-hand solve, and tool-slot
+  behavior are unchanged; the controllers are renderer-facing and keep `src/sim` pure. Five focused
+  characterization tests cover bucket hiding, toolbar/weapon model mapping, unsupported slots, empty
+  locomotion, and the carry idle/run threshold. The integrated deterministic baseline is now 114 tests
+  across 17 files.
+
+- PERF-05's second extraction slice moves pointer priority and selected-tool/combat dispatch into the
+  renderer-facing `InteractionSystem`. Build rotation/place, demolish, placed-asset context menus,
+  combat fallback, bucket/tool selection, and attempt metrics retain their existing order and callbacks;
+  `GameRuntime` remains the composition root for gameplay effects. Seven focused routing tests cover the
+  player-visible tool mapping and build/context/demolish/combat/Space priority rules. The integrated
+  deterministic baseline is now 121 tests across 18 files.
+
+- PERF-05's third extraction slice moves fox target selection, bounded route following, role speeds,
+  navigation-field ownership, and actor separation into `FoxDirector`; the raid state machine and
+  gameplay callbacks remain in `GameRuntime`. Four focused tests cover exposed-target choice, role
+  speeds, blocked-tile routing, and the current overlap/separation behavior. The integrated
+  deterministic baseline is now 125 tests across 19 files.
+
+- PERF-05's fourth extraction slice moves placeable catalog selection, deed/legacy rotation state,
+  placement preview coordinates, and player-visible validation reasons into `PlacementCoordinator`.
+  Placement commit, demolition, gates, and save/economy mutations remain in `GameRuntime`; the
+  coordinator has no DOM, Three.js, or simulation mutation dependency. Five focused tests cover
+  heading/deed orientation, cancellation state, distance/reservation/terrain/player-footprint
+  rejection, occupied assets, and the legacy wood-versus-deed payment boundary. The deterministic
+  baseline is now 130 tests across 20 files. The remaining PERF-05 slices are metrics and HUD
+  responsibility extraction.
+
+- PERF-05's fifth extraction slice moves local economy/action counters and debug snapshot copying into
+  `RuntimeMetrics`. `GameRuntime` remains the owner of when gameplay events occur, while the metrics
+  object owns aggregation, first-completion timing, progression totals, and isolated snapshots. Four
+  focused tests cover outcome/action separation, progression aggregation, deterministic session-time
+  snapshots, and settlement completion. The deterministic baseline is now 134 tests across 21 files;
+  the remaining PERF-05 slice is HUD responsibility extraction.
+
+- PERF-05's final extraction slice moves the typed HUD snapshot contract, inventory/market/vendor/build
+  view-model mapping, JSON deduplication, and transient-array copying into `HudPresenter`. `GameRuntime`
+  remains the composition root and supplies live placement, world, save, economy, and interaction
+  callbacks; React continues to render the same snapshot shape. Four focused tests cover fresh HUD
+  mapping, item/market totals, tab normalization with pause/ending state, and deduplication. The
+  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete; M3 release evidence
+  still requires the integrated milestone release workflow and live smoke test.
+
+- Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
+  exactly the same position, the existing separation fallback treats them as one unit apart before
+  calculating the push, producing only a small deterministic nudge (0.052 units at the current 1.05
+  unit nominal gap) rather than fully separating them. No gameplay rule was changed in PERF-05.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -145,8 +239,8 @@ The characterization baseline intentionally preserves current behavior for later
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
 production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`, and
 `npm run build`, then deploys the verified `dist/` bundle through
-`.github/workflows/deploy.yml`. A failed check prevents deployment. Use `npm run deploy` only as a
-manual recovery path, then smoke-test the live site and record the URL/commit here.
+`.github/workflows/deploy.yml`. A failed check prevents deployment. Do not use `npm run deploy`; recovery
+must go through a focused, verified `main` change, followed by live smoke testing and a record here.
 
 Last known production target: <https://tarnation.pages.dev/> (the canonical Cloudflare Pages URL;
 the release preview and commit are recorded below).
@@ -175,3 +269,10 @@ Deployment record:
   [30721616462](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30721616462)
   passed all verification and deployment steps. Live smoke passed fresh New Adventure, reload/
   Continue, HUD Saved status, and produced no console warnings or errors.
+- `ae4ee73` — M2 honest economy: ECON-01–04 production purchase policy, explicit catalog
+  availability, local outcome diagnostics, and fixed-seed first-session calibration —
+  <https://tarnation.pages.dev/>; GitHub Actions run
+  [30723636941](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30723636941)
+  passed simulation checks, the deterministic unit suite, asset validation, build, and deployment.
+  Fresh live smoke passed New Adventure, Day 1/daylight HUD launch, Saved status, starter controls,
+  and produced no console warnings or errors.
