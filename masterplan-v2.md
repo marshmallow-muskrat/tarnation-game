@@ -677,7 +677,7 @@ market overlays. Build and merchant detail shows authored result/benefit, cost, 
 capacity/ownership, and lock reason. Visible debug/scaffolding paths and implementation terms were
 removed. The deterministic baseline is 294 tests across 42 files; required checks and
 production-preview smoke pass. UX-03 and UX-04 are complete; UX-05 implementation is complete by
-explicit product-owner waiver of the five-person study, with M8 release verification pending.
+explicit product-owner waiver of the five-person study, and M8 release verification now passes.
 
 ### UX-03 — Make overlays real modals
 
@@ -696,7 +696,7 @@ overlay pauses simulation until dismissed. The deterministic baseline is 299 tes
 the required test, simulation, asset, build, strict TypeScript, diff, and production audit checks
 pass. Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics,
 and no browser warnings or errors. UX-04 is complete; UX-05 implementation is complete by explicit
-product-owner waiver of the five-person study, with M8 release verification pending.
+product-owner waiver of the five-person study, and M8 release verification now passes.
 
 ### UX-04 — Settings and accessibility baseline
 
@@ -721,7 +721,7 @@ effects bus until AUD-01. The deterministic baseline is 303 tests across 44 file
 simulation, asset, build, strict TypeScript, diff, and production-audit checks pass. Production
 preview smoke verified the pausing Settings dialog, accessible labels, focus trap/restoration,
 contrast toggle, and no browser warnings/errors. UX-05 implementation is complete by explicit
-product-owner waiver of the five-person study, with M8 release verification pending.
+product-owner waiver of the five-person study, and M8 release verification now passes.
 
 ### UX-05 — Author the first ten minutes
 
@@ -746,7 +746,7 @@ derived, non-saved eight-beat guide from movement through the first merchant vis
 starter-plot transitions, active-binding prompt copy, fox-risk guidance, market/merchant next goals,
 Save status, and concise Help/Settings discovery are covered by 315 deterministic tests across 45
 files and a production-preview smoke. The study protocol remains documented for future validation;
-no participant findings are claimed. M8 remains pending its integrated release verification.
+no participant findings are claimed. M8 release verification is recorded in the milestone ledger.
 
 ## 14. Animation and asset QA matrix
 
@@ -992,7 +992,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | Release candidate: UX-01–05 complete on the integration branch; UX-05 study waived by explicit product-owner authorization; deterministic and production-preview evidence pass; release workflow/live smoke pending |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
