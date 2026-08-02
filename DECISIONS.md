@@ -395,3 +395,21 @@ schema. The HUD shows each step from fresh play through completion, and the endi
 continued play. The existing `winShown` field remains the dismissal marker; no save schema or
 migration changes are introduced. The old day-five-only behavior is characterized as insufficient,
 not silently retained as a second ending path.
+
+## 2026-08-01 — Keep fox raid consequences on vulnerable farm state
+
+FOX-01 removes the player-centered attack ring because the released game has no player-health,
+damage, recovery, accessibility, or fail-state contract. The raid instead selects deterministic
+world targets: haulers prefer the highest-value stored crop produce, sappers prefer a closed gate,
+then an active trap or trench, and ordinary crop roles prefer the nearest exposed crop. A closed
+gate can be forced open, an active trap remains the normal capture counter, a trench loses one
+structure point, and stored produce is removed atomically with player-visible feedback. A fox with
+no valid world target retreats rather than inventing danger.
+
+The existing lifecycle remains authoritative: the dusk telegraph and night spawn start a raid;
+burrowing is the preparation window; seeking, eating, and trap capture are active consequences;
+fox defeat grants the existing trophy roll; fleeing reaches the map edge; and dawn clears actors
+and re-arms traps. No player-health state, save field, migration, navigation rewrite, role art pass,
+or balance policy is introduced here. The earlier readable attack-ring decision is superseded by
+this world-target contract; the remaining role silhouette, telegraph, navigation, and preparation
+versus action tuning belong to FOX-02–04.

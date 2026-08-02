@@ -40,10 +40,6 @@ import {
   TOOLBAR_SLOTS,
   TOOL_RANGE,
   WATER_COLLECT_RANGE,
-  FOX_ATTACK_RADIUS,
-  FOX_ATTACK_SLOT_GAP,
-  FOX_ATTACK_LUNGE,
-  FOX_ATTACK_PERIOD,
   FOX_BURROW_TIME,
   FOX_EAT_TIME,
   WORLD_SIZE,
@@ -126,6 +122,8 @@ import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
   nearestEdgePoint,
+  selectRaidTarget,
+  type RaidTarget,
 } from '../sim/raid';
 import {
   EQUIPMENT_PROFILES,
@@ -3542,16 +3540,10 @@ export class GameRuntime {
         timer: FOX_BURROW_TIME,
         targetTx: -1,
         targetTy: -1,
+        raidTarget: null,
         eatTimer: 0,
         dead: false,
-        haulSeed: false,
-        attackSlot: this.foxes.length,
-        // Spread a player attack around the full ring. Random angles let two
-        // actors share the same approach lane and makes the long fox silhouette
-        // read as one tangled pile even when their centres are separated.
-        attackAngle:
-          (this.foxes.length / Math.max(1, spawns.length)) * Math.PI * 2 +
-          (this.gs.rng() - 0.5) * 0.22,
+        carryingProduce: false,
         trappedTx: -1,
         trappedTy: -1,
         path: [],
@@ -3629,6 +3621,113 @@ export class GameRuntime {
     return best;
   }
 
+  private clearFoxTarget(w: Fox): void {
+    w.raidTarget = null;
+    w.targetTx = -1;
+    w.targetTy = -1;
+    w.path = [];
+    w.pathGoalKey = '';
+    w.pathTimer = 0;
+  }
+
+  private assignFoxTarget(w: Fox, crops: readonly { x: number; y: number }[]): boolean {
+    const target = selectRaidTarget(w.kind, this.raidTargetCandidates(w, crops));
+    if (!target) {
+      this.clearFoxTarget(w);
+      return false;
+    }
+    w.raidTarget = target;
+    w.targetTx = target.x;
+    w.targetTy = target.y;
+    w.path = [];
+    w.pathGoalKey = '';
+    w.pathTimer = 0;
+    return true;
+  }
+
+  private raidTargetCandidates(w: Fox, crops: readonly { x: number; y: number }[]): RaidTarget[] {
+    const candidates: RaidTarget[] = [];
+    const distanceTo = (tx: number, ty: number): number => {
+      const point = this.farmTileWorld(tx, ty);
+      return Math.hypot(w.x - point.x, w.z - point.z);
+    };
+
+    for (const crop of crops) {
+      candidates.push({
+        kind: 'crop',
+        x: crop.x,
+        y: crop.y,
+        distance: distanceTo(crop.x, crop.y),
+        exposed: !this.isEnclosed(crop.x, crop.y),
+      });
+    }
+
+    if (w.kind === 'hauler') {
+      const storageTile = this.worldToFarmTile(HOMESTEAD_SPAWN_X, HOMESTEAD_SPAWN_Z);
+      if (storageTile) {
+        for (const slot of this.gs.inventory) {
+          if (!slot || slot.count <= 0 || !slot.id.startsWith('crop:')) continue;
+          candidates.push({
+            kind: 'stored_produce',
+            x: storageTile.tx,
+            y: storageTile.ty,
+            distance: distanceTo(storageTile.tx, storageTile.ty),
+            id: slot.id,
+            count: slot.count,
+            value: itemInfo(slot.id).price,
+          });
+        }
+      }
+    }
+
+    if (w.kind === 'sapper') {
+      for (let index = 0; index < this.gs.placedBuildings.length; index++) {
+        const placed = this.gs.placedBuildings[index]!;
+        const asset = assetDefinition(placed.id);
+        if (!asset?.gate || placed.gateOpen) continue;
+        const origin = placedOrigin(placed, placed.rotation, asset);
+        const center = placedCenter(origin, placed.rotation, asset);
+        const tx = Math.floor(center.x);
+        const ty = Math.floor(center.z);
+        candidates.push({
+          kind: 'structure',
+          x: tx,
+          y: ty,
+          distance: distanceTo(tx, ty),
+          structure: 'gate',
+          index,
+        });
+      }
+      for (let ty = 0; ty < GRID_H; ty++) {
+        for (let tx = 0; tx < GRID_W; tx++) {
+          const tile = getTile(this.gs.tiles, tx, ty);
+          if (tile?.bearTrap && !tile.bearTrapClosed) {
+            candidates.push({
+              kind: 'structure',
+              x: tx,
+              y: ty,
+              distance: distanceTo(tx, ty),
+              structure: 'trap',
+              index: -1,
+            });
+          }
+          if (tile?.state === 'trench' && tile.structureHp > 0) {
+            candidates.push({
+              kind: 'structure',
+              x: tx,
+              y: ty,
+              distance: distanceTo(tx, ty),
+              structure: 'trench',
+              index: -1,
+            });
+          }
+        }
+      }
+    }
+
+    return candidates;
+  }
+
   private stepFoxes(dt: number): void {
     const crops = this.cropTargetList();
     this.foxDirector.advance();
@@ -3690,103 +3789,83 @@ export class GameRuntime {
           w.state = 'seek';
           w.root.scale.setScalar(w.baseScale);
           this.playFoxAction(w, 'walk');
-          this.foxDirector.pickTarget(w, crops);
-        }
-        continue;
-      }
-
-      if (w.state === 'attack') {
-        w.timer -= dt;
-        const phase = 1 - Math.max(0, w.timer) / FOX_ATTACK_PERIOD;
-        const directionX = Math.sin(w.attackAngle);
-        const directionZ = Math.cos(w.attackAngle);
-        const lunge = Math.max(0, Math.sin(phase * Math.PI * 2)) * FOX_ATTACK_LUNGE;
-        const radius = FOX_ATTACK_RADIUS + (w.attackSlot % 3) * FOX_ATTACK_SLOT_GAP - lunge;
-        w.x = this.playerX + directionX * radius;
-        w.z = this.playerZ + directionZ * radius;
-        w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-        w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
-        const pulse = Math.sin(phase * Math.PI * 2);
-        w.root.scale.set(
-          w.baseScale * (1 + pulse * 0.05),
-          w.baseScale * (1 - pulse * 0.08),
-          w.baseScale * (1 + pulse * 0.05),
-        );
-        this.playFoxAction(w, 'attack');
-        if (w.timer <= 0) {
-          w.state = 'seek';
-          w.root.scale.setScalar(w.baseScale);
-          this.playFoxAction(w, 'walk');
+          if (!this.assignFoxTarget(w, crops)) w.state = 'flee';
         }
         continue;
       }
 
       if (w.state === 'seek') {
         this.playFoxAction(w, 'walk');
-        if (w.kind === 'sapper') {
-          if (w.targetTx < 0) {
-            let found = false;
-            for (let y = 0; y < GRID_H && !found; y++) {
-              for (let x = 0; x < GRID_W; x++) {
-                if (getTile(this.gs.tiles, x, y)?.state === 'trench') {
-                  w.targetTx = x;
-                  w.targetTy = y;
-                  found = true;
-                  break;
-                }
-              }
-            }
-            if (!found) {
-              w.state = 'flee';
-              continue;
-            }
-            w.path = [];
-            w.pathGoalKey = '';
-            w.pathTimer = 0;
-          }
-        } else if (crops.length === 0) {
-          // Give each fox a point on an attack ring. The path itself still ends
-          // on the player's tile graph, so a fence cannot be walked through.
-          const radius = FOX_ATTACK_RADIUS + (w.attackSlot % 3) * FOX_ATTACK_SLOT_GAP;
-          const targetX = this.playerX + Math.sin(w.attackAngle) * radius;
-          const targetZ = this.playerZ + Math.cos(w.attackAngle) * radius;
-          const playerTile = this.worldToFarmTile(this.playerX, this.playerZ);
-          const route = playerTile
-            ? this.foxDirector.moveTowardTile(w, playerTile.tx, playerTile.ty, this.foxDirector.speedFor(w.kind) * 0.5, dt)
-            : { atGoal: false, hasPath: false };
-          if (route.atGoal || Math.hypot(targetX - w.x, targetZ - w.z) < 0.28) {
-            w.state = 'attack';
-            w.timer = FOX_ATTACK_PERIOD;
-            this.playFoxAction(w, 'attack');
-          } else if (!route.hasPath) {
-            w.state = 'flee';
-          }
+        if (!w.raidTarget && !this.assignFoxTarget(w, crops)) {
+          w.state = 'flee';
           continue;
-        } else if (w.targetTx < 0) {
-          this.foxDirector.pickTarget(w, crops);
-          if (w.targetTx < 0) {
-            w.state = 'flee';
-            continue;
-          }
         }
-
+        const target = w.raidTarget;
+        if (!target) {
+          w.state = 'flee';
+          continue;
+        }
         const route = this.foxDirector.moveTowardTile(w, w.targetTx, w.targetTy, this.foxDirector.speedFor(w.kind), dt);
         if (!route.hasPath) {
+          this.clearFoxTarget(w);
           w.state = 'flee';
           continue;
         }
         if (route.atGoal) {
-          if (w.kind === 'sapper') {
-            const t = getTile(this.gs.tiles, w.targetTx, w.targetTy);
-            if (t && t.state === 'trench') {
-              t.structureHp -= 1;
-              if (t.structureHp <= 0) {
-                t.state = 'grass';
-                this.refreshTrenchWater();
-                this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
-              }
+          if (target.kind === 'stored_produce') {
+            if (takeFromInventory(this.gs, target.id, 1)) {
+              w.carryingProduce = true;
+              setToast(this.gs, `A fox stole ${itemInfo(target.id).name}`, 2.2);
+              this.recordAction('fox_theft');
+              this.audio.play('hit');
+              this.persist();
+              this.pushHud(true);
             }
+            this.clearFoxTarget(w);
             w.state = 'flee';
+          } else if (target.kind === 'structure') {
+            if (target.structure === 'gate') {
+              const placed = this.gs.placedBuildings[target.index];
+              const asset = placed ? assetDefinition(placed.id) : null;
+              if (placed && asset?.gate && !placed.gateOpen) {
+                placed.gateOpen = true;
+                this.gateCloseTimers.set(placed, 3.5);
+                this.refreshObstacleTopology();
+                this.syncBuildings();
+                this.recalculateEnclosure();
+                this.spawnFeedbackBurst(w.x, w.z, 0xe8b15c, 8, 0.3);
+                this.audio.play('build');
+                setToast(this.gs, 'A sapper forced the gate open', 2.2);
+                this.persist();
+              }
+              this.clearFoxTarget(w);
+              w.state = 'flee';
+            } else if (target.structure === 'trap') {
+              const trap = getTile(this.gs.tiles, target.x, target.y);
+              if (!trap?.bearTrap || trap.bearTrapClosed) {
+                this.clearFoxTarget(w);
+                w.state = 'flee';
+              }
+              // Leave an active trap target in place. The next fixed step runs
+              // the normal trap capture boundary before any fox consequence.
+            } else {
+              const trench = getTile(this.gs.tiles, target.x, target.y);
+              if (trench?.state === 'trench' && trench.structureHp > 0) {
+                trench.structureHp -= 1;
+                if (trench.structureHp <= 0) {
+                  trench.state = 'grass';
+                  this.refreshTrenchWater();
+                  this.syncWorldTiles([{ tx: target.x, ty: target.y }]);
+                  setToast(this.gs, 'A sapper broke a trench', 1.8);
+                } else {
+                  this.syncWorldTiles([{ tx: target.x, ty: target.y }]);
+                  setToast(this.gs, 'A sapper weakened a trench', 1.5);
+                }
+                this.persist();
+              }
+              this.clearFoxTarget(w);
+              w.state = 'flee';
+            }
           } else if (w.kind === 'nibbler') {
             const nibbled = nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
             if (nibbled) this.syncCropTile(w.targetTx, w.targetTy);
@@ -3796,18 +3875,21 @@ export class GameRuntime {
               setToast(this.gs, 'Ironroot resisted the fox bite', 1.5);
             }
             this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
-            w.targetTx = -1;
+            this.clearFoxTarget(w);
             if (this.gs.rng() < 0.4) w.state = 'flee';
           } else if (w.kind === 'hauler') {
             if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
-              w.haulSeed = true;
+              w.carryingProduce = true;
               this.syncCropTile(w.targetTx, w.targetTy);
               this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
+              setToast(this.gs, 'A hauler took a crop before harvest', 2.2);
+              this.persist();
             } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
               const wc = this.farmTileWorld(w.targetTx, w.targetTy);
               this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
               setToast(this.gs, 'Ironroot held against the fox', 1.5);
             }
+            this.clearFoxTarget(w);
             w.state = 'flee';
           } else {
             w.state = 'eat';
@@ -3826,12 +3908,14 @@ export class GameRuntime {
         if (w.eatTimer <= 0) {
           if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
             this.syncCropTile(w.targetTx, w.targetTy);
+            this.persist();
           } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
             const wc = this.farmTileWorld(w.targetTx, w.targetTy);
             this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
             setToast(this.gs, 'Ironroot held against the fox', 1.5);
           }
           this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
+          this.clearFoxTarget(w);
           w.state = 'flee';
           w.root.scale.setScalar(w.baseScale);
         }
@@ -3841,7 +3925,7 @@ export class GameRuntime {
       if (w.state === 'flee') {
         this.playFoxAction(w, 'walk');
         const edge = nearestEdgePoint(w.x, w.z);
-        const sp = this.foxDirector.speedFor(w.kind) * (w.haulSeed ? 1.15 : 1.3);
+        const sp = this.foxDirector.speedFor(w.kind) * (w.carryingProduce ? 1.15 : 1.3);
         const edgeTx = THREE.MathUtils.clamp(Math.round(edge.x), 0, WORLD_SIZE - 1);
         const edgeTy = THREE.MathUtils.clamp(Math.round(edge.y), 0, WORLD_SIZE - 1);
         const route = this.foxDirector.moveTowardTile(w, edgeTx, edgeTy, sp, dt);
