@@ -52,19 +52,23 @@ import {
 import {
   addSeedToInventory,
   addToInventory,
+  canStoreSeedPacket,
   checkWin,
   clearStump,
   createGameState,
   cycleWeapon,
   cycleSeed,
   fillBucket,
+  harvestCropTransaction,
   isStumpCleared,
   isTreeChopped,
   markTreeChopped,
   markWinShown,
   onNewDay,
   placeBuilding,
+  plantSeedPacket,
   selectedSeed,
+  selectedSeedPacket,
   sellEverything,
   sellItem,
   setToast,
@@ -75,17 +79,16 @@ import {
   woodCount,
   type GameState,
 } from '../sim/gameState';
+import { SEED_PACKET_SLOTS, SEED_RECOVERY_PER_HARVEST } from '../sim/seedInventory';
 import {
   clearBreedingParents,
   destroyCrop,
   digTrench,
   getTile,
-  harvestTile,
   hasRepelNearby,
   makeBreedingBed,
   nibbleCrop,
   placeBearTrap,
-  plantTile,
   tillTile,
   tileCenter,
   triggerBearTrap,
@@ -1709,12 +1712,14 @@ export class GameRuntime {
     if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
       cycleSeed(this.gs, -1);
       const s = selectedSeed(this.gs);
-      if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
+      const packet = selectedSeedPacket(this.gs);
+      if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
     if (this.input.justPressed('BracketRight') || this.input.justPressed('Period')) {
       cycleSeed(this.gs, 1);
       const s = selectedSeed(this.gs);
-      if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
+      const packet = selectedSeedPacket(this.gs);
+      if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
 
     if (this.input.justPressed('Escape')) this.cancelActiveState();
@@ -2339,11 +2344,29 @@ export class GameRuntime {
           this.persist();
         });
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
+        // A full packet inventory must not consume the breeding bed before the
+        // child has somewhere to go. The child is deterministic only after the
+        // action commits, so conservatively require one available stack slot.
+        if (this.gs.seedInventory.length >= SEED_PACKET_SLOTS) {
+          setToast(this.gs, 'Seed storage full — harvest or discard a packet', 2);
+          return;
+        }
         this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
           const parents = clearBreedingParents(this.gs.tiles, tx, ty);
           if (!parents) return;
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
-          addSeedToInventory(this.gs, child);
+          if (!addSeedToInventory(this.gs, child)) {
+            // The preflight above should make this unreachable, but retain the
+            // breeding parents if a future capacity rule changes underneath it.
+            const restored = getTile(this.gs.tiles, tx, ty);
+            if (restored) {
+              restored.breedA = parents.a;
+              restored.breedB = parents.b;
+              restored.state = 'breeding';
+            }
+            setToast(this.gs, 'Seed storage full — hybrid not harvested', 2);
+            return;
+          }
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
@@ -2377,8 +2400,9 @@ export class GameRuntime {
         return;
       }
       if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
-        if (!plantTile(this.gs.tiles, tx, ty, seed)) {
+        if (!plantSeedPacket(this.gs, tx, ty, seed)) {
           this.recordOutcome('plant', 'rejected');
+          setToast(this.gs, 'That seed packet is no longer available', 1.4);
           return;
         }
         this.recordOutcome('plant', 'completed');
@@ -2397,18 +2421,42 @@ export class GameRuntime {
         this.recordOutcome('harvest', 'rejected');
         return;
       }
+      const matureSeed = tile.seed;
+      const matureItem = cropItem(matureSeed.displayName);
+      if (!hasRoomFor(this.gs.inventory, matureItem)) {
+        this.recordOutcome('harvest', 'rejected');
+        setToast(this.gs, 'Inventory full — make room before harvesting', 2);
+        return;
+      }
+      if (!canStoreSeedPacket(this.gs, matureSeed, SEED_RECOVERY_PER_HARVEST)) {
+        this.recordOutcome('harvest', 'rejected');
+        setToast(this.gs, 'Seed storage full — harvest or discard a packet', 2);
+        return;
+      }
       if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
-        const res = harvestTile(this.gs.tiles, tx, ty);
+        // Re-check both destinations at the fixed contact event. Harvesting is
+        // one transaction: a full produce bag or seed store leaves the crop
+        // untouched rather than silently deleting it.
+        const current = getTile(this.gs.tiles, tx, ty);
+        const currentSeed = current?.seed;
+        if (!currentSeed) {
+          this.recordOutcome('harvest', 'rejected');
+          return;
+        }
+        const currentItem = cropItem(currentSeed.displayName);
+        if (
+          !hasRoomFor(this.gs.inventory, currentItem) ||
+          !canStoreSeedPacket(this.gs, currentSeed, SEED_RECOVERY_PER_HARVEST)
+        ) {
+          this.recordOutcome('harvest', 'rejected');
+          setToast(this.gs, 'Harvest storage is full', 1.8);
+          return;
+        }
+        const res = harvestCropTransaction(this.gs, tx, ty);
         if (res.ok && res.seed) {
-          const id = cropItem(res.seed.displayName);
-          if (!addToInventory(this.gs, id, res.count)) {
-            this.recordOutcome('harvest', 'rejected');
-            return;
-          }
           this.recordOutcome('harvest', 'completed');
           this.runtimeMetrics.recordCropHarvested(res.count);
           this.gs.stats.cropsHarvested += res.count;
-          addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
           this.syncCropTile(tx, ty);
           this.syncWorldTiles([{ tx, ty }]);
           this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
@@ -3860,8 +3908,12 @@ export class GameRuntime {
     this.popups = this.popups.filter((p) => p.life > 0);
   }
 
-  private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion · F12 grid`;
+  private interactionHint(
+    seed: ReturnType<typeof selectedSeed>,
+    packet: ReturnType<typeof selectedSeedPacket>,
+  ): string {
+    const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seedLabel}) · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
@@ -3921,7 +3973,7 @@ export class GameRuntime {
     if (!this.gs || !this.hudPresenter.hasListener) return;
     this.hudPresenter.push(force, {
       state: this.gs,
-      hint: this.interactionHint(selectedSeed(this.gs)),
+      hint: this.interactionHint(selectedSeed(this.gs), selectedSeedPacket(this.gs)),
       buildingMode: this.buildingMode,
       selectedBuildIndex: this.placement.currentIndex,
       placement: () => {

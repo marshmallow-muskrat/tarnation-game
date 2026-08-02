@@ -108,7 +108,11 @@ export function midgameSaveFixture(): SaveData {
   save.dropPity = { 'fox:diggler': 4 };
   save.toolbarSlot = 2;
   save.toolSlotActive = false;
-  save.seedInventory = [cloneSeed(beet), cloneSeed(carrot), cloneSeed(hybrid)];
+  save.seedInventory = [
+    { seed: cloneSeed(beet), count: 4 },
+    { seed: cloneSeed(carrot), count: 2 },
+    { seed: cloneSeed(hybrid), count: 3 },
+  ];
   save.codex = [
     { id: seedId(beet), seed: cloneSeed(beet), discoveredDay: 1 },
     { id: seedId(hybrid), seed: cloneSeed(hybrid), discoveredDay: 3 },
@@ -131,7 +135,13 @@ export function midgameSaveFixture(): SaveData {
 export function legacyV8SaveFixture(): string {
   const save = midgameSaveFixture();
   save.version = 8;
-  return JSON.stringify(save);
+  // Released v8 stored one full Seed object per packet. Keep this fixture
+  // intentionally uncompressed so migration proves both compatibility and
+  // genotype stacking instead of only loading the new packet shape.
+  const legacySeedInventory = save.seedInventory.flatMap((packet) =>
+    Array.from({ length: packet.count }, () => cloneSeed(packet.seed)),
+  );
+  return JSON.stringify({ ...save, seedInventory: legacySeedInventory });
 }
 
 /** Dense worked area generated from typed state, rather than a checked-in JSON blob. */

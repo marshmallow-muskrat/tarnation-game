@@ -287,3 +287,17 @@ quest schema. Fresh runs use a deterministic validated approach point outside th
 loading does not delete legacy worked tiles outside the region, preserving save data while rejecting
 new work there. No seed-consumption, irrigation-tier, economy, building-function, raid, save-schema,
 or ending rule is introduced by CORE-01.
+
+## 2026-08-01 — Count seed packets by full genotype
+
+CORE-02 uses a separate counted seed-packet store with 24 distinct-stack slots, matching the regular
+inventory capacity. A packet key includes species, all five traits, display name, hybrid flag,
+mechanic, and lineage; the older display-oriented `seedId` remains the Codex key for compatibility.
+Planting consumes one exact packet only when the farm target can accept it. A mature harvest is one
+transaction that requires room for both produce and one recovered packet, then returns the exact
+genotype; this keeps full-storage failures from deleting a crop. The recovery rule is intentionally
+simple and tuned for the current loop: one seed packet per mature crop harvested. Old v9 bare seed
+indexes and v8 full-grid `Seed[]` entries migrate to counted packets; duplicate genotypes merge, and
+legacy saves with more than 24 distinct stacks are preserved as temporary overflow rather than
+silently discarded. Seed packets remain separate from sellable produce; a seed-sale economy is not
+invented in CORE-02. No later genetics, irrigation, economy-tuning, or Codex-UI task is included.

@@ -12,7 +12,7 @@ import {
 } from '../content';
 import { loadFromSaveData, saveToString, type GameState } from '../sim/gameState';
 import { deserialize, SAVE_SIZE_BUDGETS, SAVE_VERSION, type SaveData } from '../sim/save';
-import type { Seed } from '../sim/genetics';
+import type { Seed, SeedPacket } from '../sim/genetics';
 import type { Tile, TileState } from '../sim/farm';
 import { assetDefinition } from '../content/purchasables';
 
@@ -138,6 +138,10 @@ function validSeed(seed: unknown): seed is Seed {
   return seed.lineage === undefined || (Array.isArray(seed.lineage) && seed.lineage.every((entry) => typeof entry === 'string'));
 }
 
+function validSeedPacket(packet: unknown): packet is SeedPacket {
+  return isRecord(packet) && isIntegerInRange(packet.count, 1, Number.MAX_SAFE_INTEGER) && validSeed(packet.seed);
+}
+
 function validTile(tile: unknown): tile is Tile {
   if (!isRecord(tile)) return false;
   return (
@@ -193,7 +197,7 @@ function validSaveData(data: SaveData, allowEmptyLegacyGrid: boolean): boolean {
   if (!fullGrid && !(allowEmptyLegacyGrid && data.tiles.length === 0)) return false;
   if (fullGrid && data.tiles.some((row) => row.some((tile) => !validTile(tile)))) return false;
 
-  if (!Array.isArray(data.seedInventory) || data.seedInventory.length > MAX_SAVED_ENTRIES || data.seedInventory.some((seed) => !validSeed(seed))) return false;
+  if (!Array.isArray(data.seedInventory) || data.seedInventory.length > MAX_SAVED_ENTRIES || data.seedInventory.some((packet) => !validSeedPacket(packet))) return false;
   if (!Array.isArray(data.codex) || data.codex.length > MAX_SAVED_ENTRIES) return false;
   if (data.codex.some((entry) => !isRecord(entry) || typeof entry.id !== 'string' || entry.id.length === 0 || !validSeed(entry.seed) || !isIntegerInRange(entry.discoveredDay, 1, 1_000_000))) return false;
   if (!isRecord(data.stats)) return false;

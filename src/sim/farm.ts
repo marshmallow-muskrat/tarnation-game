@@ -163,6 +163,14 @@ export function plantTile(
   return true;
 }
 
+/** Read-only planting predicate used by transactional seed consumption. */
+export function canPlantTile(tiles: Tile[][], tx: number, ty: number): boolean {
+  const t = getTile(tiles, tx, ty);
+  if (!t) return false;
+  if (t.state === 'breeding') return !t.breedA || !t.breedB;
+  return t.state === 'tilled';
+}
+
 export function waterTile(tiles: Tile[][], tx: number, ty: number, simTime: number): boolean {
   const t = getTile(tiles, tx, ty);
   if (!t || t.state !== 'planted' || t.watered) return false;

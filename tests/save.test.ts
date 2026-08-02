@@ -12,11 +12,17 @@ describe('save serialization and fixture round-trips', () => {
 
     expect(first).toBe(second);
     expect(first.length).toBeLessThan(SAVE_SIZE_BUDGETS.fresh);
-    const wire = JSON.parse(first) as { version: number; tiles: { w: number; h: number; r: unknown[] }; seeds: unknown[] };
+    const wire = JSON.parse(first) as {
+      version: number;
+      tiles: { w: number; h: number; r: unknown[] };
+      seeds: unknown[];
+      seedInventory: { s: number; c: number }[];
+    };
     expect(wire.version).toBe(SAVE_VERSION);
     expect(wire.tiles).toMatchObject({ w: 240, h: 240 });
     expect(wire.tiles.r).toHaveLength(0);
     expect(wire.seeds).toHaveLength(5);
+    expect(wire.seedInventory.map((packet) => packet.c)).toEqual([1, 1, 1, 1, 1]);
     const loaded = loadFromString(first);
     expect(loaded).not.toBeNull();
     expect(loaded).toMatchObject({ seed: FIXTURE_SEED, clock: { day: 1, phase: 'day', elapsed: 0 }, inventoryOpen: true });
@@ -63,6 +69,7 @@ describe('save serialization and fixture round-trips', () => {
     expect(loaded!.placedBuildings[1]).toMatchObject({ id: 'gate', gateOpen: true });
     expect(loaded!.codex).toHaveLength(2);
     expect(loaded!.seedInventory).toHaveLength(3);
+    expect(loaded!.seedInventory.map((packet) => packet.count)).toEqual([4, 2, 3]);
   });
 
   it('round-trips a dense typed farm stress fixture without committing generated JSON', () => {
@@ -94,10 +101,34 @@ describe('save serialization and fixture round-trips', () => {
     expect(parsed!.version).toBe(SAVE_VERSION);
     expect(parsed!.tiles[20]![20]!.state).toBe('mature');
     expect(countItem(parsed!.inventory, ITEM_WOOD)).toBe(37);
+    expect(parsed!.seedInventory.map((packet) => packet.count)).toEqual([4, 2, 3]);
 
     const compact = serialize(parsed!);
     expect(compact.length).toBeLessThan(SAVE_SIZE_BUDGETS.typical);
     expect((JSON.parse(compact) as { tiles: { r: unknown[] } }).tiles.r.length).toBeGreaterThan(0);
+  });
+
+  it('reads the pre-counted v9 seed index list as one packet per genotype', () => {
+    const wire = JSON.parse(serialize(midgameSaveFixture())) as {
+      seedInventory: ({ s: number; c: number } | number)[];
+      [key: string]: unknown;
+    };
+    wire.seedInventory = wire.seedInventory.map((packet) => (typeof packet === 'number' ? packet : packet.s));
+
+    const parsed = deserialize(JSON.stringify(wire));
+
+    expect(parsed).not.toBeNull();
+    expect(parsed!.seedInventory.map((packet) => packet.count)).toEqual([1, 1, 1]);
+  });
+
+  it('rejects zero or fractional counted packet entries instead of silently repairing them', () => {
+    const wire = JSON.parse(serialize(midgameSaveFixture())) as {
+      seedInventory: { s: number; c: number }[];
+      [key: string]: unknown;
+    };
+
+    expect(deserialize(JSON.stringify({ ...wire, seedInventory: [{ ...wire.seedInventory[0]!, c: 0 }] }))).toBeNull();
+    expect(deserialize(JSON.stringify({ ...wire, seedInventory: [{ ...wire.seedInventory[0]!, c: 1.5 }] }))).toBeNull();
   });
 
   it('rejects compact tile records with invalid coordinates or seed references', () => {
