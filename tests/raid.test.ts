@@ -18,7 +18,7 @@ describe('raid generation and deterministic RNG behavior', () => {
     expect(pick(() => 0.5, ['a', 'b', 'c', 'd'] as const)).toBe('c');
   });
 
-  it('scales fox count by day and greed factors, then caps the raid at the current maximum', () => {
+  it('scales fox count by day and greed factors, then caps the ten-fox peak', () => {
     expect(foxCountForDay(1)).toBe(3);
     expect(foxCountForDay(4)).toBe(6);
     expect(foxCountForDay(4, 16, 80)).toBe(9);

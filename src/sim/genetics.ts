@@ -50,9 +50,17 @@ export interface CodexEntry {
  * values so the runtime and pure tests cannot quietly drift apart.
  */
 export const REPEL_FOX_RADIUS = 3;
+/** A repeller crop can soften, but never erase, one raid's pressure. */
+export const REPEL_FOX_USES_PER_RAID = 2;
 export const RICOCHET_RADIUS = 8;
 export const PORTABLE_LIGHT_RADIUS = 6;
 export const GREED_RAID_SCORE = 4;
+
+/** Remaining passive repeller uses for the current raid. */
+export function repellerUsesRemaining(usesThisRaid: number): number {
+  if (!Number.isFinite(usesThisRaid)) return 0;
+  return Math.max(0, REPEL_FOX_USES_PER_RAID - Math.max(0, Math.floor(usesThisRaid)));
+}
 
 export function defaultTraits(species: BaseCropId): Traits {
   switch (species) {
@@ -229,7 +237,7 @@ export function raidAttractionForSeed(seed: Seed): number {
 /** Player-facing explanation for the released hybrid mechanism. */
 export function seedMechanismDescription(mech: HybridMech): string {
   return {
-    repel_foxes: 'Repels foxes within 3 tiles',
+    repel_foxes: 'Repels up to 2 foxes per raid within 3 tiles',
     portable_light: 'Brightens night travel nearby',
     ironroot: 'Resists fox bites and mature destruction',
     ricochet: 'Nearby projectiles bounce once',

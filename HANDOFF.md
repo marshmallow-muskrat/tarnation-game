@@ -72,7 +72,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 [`masterplan-v2.md`](masterplan-v2.md):
 
 - CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
-  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is next.
+  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is in progress.
 - FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), and FOX-03
   as merge `4c0244b` (PR #42). Foxes select deterministic world targets: haulers can steal stored
   crop produce, sappers can force gates or damage active defenses, and ordinary roles pursue exposed
@@ -81,9 +81,12 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   accessory, movement/target preference, telegraph, counter, and existing audio cue; live actors and
   defeat markers explicitly dispose those renderer-owned resources. Shared navigation now rejects
   diagonal corner cuts, reserves distinct target approach tiles, carries fixed-step movement across
-  waypoints, and resolves ten-fox overlap to the configured spacing gap. The integrated baseline is
-  237 deterministic tests across 35 files; `npm run test:ci` already runs before asset validation and
-  build in the deployment workflow. FOX-04 preparation/action tuning remains intentionally deferred.
+  waypoints, and resolves ten-fox overlap to the configured spacing gap. The integrated baseline before
+  FOX-04 was 237 deterministic tests across 35 files; the FOX-04 task branch raises it to 241.
+  Repeller crops now drive off at most two foxes per raid, while active shotgun/bow/melee/boulder/trap
+  roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
+  feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
+  asset validation and build in the deployment workflow; M6 integration and release remain pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

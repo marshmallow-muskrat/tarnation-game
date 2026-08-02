@@ -18,6 +18,8 @@ import {
   type HybridMech,
   makeSeed,
   nibbleDamageForSeed,
+  REPEL_FOX_USES_PER_RAID,
+  repellerUsesRemaining,
   seedTraitDescription,
   waterGrowthMultiplierForSeed,
 } from '../src/sim/genetics';
@@ -105,6 +107,14 @@ describe('released trait effects', () => {
     expect(hasRepelNearby(tiles, 12, 12)).toBe(false);
   });
 
+  it('limits passive repellers to a small deterministic number of foxes per raid', () => {
+    expect(REPEL_FOX_USES_PER_RAID).toBe(2);
+    expect(repellerUsesRemaining(0)).toBe(2);
+    expect(repellerUsesRemaining(1)).toBe(1);
+    expect(repellerUsesRemaining(2)).toBe(0);
+    expect(repellerUsesRemaining(20)).toBe(0);
+  });
+
   it('arms ricochet once and illuminates from either a placed crop or a carried seed', () => {
     const tiles = createEmptyGrid();
     const ricochet = makeSeed('beet');
@@ -124,7 +134,7 @@ describe('released trait effects', () => {
 
   it('describes every released mechanism with the effect the player can observe', () => {
     const mechanisms = [
-      ['repel_foxes', 'Repels foxes within 3 tiles'],
+      ['repel_foxes', 'Repels up to 2 foxes per raid within 3 tiles'],
       ['portable_light', 'Brightens night travel nearby'],
       ['ironroot', 'Resists fox bites and mature destruction'],
       ['ricochet', 'Nearby projectiles bounce once'],
