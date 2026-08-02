@@ -9,7 +9,6 @@ import {
   HOMESTEAD_SPAWN_Z,
   TOOLBAR_SLOTS,
   TREE_RESPAWN_DAYS,
-  WIN_DAY,
 } from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
 import {
@@ -66,6 +65,7 @@ import {
 } from './save';
 import type { AssetId } from '../content/purchasables';
 import { seedPacketCapacity } from './buildings';
+import { isSettlementObjectiveComplete } from './settlement';
 
 export interface GameState {
   seed: number;
@@ -379,7 +379,7 @@ export function respawnTrees(gs: GameState): { tx: number; ty: number }[] {
 }
 
 export function checkWin(gs: GameState): boolean {
-  return gs.clock.day >= WIN_DAY && !gs.winShown;
+  return isSettlementObjectiveComplete(gs) && !gs.winShown;
 }
 
 export function markWinShown(gs: GameState): void {

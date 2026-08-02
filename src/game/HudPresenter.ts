@@ -3,7 +3,6 @@ import {
   BOULDER_COOLDOWN,
   BUCKET_CAPACITY,
   INVENTORY_SLOTS,
-  WIN_DAY,
 } from '../content';
 import {
   cropName,
@@ -17,6 +16,7 @@ import { buildCodexCatalog } from '../sim/codex';
 import { quotePurchase } from '../sim/economy';
 import { seedMechanismDescription } from '../sim/genetics';
 import { seedPacketCapacity } from '../sim/buildings';
+import { settlementObjective, type SettlementObjective } from '../sim/settlement';
 import { assetDefinition, deedAssetId, shopAssets, type AssetCategory, type AssetId, type PurchasableAsset } from '../content/purchasables';
 import type { ModelKey } from './Assets';
 import type { EconomyCapability } from './EconomyCapability';
@@ -191,6 +191,7 @@ export type HudSnapshot = {
     state: SaveFeedback['state'];
     message: string;
   };
+  objective: SettlementObjective;
   win: null | {
     daysSurvived: number;
     cropsHarvested: number;
@@ -369,6 +370,7 @@ export class HudPresenter {
       ? context.vendorTab
       : vendorTabs[0] ?? 'Housing';
     if (vendorTab !== context.vendorTab) context.setVendorTab(vendorTab);
+    const objective = settlementObjective(state);
 
     const snap: HudSnapshot = {
       day: state.clock.day,
@@ -470,8 +472,9 @@ export class HudPresenter {
       popups: context.popups.map((popup) => ({ ...popup })),
       toast: state.toast,
       save: { ...context.save },
+      objective,
       win:
-        state.clock.day >= WIN_DAY && !state.winShown && !context.winShownLocal
+        objective.complete && !state.winShown && !context.winShownLocal
           ? {
               daysSurvived: Math.max(state.stats.daysSurvived, state.clock.day),
               cropsHarvested: state.stats.cropsHarvested,
