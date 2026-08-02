@@ -5,9 +5,10 @@ import type { HudSlot, HudSnapshot } from '../game/HudPresenter';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
 import type { InputAction } from '../game/InputBindings';
+import type { GameSettingKey, GameSettingValue } from '../game/Settings';
 import { useModalFocusScope } from './modal';
 
-type FocusedPanel = 'help' | 'codex' | 'vendor' | 'build' | 'inventory' | 'context';
+type FocusedPanel = 'help' | 'codex' | 'vendor' | 'build' | 'inventory' | 'context' | 'settings';
 type ModalKey = FocusedPanel | 'pause' | 'win';
 
 type Props = {
@@ -19,6 +20,9 @@ type Props = {
   onToggleBuild: () => void;
   onSelectBuild: (index: number) => void;
   onToggleHelp: () => void;
+  onToggleSettings: () => void;
+  onUpdateSetting: (key: GameSettingKey, value: GameSettingValue) => void;
+  onResetSettings: () => void;
   onRebindInput: (action: InputAction, code: string) => void;
   onResetInputBindings: () => void;
   onToggleCodex: () => void;
@@ -83,6 +87,9 @@ export function Hud({
   onToggleBuild,
   onSelectBuild,
   onToggleHelp,
+  onToggleSettings,
+  onUpdateSetting,
+  onResetSettings,
   onRebindInput,
   onResetInputBindings,
   onToggleCodex,
@@ -125,8 +132,10 @@ export function Hud({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [bindingCapture, onRebindInput]);
 
-  const focusedPanel: FocusedPanel | null = hud && !hud.paused && !hud.win
-    ? hud.helpOpen
+  const focusedPanel: FocusedPanel | null = hud?.settingsOpen
+    ? 'settings'
+    : hud && !hud.paused && !hud.win
+      ? hud.helpOpen
       ? 'help'
       : hud.codex.open
         ? 'codex'
@@ -139,8 +148,8 @@ export function Hud({
               : hud.contextMenu.open
                 ? 'context'
                 : null
-    : null;
-  const modalKey: ModalKey | null = hud?.win ? 'win' : hud?.paused ? 'pause' : focusedPanel;
+      : null;
+  const modalKey: ModalKey | null = hud?.win ? 'win' : focusedPanel === 'settings' ? 'settings' : hud?.paused ? 'pause' : focusedPanel;
   const closeModal = () => {
     switch (modalKey) {
       case 'help':
@@ -160,6 +169,9 @@ export function Hud({
         return;
       case 'context':
         onContextClose();
+        return;
+      case 'settings':
+        onToggleSettings();
         return;
       case 'pause':
         onResume();
@@ -184,12 +196,35 @@ export function Hud({
   const showCodex = focusedPanel === 'codex';
   const showVendor = focusedPanel === 'vendor';
   const showBuild = focusedPanel === 'build';
+  const showSettings = focusedPanel === 'settings';
   const showInventory = focusedPanel === 'inventory';
   const showContext = focusedPanel === 'context';
   const showMarket = !hud.paused && hud.market.open && focusedPanel === null;
   const bindingLabel = (action: InputAction): string =>
     hud.bindings.find((binding) => binding.action === action)?.display ?? '';
   const toolbarActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
+  const bindingGroups = () => (['Movement', 'World actions', 'Menus', 'Tools', 'Camera & options'] as const).map((group) => {
+    const bindings = hud.bindings.filter((binding) => binding.group === group);
+    return (
+      <div className="binding-group" key={group}>
+        <p className="label">{group}</p>
+        <div className="binding-list">
+          {bindings.map((binding) => (
+            <div className="binding-row" key={binding.action}>
+              <span>{binding.label}</span>
+              <button
+                type="button"
+                className={bindingCapture === binding.action ? 'binding-key capturing' : 'binding-key'}
+                onClick={() => setBindingCapture(binding.action)}
+              >
+                {bindingCapture === binding.action ? 'Press a key · Esc cancels' : binding.display}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  });
 
   return (
     <div className="hud">
@@ -510,7 +545,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.paused && !hud.win && (
+      {hud.paused && !hud.win && !hud.settingsOpen && (
         <div className="pause-overlay">
           <div
             ref={modalScope.ref}
@@ -525,8 +560,132 @@ export function Hud({
             <h2 id="pause-title">Take a breath</h2>
             <p>Nothing advances while the pause menu is open.</p>
             <button type="button" onClick={onResume}>Resume</button>
+            <button type="button" onClick={onToggleSettings}>Settings</button>
             <p className="pause-help">Esc resumes</p>
           </div>
+        </div>
+      )}
+
+      {showSettings && (
+        <div
+          ref={modalScope.ref}
+          className="panel settings-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
+          <div className="settings-heading">
+            <div>
+              <p className="label">Accessibility & options</p>
+              <h2 id="settings-title">Settings</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onToggleSettings}>Close</button>
+          </div>
+          <p className="settings-intro">These preferences are stored on this device and do not change the homestead save.</p>
+
+          <div className="settings-section" aria-labelledby="settings-sound-title">
+            <h3 id="settings-sound-title">Sound</h3>
+            {([
+              ['masterVolume', 'Master volume'],
+              ['musicVolume', 'Music volume'],
+              ['effectsVolume', 'Effects volume'],
+              ['ambienceVolume', 'Ambience volume'],
+            ] as const).map(([key, label]) => (
+              <label className="settings-range" key={key}>
+                <span>{label}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={hud.settings[key]}
+                  aria-label={label}
+                  onChange={(event) => onUpdateSetting(key, Number(event.currentTarget.value))}
+                />
+                <output>{Math.round(hud.settings[key] * 100)}%</output>
+              </label>
+            ))}
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={!hud.settings.muted}
+                onChange={(event) => onUpdateSetting('muted', !event.currentTarget.checked)}
+              />
+              <span>Sound feedback on</span>
+            </label>
+            <p className="settings-note">Music and ambience controls are ready for their authored buses; the current fallback uses the effects bus.</p>
+          </div>
+
+          <div className="settings-section" aria-labelledby="settings-motion-title">
+            <h3 id="settings-motion-title">Motion & display</h3>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.reducedMotion}
+                onChange={(event) => onUpdateSetting('reducedMotion', event.currentTarget.checked)}
+              />
+              <span>Reduced motion</span>
+            </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.cameraShake}
+                onChange={(event) => onUpdateSetting('cameraShake', event.currentTarget.checked)}
+              />
+              <span>Camera shake</span>
+            </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.highContrast}
+                onChange={(event) => onUpdateSetting('highContrast', event.currentTarget.checked)}
+              />
+              <span>High-contrast UI</span>
+            </label>
+            <label className="settings-range">
+              <span>UI scale</span>
+              <input
+                type="range"
+                min="0.9"
+                max="1.25"
+                step="0.05"
+                value={hud.settings.uiScale}
+                aria-label="UI scale"
+                onChange={(event) => onUpdateSetting('uiScale', Number(event.currentTarget.value))}
+              />
+              <output>{Math.round(hud.settings.uiScale * 100)}%</output>
+            </label>
+            <label className="settings-range">
+              <span>Text scale</span>
+              <input
+                type="range"
+                min="1"
+                max="1.4"
+                step="0.1"
+                value={hud.settings.textScale}
+                aria-label="Text scale"
+                onChange={(event) => onUpdateSetting('textScale', Number(event.currentTarget.value))}
+              />
+              <output>{Math.round(hud.settings.textScale * 100)}%</output>
+            </label>
+            <p className="settings-note">The day/night schedule stays fixed so crop growth, raids, cooldowns, and the fixed-step economy remain consistent.</p>
+          </div>
+
+          <details className="help-bindings settings-bindings" open>
+            <summary>Keyboard controls</summary>
+            <p className="help-bindings-copy">Choose a primary key. If it is already assigned, the two actions swap so neither action becomes unreachable. Arrow and numpad alternates remain available.</p>
+            {bindingGroups()}
+            <button type="button" className="binding-reset" onClick={() => {
+              setBindingCapture(null);
+              onResetInputBindings();
+            }}>
+              Reset keyboard defaults
+            </button>
+          </details>
+
+          <button type="button" className="settings-reset" onClick={onResetSettings}>Reset presentation settings</button>
         </div>
       )}
 
@@ -644,28 +803,7 @@ export function Hud({
           <details className="help-bindings">
             <summary>Remap keyboard controls</summary>
             <p className="help-bindings-copy">Choose a primary key. If it is already assigned, the two actions swap so neither action becomes unreachable. Arrow and numpad alternates remain available.</p>
-            {(['Movement', 'World actions', 'Menus', 'Tools', 'Camera & options'] as const).map((group) => {
-              const bindings = hud.bindings.filter((binding) => binding.group === group);
-              return (
-                <div className="binding-group" key={group}>
-                  <p className="label">{group}</p>
-                  <div className="binding-list">
-                    {bindings.map((binding) => (
-                      <div className="binding-row" key={binding.action}>
-                        <span>{binding.label}</span>
-                        <button
-                          type="button"
-                          className={bindingCapture === binding.action ? 'binding-key capturing' : 'binding-key'}
-                          onClick={() => setBindingCapture(binding.action)}
-                        >
-                          {bindingCapture === binding.action ? 'Press a key · Esc cancels' : binding.display}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+            {bindingGroups()}
             <button type="button" className="binding-reset" onClick={() => {
               setBindingCapture(null);
               onResetInputBindings();

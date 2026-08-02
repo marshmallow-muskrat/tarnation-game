@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { GameRuntime } from './game/GameRuntime';
 import type { HudSnapshot } from './game/HudPresenter';
 import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './game/Assets';
@@ -6,6 +6,7 @@ import { browserSaveStorage, SaveService, type SaveReadResult } from './game/Sav
 import { Hud } from './ui/Hud';
 import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
 import { useModalFocusScope } from './ui/modal';
+import type { GameSettingKey, GameSettingValue } from './game/Settings';
 
 const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
   boot: 'boot assets',
@@ -142,8 +143,13 @@ export function App() {
     setError(null);
   };
 
+  const shellStyle = {
+    '--ui-scale': hud?.settings.uiScale ?? 1,
+    '--text-scale': hud?.settings.textScale ?? 1,
+  } as CSSProperties;
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${hud?.settings.highContrast ? 'high-contrast' : ''}`} style={shellStyle}>
       <div className="game-mount">
         <canvas ref={canvasRef} tabIndex={0} aria-label="Tarnation game canvas" />
       </div>
@@ -257,6 +263,9 @@ export function App() {
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
         onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onToggleHelp={() => runtimeRef.current?.toggleHelp()}
+        onToggleSettings={() => runtimeRef.current?.toggleSettings()}
+        onUpdateSetting={(key: GameSettingKey, value: GameSettingValue) => runtimeRef.current?.updateSetting(key, value)}
+        onResetSettings={() => runtimeRef.current?.resetSettings()}
         onRebindInput={(action, code) => runtimeRef.current?.rebindInput(action, code)}
         onResetInputBindings={() => runtimeRef.current?.resetInputBindings()}
         onToggleCodex={() => runtimeRef.current?.toggleCodex()}

@@ -151,6 +151,17 @@ import {
   type ModelKey,
 } from './Assets';
 import { AudioFeedback } from './AudioFeedback';
+import {
+  DEFAULT_GAME_SETTINGS,
+  parseGameSettings,
+  resetGameSettings,
+  serializeGameSettings,
+  SETTINGS_STORAGE_KEY,
+  updateGameSetting,
+  type GameSettingKey,
+  type GameSettingValue,
+  type GameSettings,
+} from './Settings';
 import { InputController } from './InputController';
 import {
   formatBinding,
@@ -379,6 +390,12 @@ const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as con
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {
+    const settings = parseGameSettings(localStorage.getItem(SETTINGS_STORAGE_KEY));
+    if (!settings.muted && localStorage.getItem('tarnation.audioMuted') === '1') settings.muted = true;
+    if (!settings.reducedMotion && localStorage.getItem('tarnation.reducedMotion') === '1') settings.reducedMotion = true;
+    this.settings = settings;
+    this.audio.setVolumes(settings);
+    this.audio.setMuted(settings.muted);
     this.input.setBindings(parseInputBindings(localStorage.getItem(INPUT_BINDINGS_STORAGE_KEY)));
     this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
   }
@@ -446,6 +463,8 @@ export class GameRuntime {
   private codexSelectedKey: string | null = null;
   private codexCompareKeys: string[] = [];
   private reducedMotion = false;
+  private settings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+  private settingsOpen = false;
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
   private vendorMessage = '';
@@ -557,8 +576,7 @@ export class GameRuntime {
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
     this.world = new WorldRenderer(canvas);
     this.feedbackEffects = new FeedbackEffectPool();
-    this.reducedMotion = localStorage.getItem('tarnation.reducedMotion') === '1';
-    this.world.setReducedMotion(this.reducedMotion);
+    this.applyPresentationSettings();
     initAssetLoaders(this.world.renderer);
     await preloadGroup('boot', options.onAssetProgress);
     await preloadGroup('first_play', options.onAssetProgress);
@@ -584,6 +602,7 @@ export class GameRuntime {
     this.settlementCelebrated = false;
     this.raidWarningDay = -1;
     this.codexOpen = false;
+    this.settingsOpen = false;
     this.codexCompareKeys = [];
     this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
     this.world.setStarterPlotVisible(this.firstPlotGuideActive);
@@ -1257,6 +1276,61 @@ export class GameRuntime {
     this.pushHud(true);
   }
 
+  toggleSettings(): void {
+    if (this.settingsOpen) {
+      this.settingsOpen = false;
+      this.clearInputState();
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
+
+    this.pauseOpen = true;
+    this.settingsOpen = true;
+    this.helpOpen = false;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
+    this.vendorOpen = false;
+    this.vendorMessage = '';
+    this.buildingMode = false;
+    this.placement.clear();
+    this.world.setBuildPreview(null);
+    this.demolishMode = false;
+    this.gs.inventoryOpen = false;
+    this.resetContextMenuState();
+    this.cancelPlayerActions();
+    this.clearShots();
+    this.velX = 0;
+    this.velZ = 0;
+    this.clearInputState();
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  updateSetting(key: GameSettingKey, value: GameSettingValue): void {
+    const next = updateGameSetting(this.settings, key, value);
+    this.settings = next;
+    this.applyPresentationSettings();
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, serializeGameSettings(next));
+    } catch {
+      // Device preferences are optional; the current session remains usable.
+    }
+    this.pushHud(true);
+  }
+
+  resetSettings(): void {
+    this.settings = resetGameSettings();
+    this.applyPresentationSettings();
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, serializeGameSettings(this.settings));
+    } catch {
+      // Device preferences are optional.
+    }
+    this.setToastForSettings('Settings restored to defaults');
+    this.pushHud(true);
+  }
+
   rebindInput(action: InputAction, code: string): void {
     const result = rebindInputBinding(this.input.getBindings(), action, code);
     if (!result.ok) {
@@ -1280,6 +1354,11 @@ export class GameRuntime {
     localStorage.setItem(INPUT_BINDINGS_STORAGE_KEY, serializeInputBindings(defaults));
     setToast(this.gs, 'Keyboard controls restored to defaults', 2);
     this.pushHud(true);
+  }
+
+  private setToastForSettings(message: string): void {
+    if (!this.gs) return;
+    setToast(this.gs, message, 1.8);
   }
 
   private availableVendorTabs(): AssetCategory[] {
@@ -1730,6 +1809,20 @@ export class GameRuntime {
     this.input.clearInteractionState();
   }
 
+  private applyPresentationSettings(): void {
+    this.reducedMotion = this.settings.reducedMotion;
+    this.audio.setVolumes(this.settings);
+    this.audio.setMuted(this.settings.muted);
+    this.world?.setReducedMotion(this.settings.reducedMotion);
+    this.world?.setCameraShakeEnabled(this.settings.cameraShake);
+    this.playerActions?.setReducedMotion(this.settings.reducedMotion);
+    try {
+      localStorage.setItem('tarnation.reducedMotion', this.settings.reducedMotion ? '1' : '0');
+    } catch {
+      // Device preferences are optional.
+    }
+  }
+
   private syncActionMenuState(): void {
     // Placement remains outside the menu state so the fixed-step action boundary
     // can commit a clicked building while the world itself is paused.
@@ -1851,6 +1944,10 @@ export class GameRuntime {
       if (this.input.justPressed('pause')) this.dismissWin();
       return true;
     }
+    if (this.settingsOpen) {
+      if (this.input.justPressed('pause')) this.toggleSettings();
+      return true;
+    }
     if (this.pauseOpen) {
       if (this.input.justPressed('pause')) this.cancelActiveState();
       return true;
@@ -1925,6 +2022,7 @@ export class GameRuntime {
     }
     if (this.input.justPressed('mute')) {
       const muted = this.audio.toggleMuted();
+      this.updateSetting('muted', muted);
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
       if (!muted) this.audio.play('ui');
     }
@@ -1944,11 +2042,8 @@ export class GameRuntime {
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
     }
     if (this.input.justPressed('reducedMotion')) {
-      this.reducedMotion = !this.reducedMotion;
-      this.world.setReducedMotion(this.reducedMotion);
-      this.playerActions.setReducedMotion(this.reducedMotion);
-      localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
-      setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
+      this.updateSetting('reducedMotion', !this.settings.reducedMotion);
+      setToast(this.gs, this.settings.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
     if (this.input.justPressed('build')) {
       this.toggleBuildMode();
@@ -4619,6 +4714,8 @@ export class GameRuntime {
         return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
+      settingsOpen: this.settingsOpen,
+      settings: this.settings,
       bindings: this.input.getBindings(),
       codexOpen: this.codexOpen,
       codexSelectedKey: this.codexSelectedKey,

@@ -9,6 +9,7 @@ import {
   type HudSnapshot,
 } from '../src/game/HudPresenter';
 import { DEFAULT_INPUT_BINDINGS } from '../src/game/InputBindings';
+import { DEFAULT_GAME_SETTINGS } from '../src/game/Settings';
 
 function makeContext(state = createGameState(123)): HudPresenterContext {
   return {
@@ -18,6 +19,8 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
     selectedBuildIndex: 0,
     placement: () => ({ valid: false, reason: 'Open build mode to preview a structure' }),
     helpOpen: false,
+    settingsOpen: false,
+    settings: DEFAULT_GAME_SETTINGS,
     bindings: DEFAULT_INPUT_BINDINGS,
     codexOpen: false,
     codexSelectedKey: null,
