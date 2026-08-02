@@ -18,7 +18,7 @@ import {
   triggerBearTrap,
   waterTile,
 } from '../src/sim/farm';
-import { makeSeed } from '../src/sim/genetics';
+import { growthDurationForSeed, makeSeed } from '../src/sim/genetics';
 
 describe('farming and crop transitions', () => {
   it('turns grass into fresh tilled soil and rejects non-grass retilling', () => {
@@ -60,7 +60,8 @@ describe('farming and crop transitions', () => {
   it('does not grow a dry crop, then advances stages and matures it after two full days', () => {
     const tiles = createEmptyGrid();
     tillTile(tiles, 2, 2, 1);
-    plantTile(tiles, 2, 2, makeSeed('lettuce'));
+    const lettuce = makeSeed('lettuce');
+    plantTile(tiles, 2, 2, lettuce);
     const tile = tiles[2]![2]!;
 
     stepCrops(tiles, FULL_DAY);
@@ -73,24 +74,27 @@ describe('farming and crop transitions', () => {
     expect(first).toEqual([]);
     expect(tile.state).toBe('planted');
     expect(tile.stage).toBe(1);
-    expect(tile.growth).toBeCloseTo(200 / CROP_DEFS.lettuce.grow);
+    const grow = growthDurationForSeed(lettuce, CROP_DEFS.lettuce.grow, CROP_DEFS.lettuce.waterNeed);
+    expect(tile.growth).toBeCloseTo(200 / grow);
 
-    const second = stepCrops(tiles, CROP_DEFS.lettuce.grow - 200);
+    const second = stepCrops(tiles, grow - 200);
     expect(second).toEqual([{ x: 2, y: 2 }]);
     expect(tile.state).toBe('mature');
     expect(tile.stage).toBe(2);
     expect(tile.growth).toBe(1);
   });
 
-  it('keeps every base crop on the same two-day calendar regardless of its vigor trait', () => {
+  it('applies each crop seed vigor and water need to its deterministic growth duration', () => {
     for (const species of Object.keys(CROP_DEFS) as (keyof typeof CROP_DEFS)[]) {
       const tiles = createEmptyGrid();
       tillTile(tiles, 1, 1, 1);
-      plantTile(tiles, 1, 1, makeSeed(species, { vigor: 0 }));
+      const seed = makeSeed(species, { vigor: 0 });
+      plantTile(tiles, 1, 1, seed);
       waterTile(tiles, 1, 1, 0);
 
-      stepCrops(tiles, CROP_DEFS[species].grow);
-      expect(tiles[1]![1]!.state, `${species} should mature on its documented grow time`).toBe('mature');
+      const duration = growthDurationForSeed(seed, CROP_DEFS[species].grow, CROP_DEFS[species].waterNeed);
+      stepCrops(tiles, duration);
+      expect(tiles[1]![1]!.state, `${species} should mature on its trait-aware grow time`).toBe('mature');
     }
   });
 

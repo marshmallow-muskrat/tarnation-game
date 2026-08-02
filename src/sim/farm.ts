@@ -7,7 +7,16 @@ import {
   type BaseCropId,
 } from '../content';
 import type { HybridMech, Seed } from './genetics';
-import { growTimeForSeed, makeSeed } from './genetics';
+import {
+  cropYieldForSeed,
+  growthDurationForSeed,
+  makeSeed,
+  nibbleDamageForSeed,
+  PORTABLE_LIGHT_RADIUS,
+  raidAttractionForSeed,
+  REPEL_FOX_RADIUS,
+  RICOCHET_RADIUS,
+} from './genetics';
 
 export type TileState = 'grass' | 'tilled' | 'planted' | 'mature' | 'trench' | 'breeding';
 
@@ -243,7 +252,7 @@ export function harvestTile(tiles: Tile[][], tx: number, ty: number): HarvestRes
 
   if (t.state !== 'mature' || !t.seed) return { ok: false, seed: null, count: 0, hybridChild: null };
 
-  const yieldN = 1 + Math.floor(t.seed.traits.yield / 40);
+  const yieldN = cropYieldForSeed(t.seed);
   const seed = t.seed;
   t.state = 'tilled';
   t.watered = false;
@@ -281,16 +290,16 @@ export function destroyCrop(tiles: Tile[][], tx: number, ty: number): boolean {
 /** Nibbler takes one bite — reduces growth or destroys if young. */
 export function nibbleCrop(tiles: Tile[][], tx: number, ty: number): boolean {
   const t = getTile(tiles, tx, ty);
-  if (!t || !isCropTile(t)) return false;
-  if (t.seed?.mech === 'ironroot') return false;
+  if (!t || !isCropTile(t) || !t.seed) return false;
+  if (t.seed.mech === 'ironroot') return false;
   if (t.state === 'mature') {
     t.state = 'planted';
-    t.growth = 0.5;
-    t.stage = 1;
+    t.growth = Math.max(0, 1 - nibbleDamageForSeed(t.seed!, 0.5));
+    t.stage = Math.min(CROP_STAGES - 1, Math.floor(t.growth * CROP_STAGES));
     t.watered = true;
     return true;
   }
-  t.growth = Math.max(0, t.growth - 0.35);
+  t.growth = Math.max(0, t.growth - nibbleDamageForSeed(t.seed!, 0.35));
   if (t.growth <= 0.05) return destroyCrop(tiles, tx, ty);
   return true;
 }
@@ -305,8 +314,10 @@ export function stepCrops(tiles: Tile[][], dt: number): { x: number; y: number }
     for (let x = 0; x < GRID_W; x++) {
       const t = tiles[y]![x]!;
       if (t.state !== 'planted' || !t.watered || !t.seed) continue;
-      const base = CROP_DEFS[t.seed.species]?.grow ?? 100;
-      const grow = growTimeForSeed(t.seed, base);
+      const cropDef = CROP_DEFS[t.seed.species];
+      const base = cropDef?.grow ?? 100;
+      const baseWaterNeed = cropDef?.waterNeed ?? 0.5;
+      const grow = growthDurationForSeed(t.seed, base, baseWaterNeed);
       t.growth = Math.min(1, t.growth + dt / grow);
       const newStage = Math.min(CROP_STAGES - 1, Math.floor(t.growth * CROP_STAGES));
       if (t.growth >= 1) {
@@ -348,24 +359,80 @@ export function cropValueScore(tiles: Tile[][]): number {
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
       const t = tiles[y]![x]!;
-      if (isCropTile(t) && t.seed) v += 1 + t.seed.traits.yield / 50;
+      if (isCropTile(t) && t.seed) {
+        v += 1 + t.seed.traits.yield / 50 + raidAttractionForSeed(t.seed);
+      }
     }
   }
   return v;
 }
 
-/** Nearby repel_foxes hybrid within radius (tile units). */
-export function hasRepelNearby(tiles: Tile[][], tx: number, ty: number, radius: number): boolean {
-  const r = Math.ceil(radius);
+function hasActiveMechanismNearby(
+  tiles: Tile[][],
+  tx: number,
+  ty: number,
+  mech: HybridMech,
+  radius: number,
+): boolean {
+  const boundedRadius = Math.max(0, radius);
+  const r = Math.ceil(boundedRadius);
   for (let y = ty - r; y <= ty + r; y++) {
     for (let x = tx - r; x <= tx + r; x++) {
       const t = getTile(tiles, x, y);
-      if (t?.seed?.mech === 'repel_foxes' && isCropTile(t)) {
-        if (Math.hypot(x - tx, y - ty) <= radius) return true;
+      if (t?.seed?.mech === mech && isCropTile(t)) {
+        if (Math.hypot(x - tx, y - ty) <= boundedRadius) return true;
       }
     }
   }
   return false;
+}
+
+/** Nearby repel_foxes hybrid, capped at the authored local radius. */
+export function hasRepelNearby(
+  tiles: Tile[][],
+  tx: number,
+  ty: number,
+  radius = REPEL_FOX_RADIUS,
+): boolean {
+  return hasActiveMechanismNearby(
+    tiles,
+    tx,
+    ty,
+    'repel_foxes',
+    Math.min(Math.max(0, radius), REPEL_FOX_RADIUS),
+  );
+}
+
+/** A live ricochet crop arms at most one bounce for nearby fired projectiles. */
+export function hasRicochetNearby(
+  tiles: Tile[][],
+  tx: number,
+  ty: number,
+  radius = RICOCHET_RADIUS,
+): boolean {
+  return hasActiveMechanismNearby(
+    tiles,
+    tx,
+    ty,
+    'ricochet',
+    Math.min(Math.max(0, radius), RICOCHET_RADIUS),
+  );
+}
+
+/** A live portable-light crop provides local night light without moving the crop. */
+export function hasPortableLightNearby(
+  tiles: Tile[][],
+  tx: number,
+  ty: number,
+  radius = PORTABLE_LIGHT_RADIUS,
+): boolean {
+  return hasActiveMechanismNearby(
+    tiles,
+    tx,
+    ty,
+    'portable_light',
+    Math.min(Math.max(0, radius), PORTABLE_LIGHT_RADIUS),
+  );
 }
 
 export function placeBearTrap(tiles: Tile[][], tx: number, ty: number): boolean {

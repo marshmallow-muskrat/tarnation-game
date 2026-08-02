@@ -199,7 +199,7 @@ export const FARM_COLORS = {
   trench: 0x3a5a8a,
 };
 
-/** Base crop catalogue. Every plant grows in exactly two days. */
+/** Base crop catalogue. Trait-neutral crops use the two-day grow baseline. */
 export const CROP_DEFS = {
   grass: { id: 'grass' as const, name: 'Grass', grow: PLANT_GROW_TIME, waterNeed: 0.25, color: 0x7cb342 },
   dandelion: { id: 'dandelion' as const, name: 'Dandelion', grow: PLANT_GROW_TIME, waterNeed: 0.3, color: 0xf0d060 },

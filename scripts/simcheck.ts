@@ -23,7 +23,7 @@ import {
   tillTile,
   waterTile,
 } from '../src/sim/farm';
-import { makeSeed } from '../src/sim/genetics';
+import { growthDurationForSeed, makeSeed } from '../src/sim/genetics';
 import { addItem, countItem, createInventory, removeItem } from '../src/sim/inventory';
 import { cropItem, itemInfo, ITEM_WOOD } from '../src/sim/items';
 import { dropChance, rollDrop, TROPHY_ODDS } from '../src/sim/luck';
@@ -50,14 +50,20 @@ const ok = (label: string, cond: boolean, extra = '') =>
 for (const [id, def] of Object.entries(CROP_DEFS)) {
   const tiles = createEmptyGrid();
   tillTile(tiles, 1, 1, 1);
-  plantTile(tiles, 1, 1, makeSeed(id as keyof typeof CROP_DEFS));
+  const seed = makeSeed(id as keyof typeof CROP_DEFS);
+  plantTile(tiles, 1, 1, seed);
   waterTile(tiles, 1, 1, 0);
   let t = 0;
   while (tiles[1]![1]!.state !== 'mature' && t < day * 5) {
     stepCrops(tiles, 1 / 60);
     t += 1 / 60;
   }
-  ok(`${id} matures in 2 days`, Math.abs(t - day * 2) < 0.5, `${t.toFixed(1)}s (grow=${def.grow})`);
+  const expected = growthDurationForSeed(seed, def.grow, def.waterNeed);
+  ok(
+    `${id} matures on its deterministic trait-aware cycle`,
+    Math.abs(t - expected) < 0.5,
+    `${t.toFixed(1)}s (expected=${expected.toFixed(1)}s)`,
+  );
 }
 
 // ------------------------------------------------------- tilth decay (new)
@@ -248,9 +254,11 @@ ok('2-day tree respawn', TREE_RESPAWN_DAYS === 2);
 {
   const tiles = createEmptyGrid();
   tillTile(tiles, 2, 2, 1);
-  plantTile(tiles, 2, 2, makeSeed('carrot'));
+  const seed = makeSeed('carrot');
+  plantTile(tiles, 2, 2, seed);
   waterTile(tiles, 2, 2, 0);
-  for (let t = 0; t < day * 2 + 1; t += 1) stepCrops(tiles, 1);
+  const duration = growthDurationForSeed(seed, CROP_DEFS.carrot.grow, CROP_DEFS.carrot.waterNeed);
+  for (let t = 0; t < duration + 1; t += 1) stepCrops(tiles, 1);
   const res = harvestTile(tiles, 2, 2);
   ok('harvest returns a seed + count', res.ok && !!res.seed && res.count >= 1);
 }
