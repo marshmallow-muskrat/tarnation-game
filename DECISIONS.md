@@ -710,3 +710,14 @@ characters, clamps numeric values, caps text and arrays, deduplicates asset fail
 explicit schema deterministically. Full save contents, personal data, unbounded logs, `window.tarn`, and
 mutation/debug escape hatches remain absent. No save field, simulation rule, fixed timestep, seeded RNG,
 economy rule, or asset path changed.
+
+## 2026-08-02 — Pin the release toolchain to Wrangler 4 and Node 24
+
+REL-01 upgrades the local and deployment toolchain from Wrangler 3 to stable Wrangler `4.118.0`.
+The deployment workflow is pinned to the `wrangler-action` `v4.0.0` commit and passes the same exact
+CLI version, while `.nvmrc`, package engines, and CI keep contributors on Node 24. The existing Pages
+configuration remains a static `dist` deployment; Wrangler 4 local Pages preview returned the built
+index successfully, and the reviewed Pages deploy command remains `pages deploy dist --project-name=tarnation
+--branch=main`. `npm ci`, full `npm audit`, and `npm audit --omit=dev` all passed with zero vulnerabilities.
+Contribution, release-note, all-rights-reserved licensing, and asset/audio provenance ledgers were added.
+No Vite, React, Three.js, save, simulation, economy, or gameplay contract changed.
