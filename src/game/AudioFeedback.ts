@@ -1,14 +1,20 @@
 import {
   AUDIO_EVENT_CATALOG,
   LEGACY_SOUND_EVENTS,
-  type AudioLeafBus,
   type AudioEvent,
+  type AudioLeafBus,
   type LegacySoundKind,
 } from './audioCatalog';
 import type { GameSettings } from './Settings';
 
 export type SoundKind = LegacySoundKind;
 export type AudioPhase = 'day' | 'night';
+export type AudioSpatialPosition = Readonly<{
+  x: number;
+  z: number;
+  listenerX: number;
+  listenerZ: number;
+}>;
 
 type SoundSpec = {
   type: OscillatorType;
@@ -19,6 +25,7 @@ type SoundSpec = {
 };
 
 type AudioVolumeSettings = Pick<GameSettings, 'masterVolume' | 'musicVolume' | 'effectsVolume' | 'ambienceVolume'>;
+type VoiceSource = AudioScheduledSourceNode;
 
 const SOUND_SPECS: Record<SoundKind, SoundSpec> = {
   ui: { type: 'sine', start: 520, end: 680, duration: 0.07, volume: 0.08 },
@@ -56,10 +63,16 @@ export class AudioFeedback {
   private phase: AudioPhase = 'day';
   private disposed = false;
   private variantSeed = 0x2d7a11;
+  private duckUntil = 0;
+  private duckFactor = 1;
+  private duckReleaseTimer: number | null = null;
+  private captionHandler: ((caption: string) => void) | null = null;
   private readonly loaded = new Map<AudioEvent, AudioBuffer>();
   private readonly loading = new Map<AudioEvent, Promise<AudioBuffer | null>>();
   private readonly failed = new Set<AudioEvent>();
   private readonly loops = new Map<AudioEvent, AudioBufferSourceNode>();
+  private readonly voices = new Map<AudioEvent, Set<VoiceSource>>();
+  private readonly lastPlayed = new Map<AudioEvent, number>();
 
   constructor() {
     try {
@@ -102,17 +115,21 @@ export class AudioFeedback {
   }
 
   /** Play the authored cue associated with a fox role's typed legacy cue. */
-  playFoxCue(cue: 'hit' | 'tool' | 'build' | 'trap'): void {
+  playFoxCue(cue: 'hit' | 'tool' | 'build' | 'trap', spatial?: AudioSpatialPosition): void {
     const event: Record<typeof cue, AudioEvent> = {
       hit: 'fox-hit',
       tool: 'fox-threat',
       build: 'building',
       trap: 'fox-trap',
     };
-    this.playEvent(event[cue]);
+    this.playEvent(event[cue], spatial);
   }
 
-  playEvent(event: AudioEvent): void {
+  setCaptionHandler(handler: ((caption: string) => void) | null): void {
+    this.captionHandler = handler;
+  }
+
+  playEvent(event: AudioEvent, spatial?: AudioSpatialPosition): void {
     if (this.muted || this.disposed) return;
     this.unlock();
     const context = this.context;
@@ -123,11 +140,16 @@ export class AudioFeedback {
       void this.syncLoops();
       return;
     }
+    const now = context.currentTime;
+    if (!this.canPlay(event, now)) return;
+    this.lastPlayed.set(event, now);
+    this.applyDucking(definition.duckFactor, definition.duckDuration, now);
+    if (definition.caption) this.captionHandler?.(definition.caption);
     const buffer = this.loaded.get(event);
     if (buffer) {
-      this.playBuffer(event, buffer);
+      this.playBuffer(event, buffer, spatial);
     } else {
-      if (definition.fallback) this.playSynthesized(definition.fallback, definition.bus);
+      if (definition.fallback) this.playSynthesized(event, definition.fallback, definition.bus, spatial);
       void this.loadBuffer(event);
     }
   }
@@ -166,6 +188,8 @@ export class AudioFeedback {
 
   dispose(): void {
     this.disposed = true;
+    if (this.duckReleaseTimer !== null) window.clearTimeout(this.duckReleaseTimer);
+    this.duckReleaseTimer = null;
     for (const source of this.loops.values()) {
       try {
         source.stop();
@@ -180,6 +204,16 @@ export class AudioFeedback {
     this.buses = { music: null, effects: null, ambience: null, ui: null };
     this.loaded.clear();
     this.loading.clear();
+    this.voices.clear();
+    this.lastPlayed.clear();
+    this.captionHandler = null;
+  }
+
+  private canPlay(event: AudioEvent, now: number): boolean {
+    const definition = AUDIO_EVENT_CATALOG[event];
+    const last = this.lastPlayed.get(event);
+    if (last !== undefined && now - last < definition.minInterval) return false;
+    return (this.voices.get(event)?.size ?? 0) < definition.maxVoices;
   }
 
   private async loadBuffer(event: AudioEvent): Promise<AudioBuffer | null> {
@@ -217,19 +251,23 @@ export class AudioFeedback {
       this.stopLoops();
       return;
     }
-    const desired = new Set<AudioEvent>([
-      this.phase === 'day' ? 'music-day' : 'music-night',
-      this.phase === 'day' ? 'ambience-day' : 'ambience-night',
-    ]);
+    const desired = this.desiredLoops();
     for (const event of this.loops.keys()) {
       if (!desired.has(event)) this.stopLoop(event);
     }
     for (const event of desired) {
       if (this.loops.has(event)) continue;
       const buffer = await this.loadBuffer(event);
-      if (!buffer || this.disposed || this.context !== context || this.muted || !desired.has(event)) continue;
+      if (!buffer || this.disposed || this.context !== context || this.muted || !this.desiredLoops().has(event)) continue;
       if (!this.loops.has(event)) this.startLoop(event, buffer);
     }
+  }
+
+  private desiredLoops(): Set<AudioEvent> {
+    return new Set<AudioEvent>([
+      this.phase === 'day' ? 'music-day' : 'music-night',
+      this.phase === 'day' ? 'ambience-day' : 'ambience-night',
+    ]);
   }
 
   private startLoop(event: AudioEvent, buffer: AudioBuffer): void {
@@ -262,7 +300,7 @@ export class AudioFeedback {
     this.loops.delete(event);
   }
 
-  private playBuffer(event: AudioEvent, buffer: AudioBuffer): void {
+  private playBuffer(event: AudioEvent, buffer: AudioBuffer, spatial?: AudioSpatialPosition): void {
     const context = this.context;
     const master = this.master;
     if (!context || !master) return;
@@ -271,11 +309,12 @@ export class AudioFeedback {
     const gain = context.createGain();
     source.buffer = buffer;
     gain.gain.value = definition.gain;
-    source.connect(gain).connect(this.buses[definition.bus] ?? master);
+    this.connectOutput(event, gain, spatial, master);
+    this.trackVoice(event, source);
     source.start();
   }
 
-  private playSynthesized(kind: SoundKind, bus: AudioLeafBus): void {
+  private playSynthesized(event: AudioEvent, kind: SoundKind, bus: AudioLeafBus, spatial?: AudioSpatialPosition): void {
     const context = this.context;
     const master = this.master;
     if (!context || !master) return;
@@ -293,16 +332,75 @@ export class AudioFeedback {
     gain.gain.setValueAtTime(0.0001, now);
     gain.gain.exponentialRampToValueAtTime(spec.volume, now + 0.006);
     gain.gain.exponentialRampToValueAtTime(0.0001, now + spec.duration);
-    oscillator.connect(gain).connect(this.buses[bus] ?? master);
+    this.connectOutput(event, gain, spatial, master, bus);
+    this.trackVoice(event, oscillator);
     oscillator.start(now);
     oscillator.stop(now + spec.duration + 0.02);
   }
 
+  private connectOutput(
+    event: AudioEvent,
+    gain: GainNode,
+    spatial: AudioSpatialPosition | undefined,
+    master: GainNode,
+    fallbackBus?: AudioLeafBus,
+  ): void {
+    const context = this.context;
+    if (!context) return;
+    const definition = AUDIO_EVENT_CATALOG[event];
+    const destination = this.buses[fallbackBus ?? definition.bus] ?? master;
+    if (!definition.spatial || !spatial) {
+      gain.connect(destination);
+      return;
+    }
+    const panner = context.createStereoPanner();
+    const dx = spatial.x - spatial.listenerX;
+    const distance = Math.hypot(dx, spatial.z - spatial.listenerZ);
+    panner.pan.value = distance > 0.001 ? Math.max(-1, Math.min(1, dx / distance)) : 0;
+    gain.connect(panner).connect(destination);
+  }
+
+  private trackVoice(event: AudioEvent, source: VoiceSource): void {
+    const voices = this.voices.get(event) ?? new Set<VoiceSource>();
+    voices.add(source);
+    this.voices.set(event, voices);
+    source.onended = () => {
+      voices.delete(source);
+      if (voices.size === 0) this.voices.delete(event);
+    };
+  }
+
+  private applyDucking(factor: number, duration: number, now: number): void {
+    if (factor >= 1 || duration <= 0) return;
+    this.duckFactor = Math.min(this.duckFactor, factor);
+    this.duckUntil = Math.max(this.duckUntil, now + duration);
+    this.applyVolumes();
+    this.scheduleDuckRelease();
+  }
+
+  private scheduleDuckRelease(): void {
+    if (!this.context) return;
+    if (this.duckReleaseTimer !== null) window.clearTimeout(this.duckReleaseTimer);
+    const delay = Math.max(40, (this.duckUntil - this.context.currentTime) * 1000 + 40);
+    this.duckReleaseTimer = window.setTimeout(() => {
+      this.duckReleaseTimer = null;
+      if (!this.context) return;
+      if (this.context.currentTime < this.duckUntil) {
+        this.scheduleDuckRelease();
+        return;
+      }
+      this.duckUntil = 0;
+      this.duckFactor = 1;
+      this.applyVolumes();
+    }, delay);
+  }
+
   private applyVolumes(): void {
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.32 * this.volumes.masterVolume;
-    if (this.buses.music) this.buses.music.gain.value = this.volumes.musicVolume;
+    const duck = this.context && this.context.currentTime < this.duckUntil ? this.duckFactor : 1;
+    if (this.buses.music) this.buses.music.gain.value = this.volumes.musicVolume * duck;
     if (this.buses.effects) this.buses.effects.gain.value = this.volumes.effectsVolume;
-    if (this.buses.ambience) this.buses.ambience.gain.value = this.volumes.ambienceVolume;
+    if (this.buses.ambience) this.buses.ambience.gain.value = this.volumes.ambienceVolume * duck;
     if (this.buses.ui) this.buses.ui.gain.value = this.volumes.masterVolume;
   }
 

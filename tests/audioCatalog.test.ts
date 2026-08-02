@@ -40,4 +40,19 @@ describe('authored audio catalog', () => {
       return AUDIO_EVENT_CATALOG[event].fallback !== null;
     })).toBe(true);
   });
+
+  it('ducks background layers and exposes a directional caption for a fox threat', () => {
+    expect(AUDIO_EVENT_CATALOG['fox-threat']).toMatchObject({
+      priority: 'threat',
+      duckFactor: 0.28,
+      spatial: true,
+      caption: 'Fox threat nearby',
+    });
+  });
+
+  it('bounds repeated action voices without changing simulation timing', () => {
+    expect(AUDIO_EVENT_CATALOG.shot.maxVoices).toBe(2);
+    expect(AUDIO_EVENT_CATALOG.shot.minInterval).toBeGreaterThan(0);
+    expect(AUDIO_EVENT_CATALOG['save-error'].caption).toBe('Save failed');
+  });
 });
