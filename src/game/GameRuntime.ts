@@ -651,6 +651,7 @@ export class GameRuntime {
     this.rebuildCrops();
     this.recalculateEnclosure();
     this.world.snapCamera(this.playerX, this.playerZ);
+    this.audio.setPhase(this.gs.clock.phase);
 
     if (this.gs.clock.phase === 'night') this.spawnRaid();
 
@@ -772,6 +773,7 @@ export class GameRuntime {
 
   private persist = (): void => {
     if (!this.gs) return;
+    const previousSaveState = this.saveFeedback.state;
     this.saveFeedback = savingFeedback();
     this.pushHud(true);
     const result = this.saveService.save(this.gs);
@@ -779,6 +781,9 @@ export class GameRuntime {
     this.saveFeedback = completedSaveFeedback(result);
     if (result.status !== 'ok') {
       console.error(`[Save] ${result.status}: ${result.message ?? 'save was not written'}`);
+      if (previousSaveState !== 'failed') this.audio.playEvent('save-error');
+    } else if (previousSaveState === 'failed') {
+      this.audio.playEvent('save-success');
     }
     this.pushHud(true);
   };
@@ -1084,6 +1089,7 @@ export class GameRuntime {
       this.runtimeMetrics.recordSale(earned);
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
       this.popup(`+${earned}₫`, this.playerX, this.playerZ);
+      this.audio.playEvent('merchant');
       this.persist();
       this.pushHud(true);
     } else this.recordOutcome('sale', 'rejected');
@@ -1094,6 +1100,7 @@ export class GameRuntime {
     this.runtimeMetrics.recordSale(earned);
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
     this.popup(`+${earned}₫`, this.playerX, this.playerZ);
+    this.audio.playEvent('merchant');
     this.persist();
     this.pushHud(true);
   }
@@ -1397,6 +1404,7 @@ export class GameRuntime {
     this.velX = 0;
     this.velZ = 0;
     this.syncActionMenuState();
+    this.audio.playEvent('merchant');
     this.pushHud(true);
   }
 
@@ -1419,17 +1427,20 @@ export class GameRuntime {
     this.recordOutcome('purchase', 'attempted');
     if (!this.nearMerchant) {
       this.recordOutcome('purchase', 'rejected');
+      this.audio.playEvent('ui-error');
       return;
     }
     const asset = assetDefinition(id);
     if (!asset || !isVendorAsset(asset)) {
       this.recordOutcome('purchase', 'rejected');
+      this.audio.playEvent('ui-error');
       return;
     }
     const result = purchaseAsset(this.gs, asset, this.economyCapability);
     if (!result.ok) {
       this.recordOutcome('purchase', 'rejected');
       this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
+      this.audio.playEvent('ui-error');
       setToast(this.gs, this.vendorMessage, 2.2);
       this.pushHud(true);
       return;
@@ -1444,6 +1455,7 @@ export class GameRuntime {
         : ' · no duckette or material cost';
     this.vendorMessage = `${asset.displayName} ${asset.progression ? 'permit' : 'deed'} added to inventory${spentSummary}`;
     this.recordOutcome('purchase', 'completed');
+    this.audio.playEvent('merchant');
     this.persist();
     this.pushHud(true);
   }
@@ -2235,11 +2247,15 @@ export class GameRuntime {
     }
 
     if (clock.becameNight) {
+      this.audio.setPhase('night');
+      this.audio.playEvent('day-transition');
       setToast(this.gs, 'Night falls. Defend the crops!', 3);
       this.spawnRaid();
       this.persist();
     }
     if (clock.becameDay) {
+      this.audio.setPhase('day');
+      this.audio.playEvent('day-transition');
       this.runtimeMetrics.setDaysReached(this.gs.clock.day);
       this.clearFoxes();
       this.clearDeathMarkers();
@@ -2740,7 +2756,7 @@ export class GameRuntime {
     this.beginFacingToolAction('axe', wc.x, wc.z, () => {
       if (target === 'boulder') {
         this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
-        this.audio.play('hit');
+        this.audio.playEvent('tool-metal');
         setToast(this.gs, 'The axe clangs off the boulder', 1.4);
         return;
       }
@@ -2790,7 +2806,7 @@ export class GameRuntime {
         const watered = this.refreshTrenchWater();
         this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 'water');
-        this.audio.play('tool');
+        this.audio.playEvent('tool-soil');
         setToast(
           this.gs,
           watered > 0
@@ -2809,7 +2825,7 @@ export class GameRuntime {
           if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
           this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-          this.audio.play('build');
+          this.audio.playEvent('building');
           setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
           this.persist();
         });
@@ -2863,7 +2879,7 @@ export class GameRuntime {
         this.recordAction('till');
         this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.audio.playEvent('tool-soil');
         this.persist();
       });
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
@@ -2886,7 +2902,7 @@ export class GameRuntime {
         this.syncCropTile(tx, ty);
         this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.audio.playEvent('tool-soil');
         this.persist();
       })) this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
@@ -2938,7 +2954,7 @@ export class GameRuntime {
           this.syncWorldTiles([{ tx, ty }]);
           this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
           this.spawnFeedbackBurst(wc.x, wc.z, wasKnown ? 'reward' : 'discovery');
-          this.audio.play('reward');
+          this.audio.playEvent('crop-harvest');
           if (!wasKnown) setToast(this.gs, `New Codex entry: ${res.seed.displayName}!`, 3.5);
           this.persist();
         } else this.recordOutcome('harvest', 'rejected');
@@ -2987,7 +3003,7 @@ export class GameRuntime {
         this.treeChops.set(key, swings);
         this.recordAction('chop');
         this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.audio.playEvent('tool-wood');
         return true;
       }
       this.treeChops.delete(key);
@@ -3001,7 +3017,7 @@ export class GameRuntime {
       this.refreshInteractionOnlyTile(tx, ty);
       this.world.markShadowsDirty();
       this.spawnFeedbackBurst(wc.x, wc.z, 'reward');
-      this.audio.play('tool');
+      this.audio.playEvent('tool-wood');
       this.popup('+1 Wood', wc.x, wc.z);
       setToast(this.gs, 'Stump cleared · +1 Wood', 1.2);
       this.persist();
@@ -3014,7 +3030,7 @@ export class GameRuntime {
     this.recordAction('chop');
     this.treeChops.set(key, chops);
     this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-    this.audio.play('tool');
+    this.audio.playEvent('tool-wood');
 
     if (chops < FARM_TREE_CHOPS) {
       setToast(this.gs, `Chopping… ${chops}/${FARM_TREE_CHOPS}`, 0.8);
@@ -4041,7 +4057,7 @@ export class GameRuntime {
     this.raidTelegraphedRoles.add(w.kind);
     setToast(this.gs, `${profile.label}: ${profile.telegraph} · Counter: ${profile.counter}`, 3);
     this.spawnFeedbackBurst(w.x, w.z, 'threat');
-    this.audio.play(profile.audioCue);
+    this.audio.playFoxCue(profile.audioCue);
   }
 
   private raidTargetCandidates(w: Fox, crops: readonly { x: number; y: number }[]): RaidTarget[] {

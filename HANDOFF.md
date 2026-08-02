@@ -96,6 +96,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
   product owner explicitly waived UX-05's five-person external study for this release; its protocol
   remains documented for future validation without fabricated participant findings.
+  M9 Audio/feel is now in progress: AUD-01 is complete on `agent/aud-01-authored-audio`, while
+  AUD-02 and FEEL-01 remain dependency-ready follow-ups.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -209,8 +211,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   typed browser preferences outside the save schema: master/music/effects/ambience levels, mute,
   reduced motion, independent camera shake, UI/text scale, high-contrast UI, and the existing
   conflict-safe keyboard rebinding/reset contract. Audio gains are applied at the master and typed
-  music/effects/ambience buses; the current synthesized fallback has no authored music or ambience
-  source and remains on effects until AUD-01. Day/night pacing remains fixed because it is coupled
+  music/effects/ambience/UI buses; AUD-01 now supplies original authored music, ambience, and UI
+  sources, with synthesized cues retained only as the missing/blocked-asset fallback. Day/night pacing remains fixed because it is coupled
   to crop growth, raids, cooldowns, and the economy. The deterministic baseline is 303 tests across
   44 files. npm run test, npm run test:ci, npm run check, npm run assetcheck, the production build,
   strict unused-symbol TypeScript, git diff --check, and npm audit --omit=dev pass. Production-preview
@@ -230,6 +232,16 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   waived for this release; its protocol remains documented for future validation. UX-05 is complete
   and M8 is released as PR #56 merge `20a0c26`; the exact workflow and live smoke evidence are
   recorded above.
+
+- AUD-01 moves audio presentation from the oscillator-only identity to 24 original deterministic
+  WAV assets covering UI, footsteps, material-specific tools, water, crops, foxes, building,
+  rewards, merchant, day transitions, save states, and day/night loops. `AudioFeedback` now lazily
+  loads authored assets after a gesture, routes typed events through master/music/effects/ambience/UI
+  buses, switches day/night loop layers with the fixed simulation phase, and preserves the oscillator
+  cues as the missing/blocked-asset fallback. `public/audio/CREDITS.md` records original authorship,
+  `npm run audiocheck` validates the ledger and files, and the deployment workflow runs it before
+  build. The deterministic baseline is 319 tests across 46 files; all required checks and an audio
+  bootstrap production-preview smoke pass. AUD-02 and FEEL-01 remain before the M9 release.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
