@@ -25,7 +25,7 @@ describe('save serialization and fixture round-trips', () => {
     expect(wire.seedInventory.map((packet) => packet.c)).toEqual([1, 1, 1, 1, 1]);
     const loaded = loadFromString(first);
     expect(loaded).not.toBeNull();
-    expect(loaded).toMatchObject({ seed: FIXTURE_SEED, clock: { day: 1, phase: 'day', elapsed: 0 }, inventoryOpen: true });
+    expect(loaded).toMatchObject({ seed: FIXTURE_SEED, clock: { day: 1, phase: 'day', elapsed: 0 }, inventoryOpen: false });
     expect(loaded!.tiles).toHaveLength(240);
     expect(loaded!.tiles[0]).toHaveLength(240);
   });
@@ -222,6 +222,19 @@ describe('supported prior save migrations', () => {
     expect(loaded.toolbarSlot).toBe(version < 5 ? 1 : 2);
     expect(loaded.homesteadTier).toBe(({ 3: 2, 4: 2, 5: 1, 6: 3, 7: 4 } as Record<number, number>)[version]);
     expect(loaded.placedBuildings).toHaveLength(version >= 6 ? 2 : 0);
+  });
+
+  it('preserves the legacy open inventory default when v3/v4 saves have no panel-state field', () => {
+    for (const version of [3, 4] as const) {
+      const parsed = deserialize(priorVersionSaveFixture(version));
+      expect(parsed, `v${version} migration`).not.toBeNull();
+      expect(parsed!.inventoryOpen, `v${version} migration`).toBe(true);
+      expect(loadFromSaveData(parsed!).inventoryOpen, `v${version} load`).toBe(true);
+    }
+
+    const explicitClosed = deserialize(priorVersionSaveFixture(5));
+    expect(explicitClosed).not.toBeNull();
+    expect(explicitClosed!.inventoryOpen).toBe(false);
   });
 
   it('keeps the current v4 behavior of adding the legacy trophy list to an already populated trophy stack', () => {

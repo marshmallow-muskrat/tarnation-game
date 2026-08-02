@@ -545,3 +545,77 @@ it duplicated the same small contact cue; major combat, ranged, harvest, and set
 their existing audio, popup, hit-pause, and feedback contracts. Invalid placement now gives the same
 red semantic signal as its preview. No save schema, simulation rule, economy value, asset definition,
 fixed timestep, or deployment credential changed.
+
+## 2026-08-01 — Make keyboard/mouse input a typed, remappable contract
+
+UX-01 keeps desktop keyboard/mouse as the only supported input scheme until another scheme passes the
+complete game. Primary bindings are typed pure data shared by `InputController`, `GameRuntime`, the
+HUD, and the field guide. Rebinding persists in browser settings under `tarnation.inputBindings`, not
+in the save schema. An occupied primary key swaps with the edited action's previous key so no action
+becomes unreachable; malformed, duplicate, or unknown persisted entries fall back deterministically
+to safe defaults, while the existing arrow, T, comma/period, and numpad aliases remain reserved for
+their current actions.
+
+`Enter` provides the primary work/place/demolish route and `O` provides placed-asset context; focused
+inventory controls provide explicit use and delete actions so double-click and right-click are never
+the only route. Pointer input remains available, and the fixed timestep, seeded simulation, save
+schema, `src/sim/` purity, and production asset path are unchanged. Modal semantics and focus
+trapping/restoration are implemented in UX-03; settings coverage is implemented in UX-04 and
+onboarding remains the scoped UX-05 follow-up.
+
+## 2026-08-01 — Rebuild information hierarchy without changing simulation or save rules
+
+UX-02 makes new games and `createNewSave()` start with inventory closed, while preserving explicit
+saved panel state and the current v3/v4 migration default that a missing `inventoryOpen` field stays
+open. The HUD keeps time, the settlement objective, save status, Duckettes, wood, seed capacity,
+selected toolbar, and a concise contextual prompt; inventory renders occupied stacks only. Focused-panel
+priority prevents simultaneous catalog, inventory, Help, Codex, build, context, and market overlays,
+and authored result/benefit, cost, footprint, capacity/ownership, and lock reason are shown before
+purchase or placement. Visible implementation/debug scaffolding (`?legacy`, F12 grid toggle,
+`window.tarn`, Draft title, all-controls hint, and `place/apply/equip` labels) is removed. No
+simulation rule, fixed timestep, seeded RNG, save schema, or migration data is changed; modal
+semantics and focus restoration are implemented in UX-03.
+
+## 2026-08-01 — Make every active overlay a real modal boundary
+
+UX-03 gives launch, pause, Help, Codex, inventory, merchant, build, context, and settlement overlays
+explicit dialog/menu semantics, labels, focus entry, wraparound Tab trapping, Escape behavior, and
+focus restoration. Toasts and purchase messages use nonvisual status regions. Modal transitions clear
+held keyboard state and release active pointer capture so a key or click used to open/close a panel
+cannot leak into the world. The build catalog is a deliberate exception to a blocking scrim: the
+catalog pauses the fixed-step world, but pointer placement still reaches the canvas and commits only
+at its normal fixed-step action boundary. Settlement presentation also pauses until the player
+dismisses it. No save schema, migration, economy, seeded RNG, `src/sim/` rule, or asset path changed;
+settings/scaling/contrast are implemented in UX-04 and onboarding remains UX-05.
+
+## 2026-08-02 — Keep accessibility preferences outside the homestead save
+
+UX-04 stores presentation and device preferences under `tarnation.settings`, never in the v9 save
+schema: bounded master/music/effects/ambience volumes, mute, reduced motion, camera shake, UI/text
+scale, and high-contrast UI. The existing `tarnation.audioMuted` and `tarnation.reducedMotion` keys
+are read as compatibility fallbacks. Settings are applied live through typed audio gain buses and
+the renderer's camera-shake/reduced-motion controls; all four active settings sections have labeled
+controls, visible focus, color-independent state, and 44px minimum control rows. The existing
+conflict-safe input rebinding is available from Settings as well as Help. The day/night schedule
+stays fixed because a partial day-length preference would desynchronize crop growth, raid timing,
+cooldowns, and economy pacing under the fixed timestep. No save field, migration, seeded RNG,
+`src/sim/` rule, or asset path changed. Synthesized audio remains a fallback on the effects bus until
+AUD-01 authors the production music, ambience, and UI buses; onboarding remains UX-05.
+
+## 2026-08-01 — Keep the first ten minutes derived and non-modal
+
+UX-05 adds an authored eight-beat guide in `src/sim/onboarding.ts` for launch/movement, the existing
+starter-plot action transitions, crop protection, market sale, and the first merchant choice. The
+guide consumes the existing starter-plot state plus two runtime-only facts (whether the player has
+moved and whether the merchant has been opened); it is not a second quest system and adds no save
+field, migration, RNG, economy, or fixed-step rule. A compact non-modal HUD card keeps the current
+Save status, settlement objective, Help button, market compass, and pause/Settings route available,
+while launch copy names only the immediate movement control and starter-plot destination. The grow
+beat explicitly explains that foxes raid after dusk and names harvesting or a bear trap as the next
+counter. Existing first-plot prompt copy now receives the active remappable binding labels, keeping
+the lower contextual prompt consistent with the onboarding card without changing any input route.
+The implementation is covered by deterministic transition tests and a documented five-participant
+study protocol. The product owner explicitly waived the study for this release; the protocol remains
+available for future validation and no participant findings are fabricated. UX-05 can therefore
+close on implementation and deterministic/browser evidence, with M8 release verification still
+pending.

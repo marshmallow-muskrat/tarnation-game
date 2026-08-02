@@ -1,4 +1,21 @@
+import {
+  actionIsDown,
+  bindingCodes,
+  cloneInputBindings,
+  DEFAULT_INPUT_BINDINGS,
+  isInputAction,
+  type InputAction,
+  type InputBindings,
+} from './InputBindings';
+
 export type AimPoint = { x: number; z: number };
+
+/** UI controls own their activation keys; the game canvas owns game actions. */
+export function isInteractiveKeyboardTarget(target: EventTarget | null): boolean {
+  const candidate = target as { closest?: (selector: string) => unknown } | null;
+  if (!candidate || typeof candidate.closest !== 'function') return false;
+  return Boolean(candidate.closest('button, a, input, select, textarea, summary, [contenteditable="true"], [role="button"], [role="tab"], [role="menuitem"]'));
+}
 
 /**
  * Keyboard + mouse input. Camera-relative movement is applied by GameRuntime
@@ -13,12 +30,15 @@ export class InputController {
   private rmb = false;
   private lmbPressed = false;
   private rmbPressed = false;
+  private activePointerId: number | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private onGesture: (() => void) | null = null;
   private onFocusChange: ((focused: boolean) => void) | null = null;
+  private bindings: InputBindings;
   private disposed = false;
 
-  constructor() {
+  constructor(bindings: Readonly<InputBindings> = DEFAULT_INPUT_BINDINGS) {
+    this.bindings = cloneInputBindings(bindings);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
@@ -27,6 +47,7 @@ export class InputController {
 
   attach(canvas: HTMLCanvasElement): void {
     this.canvas = canvas;
+    canvas.focus({ preventScroll: true });
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerCancel);
@@ -40,6 +61,14 @@ export class InputController {
 
   setFocusHandler(handler: ((focused: boolean) => void) | null): void {
     this.onFocusChange = handler;
+  }
+
+  setBindings(bindings: Readonly<InputBindings>): void {
+    this.bindings = cloneInputBindings(bindings);
+  }
+
+  getBindings(): Readonly<InputBindings> {
+    return this.bindings;
   }
 
   dispose(): void {
@@ -56,15 +85,24 @@ export class InputController {
       this.canvas.removeEventListener('pointermove', this.onPointerMove);
       this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     }
+    this.clearInteractionState();
     this.canvas = null;
+    this.onGesture = null;
+    this.onFocusChange = null;
+  }
+
+  /** Clear held keyboard/pointer state when a modal or focus boundary takes over. */
+  clearInteractionState(): void {
+    if (this.canvas && this.activePointerId !== null && this.canvas.hasPointerCapture(this.activePointerId)) {
+      this.canvas.releasePointerCapture(this.activePointerId);
+    }
+    this.activePointerId = null;
     this.held.clear();
     this.pressed.clear();
     this.lmb = false;
     this.rmb = false;
     this.lmbPressed = false;
     this.rmbPressed = false;
-    this.onGesture = null;
-    this.onFocusChange = null;
   }
 
   /** Call once per frame after consuming JustPressed flags. */
@@ -78,10 +116,10 @@ export class InputController {
   getMoveStick(): { x: number; y: number } {
     let x = 0;
     let y = 0;
-    if (this.held.has('KeyA') || this.held.has('ArrowLeft')) x -= 1;
-    if (this.held.has('KeyD') || this.held.has('ArrowRight')) x += 1;
-    if (this.held.has('KeyW') || this.held.has('ArrowUp')) y += 1;
-    if (this.held.has('KeyS') || this.held.has('ArrowDown')) y -= 1;
+    if (actionIsDown(this.held, this.bindings, 'moveLeft')) x -= 1;
+    if (actionIsDown(this.held, this.bindings, 'moveRight')) x += 1;
+    if (actionIsDown(this.held, this.bindings, 'moveUp')) y += 1;
+    if (actionIsDown(this.held, this.bindings, 'moveDown')) y -= 1;
     const len = Math.hypot(x, y);
     if (len > 1e-6) {
       x /= len;
@@ -90,12 +128,14 @@ export class InputController {
     return { x, y };
   }
 
-  justPressed(code: string): boolean {
-    return this.pressed.has(code);
+  justPressed(action: InputAction): boolean {
+    return bindingCodes(this.bindings, action).some((code) => this.pressed.has(code));
   }
 
-  isDown(code: string): boolean {
-    return this.held.has(code);
+  isDown(actionOrCode: InputAction | string): boolean {
+    return isInputAction(actionOrCode)
+      ? actionIsDown(this.held, this.bindings, actionOrCode)
+      : this.held.has(actionOrCode);
   }
 
   consumeLmb(): boolean {
@@ -105,7 +145,7 @@ export class InputController {
   }
 
   consumeRmb(): boolean {
-    const v = this.rmbPressed || this.pressed.has('Space');
+    const v = this.rmbPressed;
     this.rmbPressed = false;
     return v;
   }
@@ -119,6 +159,7 @@ export class InputController {
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
+    if (isInteractiveKeyboardTarget(e.target)) return;
     this.onGesture?.();
     if (!this.held.has(e.code)) this.pressed.add(e.code);
     this.held.add(e.code);
@@ -130,12 +171,7 @@ export class InputController {
   };
 
   private onBlur = (): void => {
-    this.held.clear();
-    this.pressed.clear();
-    this.lmb = false;
-    this.rmb = false;
-    this.lmbPressed = false;
-    this.rmbPressed = false;
+    this.clearInteractionState();
     this.onFocusChange?.(false);
   };
 
@@ -147,6 +183,8 @@ export class InputController {
 
   private onPointerDown = (e: PointerEvent): void => {
     this.onGesture?.();
+    this.canvas?.focus({ preventScroll: true });
+    this.activePointerId = e.pointerId;
     this.updatePointer(e);
     if (e.button === 0) {
       this.lmb = true;
@@ -161,11 +199,13 @@ export class InputController {
   private onPointerUp = (e: PointerEvent): void => {
     if (e.button === 0) this.lmb = false;
     if (e.button === 2) this.rmb = false;
+    if (this.activePointerId === e.pointerId) this.activePointerId = null;
   };
 
-  private onPointerCancel = (): void => {
+  private onPointerCancel = (e: PointerEvent): void => {
     this.lmb = false;
     this.rmb = false;
+    if (this.activePointerId === e.pointerId) this.activePointerId = null;
   };
 
   private onPointerMove = (e: PointerEvent): void => {

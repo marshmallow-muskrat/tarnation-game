@@ -737,7 +737,7 @@ export function createNewSave(seed: number): SaveData {
     bucketFill: 0,
     selectedCrop: 'beet',
     inventory: createInventory(),
-    inventoryOpen: true,
+    inventoryOpen: false,
     duckettes: 0,
     choppedTrees: {},
     clearedStumps: {},

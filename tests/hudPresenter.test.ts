@@ -8,6 +8,8 @@ import {
   type HudPresenterContext,
   type HudSnapshot,
 } from '../src/game/HudPresenter';
+import { DEFAULT_INPUT_BINDINGS } from '../src/game/InputBindings';
+import { DEFAULT_GAME_SETTINGS } from '../src/game/Settings';
 
 function makeContext(state = createGameState(123)): HudPresenterContext {
   return {
@@ -17,6 +19,9 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
     selectedBuildIndex: 0,
     placement: () => ({ valid: false, reason: 'Open build mode to preview a structure' }),
     helpOpen: false,
+    settingsOpen: false,
+    settings: DEFAULT_GAME_SETTINGS,
+    bindings: DEFAULT_INPUT_BINDINGS,
     codexOpen: false,
     codexSelectedKey: null,
     codexCompareKeys: [],
@@ -42,7 +47,6 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
 describe('HUD presenter', () => {
   it('maps fresh game state to the existing player-facing toolbar, inventory, build, and vendor contract', () => {
     const state = createGameState(123);
-    state.inventoryOpen = false;
     state.duckettes = 9;
     const context = makeContext(state);
     let received: HudSnapshot | null = null;
@@ -60,18 +64,28 @@ describe('HUD presenter', () => {
       hint: 'Click to work',
       inventoryOpen: false,
       duckettes: 9,
+      wood: 0,
       save: { state: 'saved', message: 'Saved' },
     });
     expect(received!.inventory).toHaveLength(24);
     expect(received!.seedStorage).toEqual({ used: 5, capacity: 24 });
     expect(received!.toolbar.map((slot) => slot.name)).toEqual(['Brown Shotgun', 'Shovel', 'Red Axe']);
+    expect(received!.bindings.find((binding) => binding.action === 'primary')).toMatchObject({
+      label: 'Primary action · work, place, or demolish',
+      display: 'Enter',
+    });
     expect(received!.toolbar[0]!.selected).toBe(true);
     expect(received!.build.options.map((option) => option.name)).toEqual([
       'Fence Section',
       'Fence Section 2',
       'Field Gate',
     ]);
+    expect(received!.build.options[0]).toMatchObject({
+      description: 'A four-tile field boundary section.',
+      footprint: '4×1',
+    });
     expect(received!.vendor.tabs).toEqual(['Housing', 'Buildings', 'Upgrades']);
+    expect(received!.vendor.items[0]).toMatchObject({ kind: 'Permit' });
     expect(received!.codex.entries).toHaveLength(5);
     expect(received!.codex.entries.every((entry) => entry.kind === 'discovered')).toBe(true);
   });
@@ -191,5 +205,41 @@ describe('HUD presenter', () => {
     ]);
     expect(received!.codex.status).toContain('Grass selected');
     expect(received!.codex.entries.find((entry) => entry.key === 'known:Grass|grass|0|none')?.compareSelected).toBe(true);
+  });
+
+  it('publishes remapped controls so player-facing prompts can stay synchronized', () => {
+    const context = makeContext();
+    context.bindings = { ...DEFAULT_INPUT_BINDINGS, primary: 'KeyL' };
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.bindings.find((binding) => binding.action === 'primary')?.display).toBe('L');
+  });
+
+  it('passes the transient first-steps guide through without making it save state', () => {
+    const context = makeContext();
+    context.onboarding = {
+      id: 'movement',
+      step: 1,
+      total: 8,
+      title: 'Get your bearings',
+      instruction: 'Move to the highlighted starter plot.',
+      nextGoal: 'Next · work one tile.',
+    };
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.onboarding).toEqual(context.onboarding);
+    expect(Object.keys(createGameState(123))).not.toContain('onboarding');
   });
 });

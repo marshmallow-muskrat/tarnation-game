@@ -73,7 +73,7 @@ export const FOX_ROLE_PROFILES: Readonly<Record<FoxType, FoxRoleProfile>> = {
     speed: FOX_SPEED * 0.86,
     movementRule: 'deliberate',
     targetPreference: 'structure',
-    telegraph: 'testing a gate, trap, or trench',
+    telegraph: 'checking a gate, trap, or trench',
     counter: 'keep the gate shut or catch it in a bear trap',
     audioCue: 'build',
   },

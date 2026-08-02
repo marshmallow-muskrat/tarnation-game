@@ -15,8 +15,8 @@ existing loop.
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
-baseline. `window.tarn`
-exposes the runtime for browser debugging.
+baseline. The production page exposes no runtime debug handle; use deterministic tests and local
+development tooling for inspection.
 
 ## 2. Current implementation
 
@@ -64,11 +64,11 @@ exposes the runtime for browser debugging.
 ## 4. Current quality work
 
 The completed vendor/deed sequence is preserved as
-[`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The runtime
-exposes local-only economy metrics through `window.tarnation.debug().economy()`, including four-way
-attempted/rejected/cancelled/completed outcome counts and first-completion game times for planting,
-harvest, sale, purchase, building, fox defense, and the settlement goal. The 2026-08-01 audit found
-that the vendor/deed foundation exists, but the
+[`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The former
+local-only economy metrics console handle was removed in UX-02; economy behavior remains covered by
+deterministic diagnostics and tests, including four-way attempted/rejected/cancelled/completed
+outcome counts and first-completion game times for planting, harvest, sale, purchase, building, fox
+defense, and the settlement goal. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
@@ -89,7 +89,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  the next dependency-ready milestone is M7 Presentation.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is a release
+  candidate on `agent/m8-release`. UX-01 through UX-05 are complete on the integration branch.
+  The product owner explicitly waived UX-05's five-person external study for this release; the
+  `main` workflow and live smoke verification remain pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -112,7 +115,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
-  ART-05 is integrated; the M7 production release and live evidence remain pending.
+  ART-05 is integrated; the M7 production release and live evidence are recorded below.
 
 - ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
   obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
@@ -152,10 +155,78 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   deterministic baseline is 284 tests across 41 files. `npm run test`, `npm run test:ci`, `npm run check`,
   `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`, and
   `npm audit --omit=dev` pass. Local visual smoke reached Day 1/daylight with HUD, player, homestead,
-  grounded shadows, and controls visible; no console warnings or errors were observed. The existing
-  Help copy still exposes legacy `?legacy` and F12 grid-debug instructions, which remains deferred to
-  the later UX/presentation cleanup rather than being changed in ART-05. The deployment workflow
-  already runs `npm run test:ci` before asset validation and build.
+  grounded shadows, and controls visible; no console warnings or errors were observed. UX-01 later
+  removes the legacy `?legacy` and F12 grid-debug copy from the player-facing Help panel; the hidden
+  developer-only runtime paths remain deferred to UX-02's full scaffolding cleanup. The deployment
+  workflow already runs `npm run test:ci` before asset validation and build.
+
+- M7 Presentation is released as PR #50 merge `76b9efd` after the integrated 284-test suite, simulation
+  checks, asset validation, production build, strict unused-symbol TypeScript, diff check, and production
+  audit passed. Automatic workflow [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
+  verified the exact merge SHA and deployed <https://tarnation.pages.dev/>. Fresh production smoke passed
+  Continue, Day 1/daylight, Saved status, the visible settlement objective, starter defense controls,
+  and Help modal open/close; no console warnings or errors were observed. UX-01 is now complete on
+  `agent/ux-01-input-contract`: the typed remappable keyboard contract, deterministic conflict swap,
+  safe malformed-settings fallback, non-pointer world/inventory routes, synchronized HUD labels, and
+  explicit inventory use/delete controls are covered by 293 deterministic tests across 42 files.
+  The exact production-preview smoke reached Day 1/daylight, opened Help and its remapping controls,
+  and recorded no console warnings or errors. The deployment workflow already runs `npm run test:ci`
+  before asset validation and build.
+
+- UX-02 is complete on `agent/ux-02-information-hierarchy`. The deterministic baseline is 294 tests
+  across 42 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the
+  production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
+  pass. Production-preview smoke reached Day 1/daylight, showed the persistent resource/objective HUD,
+  empty occupied-only inventory, focused Help/inventory panels with no simultaneous overlays, title
+  `Tarnation`, and no console warnings/errors. The deployment workflow already runs `npm run test:ci`
+  before asset validation and build. Legacy v3/v4 saves without panel state intentionally retain an
+  open inventory for compatibility; UX-05's five-person study is explicitly waived for this release.
+
+- UX-02 closes fresh inventory while preserving explicit saved panel state and the legacy v3/v4
+  missing-field open default for compatibility. It renders occupied inventory stacks only, makes
+  catalog results/cost/footprint/lock/capacity explicit, and enforces one focused panel at a time.
+  The visible `?legacy`, F12 grid toggle, and `window.tarn` runtime paths are removed. Settings and
+  scaling/contrast are complete in UX-04; the authored onboarding guide is implemented in UX-05 and its five-person study is explicitly waived for this release.
+  Alternate arrow, T, comma/period, and numpad bindings remain reserved for their current actions so
+  remapping cannot create duplicate routes; this is the explicit UX-01 conflict policy. The first-ten-
+  minutes onboarding study is tracked in [`docs/ux-05-first-ten-minutes-study.md`](docs/ux-05-first-ten-minutes-study.md).
+
+- UX-03 is complete on `agent/ux-03-modal-accessibility`. Launch, pause, Help, Codex, inventory,
+  merchant, build, context, and settlement overlays now use labeled dialog/menu semantics with
+  deterministic focus entry, wraparound trapping, Escape close behavior, and opener restoration.
+  Toasts and vendor messages expose status text; modal transitions clear held keyboard/pointer state;
+  and build mode pauses the world while preserving a single fixed-step placement commit boundary.
+  Settlement presentation now pauses until dismissal. The deterministic baseline is 299 tests across
+  43 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production
+  build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass.
+  Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics, and
+  no browser warnings/errors. UX-04 is now complete; UX-05's five-person study is explicitly waived for this release.
+
+- UX-04 is complete on agent/ux-04-settings-accessibility. The pausing Settings dialog stores
+  typed browser preferences outside the save schema: master/music/effects/ambience levels, mute,
+  reduced motion, independent camera shake, UI/text scale, high-contrast UI, and the existing
+  conflict-safe keyboard rebinding/reset contract. Audio gains are applied at the master and typed
+  music/effects/ambience buses; the current synthesized fallback has no authored music or ambience
+  source and remains on effects until AUD-01. Day/night pacing remains fixed because it is coupled
+  to crop growth, raids, cooldowns, and the economy. The deterministic baseline is 303 tests across
+  44 files. npm run test, npm run test:ci, npm run check, npm run assetcheck, the production build,
+  strict unused-symbol TypeScript, git diff --check, and npm audit --omit=dev pass. Production-preview
+  smoke verified the labeled Settings dialog, focus trap/restoration, scale and contrast controls,
+  and no browser warnings/errors. UX-05's implementation is ready for M8 release; its five-person study is explicitly waived for this release.
+
+- UX-05 authors the first ten minutes as a derived, non-saved eight-beat guide: launch copy and
+  immediate movement, starter-plot shovel/plant/water/grow/harvest transitions with active-binding
+  prompt copy, early fox-risk
+  guidance, market sale, merchant next-goal, Save status, and concise Help/Settings discovery.
+  The guide ends after the first merchant visit and never adds quest fields to the save schema. The
+  deterministic baseline is now 315 tests across 45 files. `npm run test`, `npm run test:ci`,
+  `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` pass. Production-preview smoke reached fresh Day 1/
+  daylight, showed the non-modal First steps card and Saved status, opened Help, and reached Settings
+  through the pause menu with no browser warnings/errors. The five-person external study is explicitly
+  waived for this release; its protocol remains documented for future validation. UX-05 is complete
+  and M8 release evidence is pending. The M8 release candidate contains no production gameplay
+  changes beyond the reviewed UX-01–05 integration and is awaiting the normal `main` workflow.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
@@ -165,7 +236,7 @@ The characterization baseline intentionally preserves current behavior for later
   the market stall, caravan, barrel, haystack, or bucket, so the authored props remain the source of
   truth. The current held-tool GLBs have no embedded grip/support marker nodes, so the typed
   equipment profiles remain the honest marker source; hardcoded tool-icon framing and broader
-  presentation cleanup remain later M7 work.
+  presentation cleanup remains later UX cleanup.
 - Before ART-03, the actor obstacle set excluded water and ambient animals selected unconstrained
   headings, so fox routes/flee exits and friendly wildlife could cross water or physical structures.
   This was a genuine collision-policy defect and is now corrected without adding a save field. Soft
@@ -561,12 +632,19 @@ Deployment record:
   passed simulation checks, the 223-test deterministic suite in both local and CI-style modes, asset
   validation, production build, and automatic deployment. Live smoke passed Continue, Day 1/daylight,
   Saved status, the visible four-pillar settlement objective, starter controls, and no console
-  warnings or errors. The current production title remains `Tarnation — Draft 0.3`; the removed
-  `Draft Complete` text is no longer presented as the player-facing ending.
+  warnings or errors. At that release the production title remained `Tarnation — Draft 0.3`; the later
+  UX-02 branch removes the scaffolding suffix. The removed `Draft Complete` text is no longer presented
+  as the player-facing ending.
 - `2cce059` — M6 defense: FOX-01–04 — <https://tarnation.pages.dev/>; GitHub Actions run
   [30737391871](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30737391871)
   passed simulation checks, the deterministic 241-test suite in both local and CI-style modes, asset
   validation, production build, and automatic deployment. Live smoke passed fresh New Adventure,
   Day 1/daylight HUD launch, Saved status, settlement objective, Help modal, and visible Q/B/weapon
   defense controls with no console errors or warnings. Existing legacy/F12 debug copy in the Help
-  modal remains a documented later presentation/UX follow-up.
+  modal remained a documented later presentation/UX follow-up at that release.
+- `76b9efd` — M7 presentation: ART-01–05 — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
+  verified the exact merge commit, ran simulation checks, the 284-test deterministic suite, asset
+  validation, and production build, then deployed automatically. Fresh production smoke passed
+  Continue, Day 1/daylight, Saved status, settlement objective, starter defense controls, and Help
+  modal open/close with no console warnings or errors.

@@ -51,6 +51,7 @@ export class WorldRenderer {
   private targetZoom = 1;
   private zoom = 1;
   private reducedMotion = false;
+  private cameraShakeEnabled = true;
 
   private hemisphere!: THREE.HemisphereLight;
   private keyLight!: THREE.DirectionalLight;
@@ -72,10 +73,6 @@ export class WorldRenderer {
   private buildPreviewKey: ModelKey | null = null;
   private buildPreviewFootprint: THREE.Mesh | null = null;
   private buildPreviewFootprintSize = '';
-  private debugGridGroup: THREE.Group | null = null;
-  private debugGridMaterials: THREE.Material[] = [];
-  private debugGridGeometries: THREE.BufferGeometry[] = [];
-  private debugGridTextures: THREE.Texture[] = [];
   private buildPreviewMaterials: { material: THREE.Material; color: THREE.Color | null }[] = [];
 
   private terrain!: TerrainSystem;
@@ -755,7 +752,7 @@ export class WorldRenderer {
   }
 
   shake(duration: number, amplitude: number): void {
-    if (this.reducedMotion) {
+    if (this.reducedMotion || !this.cameraShakeEnabled) {
       this.shakeTime = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);
@@ -779,99 +776,13 @@ export class WorldRenderer {
     }
   }
 
-  /** Debug-only grid and coordinate labels. The normal scene never creates these. */
-  setGridDebug(enabled: boolean): void {
-    if (this.debugGridGroup) {
-      this.debugGridGroup.removeFromParent();
-      for (const material of this.debugGridMaterials) material.dispose();
-      for (const geometry of this.debugGridGeometries) geometry.dispose();
-      for (const texture of this.debugGridTextures) texture.dispose();
-      this.debugGridMaterials = [];
-      this.debugGridGeometries = [];
-      this.debugGridTextures = [];
-      this.debugGridGroup = null;
+  setCameraShakeEnabled(enabled: boolean): void {
+    this.cameraShakeEnabled = enabled;
+    if (!enabled) {
+      this.shakeTime = 0;
+      this.shakeAmp = 0;
+      this.shakeOffset.set(0, 0, 0);
     }
-    if (!enabled) return;
-
-    const group = new THREE.Group();
-    group.name = 'debug_grid_f12';
-    const positions: number[] = [];
-    for (let i = 0; i <= WORLD_SIZE; i++) {
-      positions.push(i, 0.08, 0, i, 0.08, WORLD_SIZE);
-      positions.push(0, 0.08, i, WORLD_SIZE, 0.08, i);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    const material = new THREE.LineBasicMaterial({
-      color: 0xf7e39a,
-      transparent: true,
-      opacity: 0.25,
-      depthTest: false,
-      depthWrite: false,
-      toneMapped: false,
-    });
-    const lines = new THREE.LineSegments(geometry, material);
-    lines.renderOrder = 20;
-    group.add(lines);
-    this.debugGridMaterials.push(material);
-    this.debugGridGeometries.push(geometry);
-
-    // One texture plane carries a tiny coordinate pair in every tile. This
-    // keeps F12 at one extra draw call instead of creating 57,600 DOM or
-    // Sprite objects, while still making the requested A-00/B-00 sequence
-    // inspectable on both axes.
-    const labelCanvas = document.createElement('canvas');
-    const labelSize = 4096;
-    labelCanvas.width = labelSize;
-    labelCanvas.height = labelSize;
-    const ctx = labelCanvas.getContext('2d');
-    if (ctx) {
-      const cell = labelSize / WORLD_SIZE;
-      ctx.clearRect(0, 0, labelSize, labelSize);
-      ctx.font = 'bold 7px monospace';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      for (let ty = 0; ty < WORLD_SIZE; ty++) {
-        for (let tx = 0; tx < WORLD_SIZE; tx++) {
-          const x = (tx + 0.5) * cell;
-          const y = (ty + 0.5) * cell;
-          ctx.fillStyle = 'rgba(12, 24, 17, 0.48)';
-          ctx.fillRect(tx * cell, ty * cell, cell, cell);
-          ctx.fillStyle = 'rgba(255, 235, 161, 0.86)';
-          ctx.fillText(this.gridLabel(tx), x, y - 3.3);
-          ctx.fillStyle = 'rgba(179, 231, 214, 0.72)';
-          ctx.fillText(this.gridLabel(ty), x, y + 3.3);
-        }
-      }
-    }
-    const labelTexture = new THREE.CanvasTexture(labelCanvas);
-    labelTexture.colorSpace = THREE.SRGBColorSpace;
-    labelTexture.magFilter = THREE.LinearFilter;
-    labelTexture.minFilter = THREE.LinearFilter;
-    const labelMaterial = new THREE.MeshBasicMaterial({
-      map: labelTexture,
-      transparent: true,
-      opacity: 0.9,
-      depthTest: false,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      toneMapped: false,
-    });
-    const labelPlane = new THREE.Mesh(new THREE.PlaneGeometry(WORLD_SIZE, WORLD_SIZE), labelMaterial);
-    labelPlane.rotation.x = -Math.PI / 2;
-    labelPlane.position.set(WORLD_SIZE / 2, 0.16, WORLD_SIZE / 2);
-    labelPlane.renderOrder = 21;
-    group.add(labelPlane);
-    this.debugGridMaterials.push(labelMaterial);
-    this.debugGridGeometries.push(labelPlane.geometry);
-    this.debugGridTextures.push(labelTexture);
-    this.debugGridGroup = group;
-    this.overworldRoot.add(group);
-  }
-
-  private gridLabel(index: number): string {
-    const block = String.fromCharCode(65 + Math.floor(index / 100));
-    return `${block}-${String(index % 100).padStart(2, '0')}`;
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {
@@ -948,7 +859,6 @@ export class WorldRenderer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.setGridDebug(false);
     this.removeBuildPreview();
     this.farmTrees?.dispose();
     this.scatter.dispose();

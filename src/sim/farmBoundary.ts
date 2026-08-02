@@ -58,6 +58,22 @@ export function isHomesteadFootprintTile(tx: number, ty: number): boolean {
 
 export type FirstPlotStage = 'till' | 'plant' | 'water' | 'grow' | 'harvest' | 'sell' | 'complete';
 
+export type FirstPlotControls = {
+  shovel: string;
+  bucket: string;
+  previousSeed: string;
+  nextSeed: string;
+  primary: string;
+};
+
+const DEFAULT_FIRST_PLOT_CONTROLS: FirstPlotControls = {
+  shovel: '2',
+  bucket: '6',
+  previousSeed: '[',
+  nextSeed: ']',
+  primary: 'Enter',
+};
+
 /**
  * Derive the short first-plot prompt from existing tile and progression state.
  * This is intentionally not saved: the guide is onboarding, not a second quest system.
@@ -98,18 +114,22 @@ export function firstPlotStage(
   return 'till';
 }
 
-export function firstPlotHint(stage: FirstPlotStage, seedName = 'a seed'): string {
+export function firstPlotHint(
+  stage: FirstPlotStage,
+  seedName = 'a seed',
+  controls = DEFAULT_FIRST_PLOT_CONTROLS,
+): string {
   switch (stage) {
     case 'till':
-      return 'First plot · move with WASD, choose 2 shovel, then till a highlighted tile';
+      return `First plot · move with WASD, choose ${controls.shovel} shovel, then ${controls.primary} or click to till a highlighted tile`;
     case 'plant':
-      return `First plot · select ${seedName} with [ ] and click the tilled plot`;
+      return `First plot · select ${seedName} with ${controls.previousSeed} ${controls.nextSeed}, then ${controls.primary} or click the tilled plot`;
     case 'water':
-      return 'First plot · use 6 bucket at water, then water the thirsty crop';
+      return `First plot · use ${controls.bucket} bucket at water, then ${controls.primary} or click to water the thirsty crop`;
     case 'grow':
       return 'First plot · the crop is growing — protect it, then harvest when ready';
     case 'harvest':
-      return 'First plot · choose 2 shovel and click the mature crop';
+      return `First plot · choose ${controls.shovel} shovel and ${controls.primary} or click the mature crop`;
     case 'sell':
       return 'First plot · take the harvest to the Market stall and sell it';
     case 'complete':

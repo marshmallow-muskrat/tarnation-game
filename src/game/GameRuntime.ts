@@ -151,7 +151,29 @@ import {
   type ModelKey,
 } from './Assets';
 import { AudioFeedback } from './AudioFeedback';
+import {
+  DEFAULT_GAME_SETTINGS,
+  parseGameSettings,
+  resetGameSettings,
+  serializeGameSettings,
+  SETTINGS_STORAGE_KEY,
+  updateGameSetting,
+  type GameSettingKey,
+  type GameSettingValue,
+  type GameSettings,
+} from './Settings';
 import { InputController } from './InputController';
+import {
+  formatBinding,
+  formatKeyCode,
+  INPUT_BINDING_DEFINITIONS,
+  INPUT_BINDINGS_STORAGE_KEY,
+  parseInputBindings,
+  rebindInput as rebindInputBinding,
+  resetInputBindings,
+  serializeInputBindings,
+  type InputAction,
+} from './InputBindings';
 import {
   ActionStateMachine,
   DEFAULT_INTERACT_ACTION_TIMING,
@@ -192,7 +214,7 @@ import {
 } from './ToolInteraction';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
-import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
+import { RuntimeMetrics } from './RuntimeMetrics';
 import { FeedbackEffectPool } from './FeedbackEffects';
 import { HudPresenter, TOOLBAR, type HudContextMenu, type HudPopup, type HudSnapshot } from './HudPresenter';
 import {
@@ -235,6 +257,7 @@ import {
   isHomesteadFootprintTile,
   isFarmableTile,
 } from '../sim/farmBoundary';
+import { firstTenMinuteGuide } from '../sim/onboarding';
 
 type Shot = {
   root: THREE.Object3D;
@@ -368,6 +391,13 @@ const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as con
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {
+    const settings = parseGameSettings(localStorage.getItem(SETTINGS_STORAGE_KEY));
+    if (!settings.muted && localStorage.getItem('tarnation.audioMuted') === '1') settings.muted = true;
+    if (!settings.reducedMotion && localStorage.getItem('tarnation.reducedMotion') === '1') settings.reducedMotion = true;
+    this.settings = settings;
+    this.audio.setVolumes(settings);
+    this.audio.setMuted(settings.muted);
+    this.input.setBindings(parseInputBindings(localStorage.getItem(INPUT_BINDINGS_STORAGE_KEY)));
     this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
   }
 
@@ -434,7 +464,8 @@ export class GameRuntime {
   private codexSelectedKey: string | null = null;
   private codexCompareKeys: string[] = [];
   private reducedMotion = false;
-  private debugGrid = false;
+  private settings: GameSettings = { ...DEFAULT_GAME_SETTINGS };
+  private settingsOpen = false;
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
   private vendorMessage = '';
@@ -474,6 +505,9 @@ export class GameRuntime {
   private merchantZ = CENTRAL_CAMP.merchantZ;
   private nearMerchant = false;
   private firstPlotGuideActive = false;
+  /** Runtime-only onboarding facts; never persisted as a second quest state. */
+  private firstTenMinuteMovementStarted = false;
+  private firstTenMinuteMerchantSeen = false;
   private raidWarningDay = -1;
   private fixtureRoots: RenderedRoot[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
@@ -546,8 +580,7 @@ export class GameRuntime {
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
     this.world = new WorldRenderer(canvas);
     this.feedbackEffects = new FeedbackEffectPool();
-    this.reducedMotion = localStorage.getItem('tarnation.reducedMotion') === '1';
-    this.world.setReducedMotion(this.reducedMotion);
+    this.applyPresentationSettings();
     initAssetLoaders(this.world.renderer);
     await preloadGroup('boot', options.onAssetProgress);
     await preloadGroup('first_play', options.onAssetProgress);
@@ -569,10 +602,13 @@ export class GameRuntime {
       this.gs = loaded.state;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
+    this.firstTenMinuteMovementStarted = false;
+    this.firstTenMinuteMerchantSeen = false;
     this.winShownLocal = false;
     this.settlementCelebrated = false;
     this.raidWarningDay = -1;
     this.codexOpen = false;
+    this.settingsOpen = false;
     this.codexCompareKeys = [];
     this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
     this.world.setStarterPlotVisible(this.firstPlotGuideActive);
@@ -625,8 +661,6 @@ export class GameRuntime {
     this.pushHud(true);
     this.loadBackgroundAssets(options.onAssetProgress);
 
-    // Dev handle: lets the browser console drive the game for spot checks.
-    (window as unknown as { tarnation?: GameRuntime }).tarnation = this;
   }
 
   private loadBackgroundAssets(onProgress?: (progress: AssetLoadProgress) => void): void {
@@ -713,14 +747,13 @@ export class GameRuntime {
     this.persist();
     this.hudPresenter.setListener(null);
     this.world?.dispose();
-    const handles = window as unknown as {
-      tarnation?: GameRuntime;
-    };
-    if (handles.tarnation === this) delete handles.tarnation;
   }
 
   dismissWin(): void {
     this.winShownLocal = true;
+    this.pauseOpen = false;
+    this.clearInputState();
+    this.syncActionMenuState();
     markWinShown(this.gs);
     this.persist();
     this.pushHud(true);
@@ -1098,15 +1131,28 @@ export class GameRuntime {
   }
 
   toggleBuildMode(): void {
-    if (!this.buildingMode && !this.legacyBuildEnabled() && !this.nearMerchant && !this.placement.activeDeedAssetId) {
+    if (!this.buildingMode && !this.nearMerchant && !this.placement.activeDeedAssetId) {
       setToast(this.gs, 'Visit the Traveling Merchant to buy building deeds', 2);
       return;
     }
-    if (!this.buildingMode && !this.legacyBuildEnabled() && this.nearMerchant && !this.placement.activeDeedAssetId) {
+    if (!this.buildingMode && this.nearMerchant && !this.placement.activeDeedAssetId) {
       this.openVendor();
       return;
     }
-    this.buildingMode = !this.buildingMode;
+    const opening = !this.buildingMode;
+    if (opening) {
+      this.helpOpen = false;
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.gs.inventoryOpen = false;
+      this.demolishMode = false;
+      this.resetContextMenuState();
+    }
+    this.buildingMode = opening;
+    this.clearInputState();
+    this.syncActionMenuState();
     this.toolMode = 'farm';
     this.cancelPlayerActions();
     this.clearShots();
@@ -1115,7 +1161,7 @@ export class GameRuntime {
     setToast(
       this.gs,
       this.buildingMode
-        ? `Build mode · choose a structure, then click clear ground`
+        ? `Build mode · choose a structure, then click or use ${this.inputLabel('primary')} on clear ground`
         : 'Build mode off',
       1.6,
     );
@@ -1124,16 +1170,34 @@ export class GameRuntime {
 
   selectBuild(index: number): void {
     if (!this.placement.select(index)) return;
-    if (!this.buildingMode) this.buildingMode = true;
+    if (!this.buildingMode) {
+      this.buildingMode = true;
+      this.clearInputState();
+      this.syncActionMenuState();
+    }
     this.toolMode = 'farm';
     setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[index]!.name}`, 1.2);
     this.pushHud(true);
   }
 
   toggleHelp(): void {
-    if (!this.helpOpen) this.codexOpen = false;
-    this.helpOpen = !this.helpOpen;
-    if (this.helpOpen) {
+    const opening = !this.helpOpen;
+    if (opening) {
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.buildingMode = false;
+      this.placement.clear();
+      this.demolishMode = false;
+      this.gs.inventoryOpen = false;
+      this.resetContextMenuState();
+      this.cancelPlayerActions();
+      this.clearShots();
+    }
+    this.helpOpen = opening;
+    this.clearInputState();
+    if (opening) {
       this.velX = 0;
       this.velZ = 0;
     }
@@ -1144,6 +1208,7 @@ export class GameRuntime {
   toggleCodex(): void {
     if (this.codexOpen) {
       this.codexOpen = false;
+      this.clearInputState();
       this.syncActionMenuState();
       this.pushHud(true);
       return;
@@ -1167,6 +1232,7 @@ export class GameRuntime {
       this.codexSelectedKey = first?.key ?? null;
     }
     this.codexCompareKeys = [];
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1194,14 +1260,111 @@ export class GameRuntime {
   }
 
   toggleInventory(): void {
-    if (!this.gs.inventoryOpen) this.codexOpen = false;
-    this.gs.inventoryOpen = !this.gs.inventoryOpen;
+    const opening = !this.gs.inventoryOpen;
+    if (opening) {
+      this.helpOpen = false;
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.buildingMode = false;
+      this.placement.clear();
+      this.demolishMode = false;
+      this.resetContextMenuState();
+      this.cancelPlayerActions();
+      this.clearShots();
+      this.velX = 0;
+      this.velZ = 0;
+    }
+    this.gs.inventoryOpen = opening;
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
 
-  private legacyBuildEnabled(): boolean {
-    return new URLSearchParams(window.location.search).has('legacy');
+  toggleSettings(): void {
+    if (this.settingsOpen) {
+      this.settingsOpen = false;
+      this.clearInputState();
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
+
+    this.pauseOpen = true;
+    this.settingsOpen = true;
+    this.helpOpen = false;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
+    this.vendorOpen = false;
+    this.vendorMessage = '';
+    this.buildingMode = false;
+    this.placement.clear();
+    this.world.setBuildPreview(null);
+    this.demolishMode = false;
+    this.gs.inventoryOpen = false;
+    this.resetContextMenuState();
+    this.cancelPlayerActions();
+    this.clearShots();
+    this.velX = 0;
+    this.velZ = 0;
+    this.clearInputState();
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  updateSetting(key: GameSettingKey, value: GameSettingValue): void {
+    const next = updateGameSetting(this.settings, key, value);
+    this.settings = next;
+    this.applyPresentationSettings();
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, serializeGameSettings(next));
+    } catch {
+      // Device preferences are optional; the current session remains usable.
+    }
+    this.pushHud(true);
+  }
+
+  resetSettings(): void {
+    this.settings = resetGameSettings();
+    this.applyPresentationSettings();
+    try {
+      localStorage.setItem(SETTINGS_STORAGE_KEY, serializeGameSettings(this.settings));
+    } catch {
+      // Device preferences are optional.
+    }
+    this.setToastForSettings('Settings restored to defaults');
+    this.pushHud(true);
+  }
+
+  rebindInput(action: InputAction, code: string): void {
+    const result = rebindInputBinding(this.input.getBindings(), action, code);
+    if (!result.ok) {
+      setToast(this.gs, result.reason, 2.2);
+      this.pushHud(true);
+      return;
+    }
+    this.input.setBindings(result.bindings);
+    localStorage.setItem(INPUT_BINDINGS_STORAGE_KEY, serializeInputBindings(result.bindings));
+    const label = INPUT_BINDING_DEFINITIONS.find((definition) => definition.action === action)?.label ?? action;
+    const summary = result.swappedWith
+      ? `${label} → ${formatKeyCode(result.bindings[action])} · another action moved to ${formatKeyCode(result.bindings[result.swappedWith])}`
+      : `${label} → ${formatKeyCode(result.bindings[action])}`;
+    setToast(this.gs, `Control remapped · ${summary}`, 2.4);
+    this.pushHud(true);
+  }
+
+  resetInputBindings(): void {
+    const defaults = resetInputBindings();
+    this.input.setBindings(defaults);
+    localStorage.setItem(INPUT_BINDINGS_STORAGE_KEY, serializeInputBindings(defaults));
+    setToast(this.gs, 'Keyboard controls restored to defaults', 2);
+    this.pushHud(true);
+  }
+
+  private setToastForSettings(message: string): void {
+    if (!this.gs) return;
+    setToast(this.gs, message, 1.8);
   }
 
   private availableVendorTabs(): AssetCategory[] {
@@ -1214,11 +1377,21 @@ export class GameRuntime {
       return;
     }
     this.vendorOpen = true;
+    if (
+      this.firstPlotGuideActive &&
+      firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes) === 'complete'
+    ) {
+      this.firstTenMinuteMerchantSeen = true;
+    }
     this.vendorMessage = '';
+    this.helpOpen = false;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
     this.buildingMode = false;
     this.placement.clear();
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
+    this.clearInputState();
     this.closeContextMenu();
     this.cancelPlayerActions();
     this.velX = 0;
@@ -1230,6 +1403,7 @@ export class GameRuntime {
   closeVendor(): void {
     this.vendorOpen = false;
     this.vendorMessage = '';
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1382,9 +1556,11 @@ export class GameRuntime {
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
+    this.clearInputState();
+    this.syncActionMenuState();
     this.cancelPlayerActions();
     this.clearShots();
-    setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
+    setToast(this.gs, `${asset.displayName} placement · ${this.inputLabel('rotateOrCycle')}/${this.inputLabel('secondary')} rotates · ${this.inputLabel('primary')} or click places · ${this.inputLabel('pause')} cancels`, 2);
     this.pushHud(true);
   }
 
@@ -1395,6 +1571,7 @@ export class GameRuntime {
   }
 
   private cancelActiveState(): void {
+    this.clearInputState();
     if (this.contextMenu.open) {
       this.closeContextMenu();
       return;
@@ -1405,6 +1582,7 @@ export class GameRuntime {
       this.buildingMode = false;
       this.placement.clear();
       this.world.setBuildPreview(null);
+      this.syncActionMenuState();
       setToast(this.gs, 'Placement cancelled', 1.2);
       this.pushHud(true);
       return;
@@ -1432,6 +1610,7 @@ export class GameRuntime {
     }
     if (this.helpOpen) {
       this.helpOpen = false;
+      this.syncActionMenuState();
       this.pushHud(true);
       return;
     }
@@ -1457,11 +1636,19 @@ export class GameRuntime {
   resumeGame(): void {
     if (!this.pauseOpen) return;
     this.pauseOpen = false;
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
 
   closeContextMenu(): void {
+    this.resetContextMenuState();
+    this.clearInputState();
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  private resetContextMenuState(): void {
     this.contextMenu = {
       open: false,
       x: 0,
@@ -1471,8 +1658,6 @@ export class GameRuntime {
       gate: false,
       gateOpen: false,
     };
-    this.syncActionMenuState();
-    this.pushHud(true);
   }
 
   private placedIndexAtPointer(): number {
@@ -1503,6 +1688,7 @@ export class GameRuntime {
       gate: asset.gate,
       gateOpen: this.gs.placedBuildings[index]!.gateOpen === true,
     };
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
     return true;
@@ -1608,71 +1794,6 @@ export class GameRuntime {
     this.tryBearTrap();
   }
 
-  /** Console helpers — teleport, hand out items, jump the clock. */
-  debug() {
-    return {
-      state: this.gs,
-      world: this.world,
-      economy: () => this.economySnapshot(),
-      teleport: (x: number, z: number) => {
-        this.playerX = x;
-        this.playerZ = z;
-        this.velX = 0;
-        this.velZ = 0;
-        this.world.snapCamera(x, z);
-      },
-      grant: (id: ItemId, n = 1) => {
-        addToInventory(this.gs, id, n);
-        this.pushHud(true);
-      },
-      till: (radius = 3) => {
-        const cx = Math.floor(this.playerX);
-        const cz = Math.floor(this.playerZ);
-        let n = 0;
-        for (let ty = cz - radius; ty <= cz + radius; ty++) {
-          for (let tx = cx - radius; tx <= cx + radius; tx++) {
-            if (this.tileBlockedForTilling(tx, ty)) continue;
-            if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) n++;
-          }
-        }
-        this.world.getFarmTrees()?.rebuildAll();
-        this.syncWorldTiles();
-        return n;
-      },
-      skipDay: () => {
-        this.gs.clock = { ...this.gs.clock, day: this.gs.clock.day + 1 };
-        const res = onNewDay(this.gs);
-        this.refreshCropTargetsFromTiles();
-        this.clearDeathMarkers();
-        this.clearLootMarkers();
-        this.clearFeedbackBursts();
-        this.world.getFarmTrees()?.rebuildAll();
-        this.syncWorldTiles();
-        this.pushHud(true);
-        return { lost: res.lostTilth.length, regrown: res.regrown.length };
-      },
-      raid: () => {
-        this.spawnRaid();
-        for (const w of this.foxes) {
-          w.state = 'seek';
-          w.timer = 0;
-          w.x = this.playerX + (this.gs.rng() - 0.5) * 5;
-          w.z = this.playerZ + (this.gs.rng() - 0.5) * 5;
-          this.setFoxScale(w);
-          w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-          this.playFoxAction(w, 'walk');
-        }
-        return this.foxes.length;
-      },
-      foxCount: () => this.foxes.length,
-      melee: () => {
-        this.meleeCd = 0;
-        this.meleeSwing(AXE_DAMAGE);
-        return this.foxes.length;
-      },
-    };
-  }
-
   private recordAction(kind: string): void {
     this.runtimeMetrics.recordAction(kind);
   }
@@ -1696,7 +1817,27 @@ export class GameRuntime {
     this.playerActions?.cancel();
   }
 
+  private clearInputState(): void {
+    this.input.clearInteractionState();
+  }
+
+  private applyPresentationSettings(): void {
+    this.reducedMotion = this.settings.reducedMotion;
+    this.audio.setVolumes(this.settings);
+    this.audio.setMuted(this.settings.muted);
+    this.world?.setReducedMotion(this.settings.reducedMotion);
+    this.world?.setCameraShakeEnabled(this.settings.cameraShake);
+    this.playerActions?.setReducedMotion(this.settings.reducedMotion);
+    try {
+      localStorage.setItem('tarnation.reducedMotion', this.settings.reducedMotion ? '1' : '0');
+    } catch {
+      // Device preferences are optional.
+    }
+  }
+
   private syncActionMenuState(): void {
+    // Placement remains outside the menu state so the fixed-step action boundary
+    // can commit a clicked building while the world itself is paused.
     const menuOpen =
       this.pauseOpen ||
       this.helpOpen ||
@@ -1748,10 +1889,6 @@ export class GameRuntime {
     legacyActionKind: string = kind,
   ): void {
     this.runtimeMetrics.recordOutcome(kind, status, this.gs.simTime, legacyActionKind);
-  }
-
-  private economySnapshot(): RuntimeMetricsSnapshot {
-    return this.runtimeMetrics.snapshot(this.gs.simTime, this.gs.clock.day, performance.now());
   }
 
   // ------------------------------------------------------------------- loop
@@ -1814,110 +1951,155 @@ export class GameRuntime {
     this.pushHud(false);
   };
 
-  private handleHotkeys(): void {
-    if (this.pauseOpen) {
-      if (this.input.justPressed('Escape')) this.cancelActiveState();
-      return;
+  private handleHotkeys(): boolean {
+    if (this.settlementCelebrated && !this.winShownLocal) {
+      if (this.input.justPressed('pause')) this.dismissWin();
+      return true;
     }
-    if (this.input.justPressed('KeyK')) {
-      this.toggleCodex();
-      return;
+    if (this.settingsOpen) {
+      if (this.input.justPressed('pause')) this.toggleSettings();
+      return true;
+    }
+    if (this.pauseOpen) {
+      if (this.input.justPressed('pause')) this.cancelActiveState();
+      return true;
+    }
+    if (this.helpOpen) {
+      if (this.input.justPressed('pause') || this.input.justPressed('help')) this.cancelActiveState();
+      return true;
     }
     if (this.codexOpen) {
-      if (this.input.justPressed('Escape')) this.cancelActiveState();
-      return;
+      if (this.input.justPressed('pause') || this.input.justPressed('codex')) this.cancelActiveState();
+      return true;
     }
-    for (let i = 0; i < TOOLBAR_SLOTS; i++) {
-      if (this.input.justPressed(`Digit${i + 1}`)) {
-        this.selectSlot(i);
-        const def = TOOLBAR[i]!;
-        setToast(this.gs, def.empty ? `Slot ${i + 1} — empty` : def.name, 1.2);
+    if (this.vendorOpen) {
+      if (this.input.justPressed('pause')) this.cancelActiveState();
+      return true;
+    }
+    if (this.gs.inventoryOpen) {
+      if (this.input.justPressed('pause') || this.input.justPressed('inventory')) this.cancelActiveState();
+      return true;
+    }
+    if (this.contextMenu.open) {
+      if (this.input.justPressed('pause') || this.input.justPressed('context')) this.cancelActiveState();
+      return true;
+    }
+    if (this.buildingMode) {
+      if (this.input.justPressed('pause') || this.input.justPressed('build')) {
+        this.cancelActiveState();
+        return true;
       }
+      if (this.input.justPressed('rotateOrCycle')) this.rotatePlacement();
+      if (this.input.justPressed('nextBuild')) {
+        const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
+        this.placement.select(nextIndex);
+        setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
+      }
+      return false;
     }
-    if (this.input.justPressed('Digit6') || this.input.justPressed('KeyT')) {
+    if (this.input.justPressed('codex')) {
+      this.toggleCodex();
+      return true;
+    }
+    const slotActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
+    for (const [i, action] of slotActions.entries()) {
+      if (!this.input.justPressed(action)) continue;
+      this.selectSlot(i);
+      const def = TOOLBAR[i]!;
+      setToast(this.gs, def.empty ? `Slot ${i + 1} — empty` : def.name, 1.2);
+    }
+    if (this.input.justPressed('toolSlot')) {
       this.selectToolSlot();
       setToast(this.gs, `Bucket · ${this.gs.bucketFill}/${BUCKET_CAPACITY}`, 1.2);
     }
-    if (this.input.justPressed('KeyQ')) this.useUltimate();
-    if (this.input.justPressed('KeyB')) this.useBearTrap();
-    if (this.input.justPressed('KeyI')) this.toggleInventory();
-    if (this.input.justPressed('KeyH')) this.toggleHelp();
-    if (this.input.justPressed('KeyR')) {
+    if (this.input.justPressed('ultimate')) this.useUltimate();
+    if (this.input.justPressed('bearTrap')) this.useBearTrap();
+    if (this.input.justPressed('inventory')) {
+      this.toggleInventory();
+      return true;
+    }
+    if (this.input.justPressed('help')) {
+      this.toggleHelp();
+      return true;
+    }
+    if (this.input.justPressed('context') && !this.buildingMode && !this.demolishMode) {
+      if (!this.openPlacedContext()) setToast(this.gs, 'Point at a placed asset to open its context', 1.4);
+    }
+    if (this.input.justPressed('rotateOrCycle')) {
       cycleWeapon(this.gs);
       this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
       this.gs.toolSlotActive = false;
       this.equipment.refresh(this.gs);
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
-    if (this.input.justPressed('KeyV')) {
+    if (this.input.justPressed('mute')) {
       const muted = this.audio.toggleMuted();
+      this.updateSetting('muted', muted);
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
       if (!muted) this.audio.play('ui');
     }
-    if (this.input.justPressed('F12')) {
-      this.debugGrid = !this.debugGrid;
-      this.world.setGridDebug(this.debugGrid);
-      this.equipment.setDebugVisible(this.debugGrid);
-      setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
-    }
-    if (this.input.justPressed('KeyX')) {
+    if (this.input.justPressed('demolish')) {
       this.demolishMode = !this.demolishMode;
       this.buildingMode = false;
       this.placement.clear();
       this.closeContextMenu();
-      setToast(this.gs, this.demolishMode ? 'Demolish mode · click an asset · Esc exits' : 'Demolish mode off', 1.6);
+      setToast(this.gs, this.demolishMode ? `Demolish mode · ${this.inputLabel('primary')} or click an asset · ${this.inputLabel('pause')} exits` : 'Demolish mode off', 1.6);
     }
-    if (this.input.justPressed('Equal') || this.input.justPressed('NumpadAdd')) {
+    if (this.input.justPressed('zoomIn')) {
       const zoom = this.world.adjustZoom(0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
     }
-    if (this.input.justPressed('Minus') || this.input.justPressed('NumpadSubtract')) {
+    if (this.input.justPressed('zoomOut')) {
       const zoom = this.world.adjustZoom(-0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
     }
-    if (this.input.justPressed('KeyM')) {
-      this.reducedMotion = !this.reducedMotion;
-      this.world.setReducedMotion(this.reducedMotion);
-      this.playerActions.setReducedMotion(this.reducedMotion);
-      localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
-      setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
+    if (this.input.justPressed('reducedMotion')) {
+      this.updateSetting('reducedMotion', !this.settings.reducedMotion);
+      setToast(this.gs, this.settings.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
-    if (this.input.justPressed('KeyP')) this.toggleBuildMode();
-    if (this.buildingMode && this.input.justPressed('KeyN')) {
-      const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
-      this.placement.select(nextIndex);
-      setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
+    if (this.input.justPressed('build')) {
+      this.toggleBuildMode();
+      return true;
     }
 
-    if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
+    if (this.input.justPressed('seedPrevious')) {
       cycleSeed(this.gs, -1);
       const s = selectedSeed(this.gs);
       const packet = selectedSeedPacket(this.gs);
       if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
-    if (this.input.justPressed('BracketRight') || this.input.justPressed('Period')) {
+    if (this.input.justPressed('seedNext')) {
       cycleSeed(this.gs, 1);
       const s = selectedSeed(this.gs);
       const packet = selectedSeedPacket(this.gs);
       if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
 
-    if (this.input.justPressed('Escape')) this.cancelActiveState();
+    if (this.input.justPressed('pause')) {
+      this.cancelActiveState();
+      return true;
+    }
 
-    const structure: [string, ToolMode, string][] = [
-      ['KeyZ', 'trench', 'Tool: trench dig'],
-      ['KeyC', 'breed', 'Tool: breeding bed'],
+    const structure: [InputAction, ToolMode, string][] = [
+      ['trench', 'trench', 'Irrigation trench selected'],
+      ['breed', 'breed', 'Breeding bed selected'],
     ];
-    for (const [code, mode, label] of structure) {
-      if (!this.input.justPressed(code)) continue;
+    for (const [action, mode, label] of structure) {
+      if (!this.input.justPressed(action)) continue;
       this.selectSlot(SLOT_SHOVEL);
       this.toolMode = mode;
       setToast(this.gs, label, 1.2);
     }
+    return false;
   }
 
   private update(dt: number): void {
-    this.handleHotkeys();
+    if (this.handleHotkeys()) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
     if (this.actionState.currentState === 'disabled') {
       this.velX = 0;
       this.velZ = 0;
@@ -1971,7 +2153,7 @@ export class GameRuntime {
     this.nearWaterTower = waterTowerProvidesWater(this.gs.placedBuildings, this.playerX, this.playerZ);
     this.nearWater =
       this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE || this.nearWaterTower;
-    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('KeyE')) {
+    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('interact')) {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 2);
@@ -1982,13 +2164,30 @@ export class GameRuntime {
     this.nearMerchant =
       Math.hypot(this.playerX - this.merchantX, this.playerZ - this.merchantZ) <= MARKET_RANGE;
     this.stepGateTimers(dt);
-    if (this.nearMerchant && this.input.justPressed('KeyE')) this.openVendor();
+    if (this.nearMerchant && this.input.justPressed('interact')) this.openVendor();
     if (this.vendorOpen && !this.nearMerchant) {
       this.vendorOpen = false;
       this.vendorMessage = '';
       setToast(this.gs, 'You walked away from the Traveling Merchant', 1.5);
     }
     if (this.vendorOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+
+    // The build catalog pauses the world, but placement confirmation still
+    // needs one fixed-step action boundary for its commit callback.
+    if (this.buildingMode) {
+      this.interaction.process({
+        buildingMode: true,
+        demolishMode: false,
+        toolSlotActive: this.gs.toolSlotActive,
+        toolbarSlot: this.gs.toolbarSlot,
+      });
+      this.actionState.advance(dt);
+      this.flushActionEvents();
       this.velX = 0;
       this.velZ = 0;
       this.movementIntent = false;
@@ -2070,6 +2269,9 @@ export class GameRuntime {
     if (this.settlementCelebrated) return;
     this.settlementCelebrated = true;
     this.winShownLocal = false;
+    this.pauseOpen = true;
+    this.clearInputState();
+    this.syncActionMenuState();
     setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
     this.spawnFeedbackBurst(this.playerX, this.playerZ, 'reward');
     this.audio.play('reward');
@@ -2077,6 +2279,8 @@ export class GameRuntime {
   }
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
+    const previousX = this.playerX;
+    const previousZ = this.playerZ;
     const stick = this.input.getMoveStick();
     this.movementIntent = Math.hypot(stick.x, stick.y) > 1e-6;
     this.actionState.setMovementIntent(this.movementIntent);
@@ -2113,6 +2317,12 @@ export class GameRuntime {
     else this.velZ = 0;
     this.gs.playerX = this.playerX;
     this.gs.playerZ = this.playerZ;
+    if (
+      this.firstPlotGuideActive &&
+      Math.hypot(this.playerX - previousX, this.playerZ - previousZ) > 1e-5
+    ) {
+      this.firstTenMinuteMovementStarted = true;
+    }
   }
 
   private worldToFarmTile(wx: number, wz: number): { tx: number; ty: number } | null {
@@ -2561,11 +2771,11 @@ export class GameRuntime {
 
     const trees = this.world.getFarmTrees();
     if (trees?.hasTree(tx, ty)) {
-      setToast(this.gs, 'You need the axe for that (slot 3)', 1.6);
+      setToast(this.gs, `You need the axe for that (${this.inputLabel('slot3')})`, 1.6);
       return;
     }
     if (trees?.hasStump(tx, ty)) {
-      setToast(this.gs, 'Clear the stump with the axe (slot 3)', 1.6);
+      setToast(this.gs, `Clear the stump with the axe (${this.inputLabel('slot3')})`, 1.6);
       return;
     }
     if (trees?.rockSlot(tx, ty)) {
@@ -4433,21 +4643,29 @@ export class GameRuntime {
     this.popups = this.popups.filter((p) => p.life > 0);
   }
 
+  private inputLabel(action: InputAction): string {
+    return formatBinding(this.input.getBindings(), action);
+  }
+
   private interactionHint(
     seed: ReturnType<typeof selectedSeed>,
     packet: ReturnType<typeof selectedSeedPacket>,
   ): string {
-    const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
-    const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · C breed · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
+    const key = (action: InputAction): string => this.inputLabel(action);
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
-      return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
+      return `Build: ${selected?.displayName ?? 'asset'} · ${key('rotateOrCycle')}/${key('secondary')} rotate · ${key('primary')} or click place · ${key('pause')} exit`;
     }
     if (this.firstPlotGuideActive) {
       const stage = firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes);
       if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
-        return formatFirstPlotHint(stage, seed?.displayName);
+        return formatFirstPlotHint(stage, seed?.displayName, {
+          shovel: key('slot2'),
+          bucket: key('toolSlot'),
+          previousSeed: key('seedPrevious'),
+          nextSeed: key('seedNext'),
+          primary: key('primary'),
+        });
       }
     }
     const arcHint = multiDayArcHint({
@@ -4457,52 +4675,54 @@ export class GameRuntime {
       placedBuildings: this.gs.placedBuildings,
     });
     if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
-    if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
+    if (this.nearMerchant) return `${key('interact')} — open the Traveling Merchant shop`;
     if (this.nearMarket) return 'Market stall — sell for duckettes';
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
-      return this.nearWaterTower ? 'E — fill bucket at the water tower' : 'E — fill bucket';
+      return this.nearWaterTower ? `${key('interact')} — fill bucket at the water tower` : `${key('interact')} — fill bucket`;
     }
-    if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
+    if (this.toolMode === 'trench') return 'Irrigation trench selected · point at a homestead tile';
+    if (this.toolMode === 'breed') return 'Breeding bed selected · choose a prepared plot';
+    if (this.toolMode !== 'farm') return 'Choose a tool and point at the homestead';
 
     const tile = this.pointerTile();
     if (this.gs.toolSlotActive) {
       const irrigationNote = this.gs.irrigationTier >= 3 ? ' · irrigation active' : '';
-      if (!tile) return `6 bucket · point at a planted tile to water${irrigationNote}`;
+      if (!tile) return `${key('toolSlot')} bucket · point at a planted tile to water${irrigationNote}`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
-      if (target?.state === 'planted' && !target.watered) return `6 bucket · click to water${irrigationNote}`;
-      if (target?.state === 'mature') return 'Harvest is ready · switch to the shovel';
-      return '6 bucket · point at a thirsty crop';
+      if (target?.state === 'planted' && !target.watered) return `${key('toolSlot')} bucket · ${key('primary')} or click to water${irrigationNote}`;
+      if (target?.state === 'mature') return `Harvest is ready · switch to ${key('slot2')}`;
+      return `${key('toolSlot')} bucket · point at a thirsty crop`;
     }
 
     if (this.gs.toolbarSlot === SLOT_SHOVEL) {
-      if (!tile) return '2 shovel · point at a farm tile';
+      if (!tile) return `${key('slot2')} shovel · point at a farm tile`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
       const wc = this.farmTileWorld(tile.tx, tile.ty);
       if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return 'Move closer to work this tile';
       const trees = this.world.getFarmTrees();
-      if (trees?.hasTree(tile.tx, tile.ty)) return 'Axe required here · switch to slot 3';
-      if (trees?.hasStump(tile.tx, tile.ty)) return 'Clear the stump with the axe · slot 3';
+      if (trees?.hasTree(tile.tx, tile.ty)) return `Axe required here · switch to ${key('slot3')}`;
+      if (trees?.hasStump(tile.tx, tile.ty)) return `Clear the stump with the axe · ${key('slot3')}`;
       if (trees?.rockSlot(tile.tx, tile.ty)) return 'Boulder occupies this tile';
       if (!target) return 'Point at a farm tile';
-      if (target.state === 'grass') return 'Click to till this tile';
+      if (target.state === 'grass') return `${key('primary')} or click to till this tile`;
       if (target.state === 'tilled' || target.state === 'breeding') {
         return seed
-          ? `Click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
+          ? `${key('primary')} or click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
           : 'No seed selected';
       }
-      if (target.state === 'planted' && !target.watered) return 'Use the bucket to water this crop';
-      if (target.state === 'mature') return 'Click to harvest';
+      if (target.state === 'planted' && !target.watered) return `Use ${key('toolSlot')} to water this crop`;
+      if (target.state === 'mature') return `${key('primary')} or click to harvest`;
     }
 
     if (this.gs.toolbarSlot === SLOT_AXE) {
       const trees = tile ? this.world.getFarmTrees() : null;
-      if (tile && trees?.hasTree(tile.tx, tile.ty)) return 'Click to chop this tree';
-      if (tile && trees?.hasStump(tile.tx, tile.ty)) return 'Click to clear this stump';
-      return '3 axe · click a tree to chop';
+      if (tile && trees?.hasTree(tile.tx, tile.ty)) return `${key('primary')} or click to chop this tree`;
+      if (tile && trees?.hasStump(tile.tx, tile.ty)) return `${key('primary')} or click to clear this stump`;
+      return `${key('slot3')} axe · ${key('primary')} or click a tree to chop`;
     }
 
-    if (this.gs.toolbarSlot === SLOT_SHOTGUN) return '1 shotgun · click or right-click to fire';
-    return controls;
+    if (this.gs.toolbarSlot === SLOT_SHOTGUN) return `${key('slot1')} shotgun · ${key('primary')}/click or ${key('secondary')} to fire`;
+    return `Explore the homestead · ${key('help')} for the field guide`;
   }
 
   // ------------------------------------------------------------------- HUD
@@ -4510,9 +4730,18 @@ export class GameRuntime {
   private pushHud(force: boolean): void {
     if (!this.gs || !this.hudPresenter.hasListener) return;
     this.maybeShowSettlementGoal();
+    const selected = selectedSeed(this.gs);
+    const onboarding = this.firstPlotGuideActive
+      ? firstTenMinuteGuide({
+          movementStarted: this.firstTenMinuteMovementStarted,
+          firstPlotStage: firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes),
+          merchantSeen: this.firstTenMinuteMerchantSeen,
+          seedName: selected?.displayName,
+        })
+      : null;
     this.hudPresenter.push(force, {
       state: this.gs,
-      hint: this.interactionHint(selectedSeed(this.gs), selectedSeedPacket(this.gs)),
+      hint: this.interactionHint(selected, selectedSeedPacket(this.gs)),
       buildingMode: this.buildingMode,
       selectedBuildIndex: this.placement.currentIndex,
       placement: () => {
@@ -4520,6 +4749,9 @@ export class GameRuntime {
         return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
+      settingsOpen: this.settingsOpen,
+      settings: this.settings,
+      bindings: this.input.getBindings(),
       codexOpen: this.codexOpen,
       codexSelectedKey: this.codexSelectedKey,
       codexCompareKeys: this.codexCompareKeys,
@@ -4540,6 +4772,7 @@ export class GameRuntime {
       marketDistance: Math.round(Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ)),
       popups: this.popups,
       save: this.saveFeedback,
+      onboarding,
       winShownLocal: this.winShownLocal,
     });
   }

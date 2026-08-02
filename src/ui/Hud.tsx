@@ -4,6 +4,13 @@ import { getModelIconThumbnail, paintModelIcon } from './ModelIconRenderer';
 import type { HudSlot, HudSnapshot } from '../game/HudPresenter';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
+import type { InputAction } from '../game/InputBindings';
+import type { GameSettingKey, GameSettingValue } from '../game/Settings';
+import { FIRST_TEN_MINUTE_SUPPORT_COPY } from '../sim/onboarding';
+import { useModalFocusScope } from './modal';
+
+type FocusedPanel = 'help' | 'codex' | 'vendor' | 'build' | 'inventory' | 'context' | 'settings';
+type ModalKey = FocusedPanel | 'pause' | 'win';
 
 type Props = {
   hud: HudSnapshot | null;
@@ -14,6 +21,11 @@ type Props = {
   onToggleBuild: () => void;
   onSelectBuild: (index: number) => void;
   onToggleHelp: () => void;
+  onToggleSettings: () => void;
+  onUpdateSetting: (key: GameSettingKey, value: GameSettingValue) => void;
+  onResetSettings: () => void;
+  onRebindInput: (action: InputAction, code: string) => void;
+  onResetInputBindings: () => void;
   onToggleCodex: () => void;
   onSelectCodex: (key: string) => void;
   onToggleCodexCompare: (key: string) => void;
@@ -76,6 +88,11 @@ export function Hud({
   onToggleBuild,
   onSelectBuild,
   onToggleHelp,
+  onToggleSettings,
+  onUpdateSetting,
+  onResetSettings,
+  onRebindInput,
+  onResetInputBindings,
   onToggleCodex,
   onSelectCodex,
   onToggleCodexCompare,
@@ -97,14 +114,127 @@ export function Hud({
 }: Props) {
   const [tip, setTip] = useState<Tip>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<ItemId | null>(null);
+  const [bindingCapture, setBindingCapture] = useState<InputAction | null>(null);
+
+  useEffect(() => {
+    if (!bindingCapture) return;
+    const onKeyDown = (event: KeyboardEvent): void => {
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      if (event.code === 'Escape') {
+        setBindingCapture(null);
+        return;
+      }
+      onRebindInput(bindingCapture, event.code);
+      setBindingCapture(null);
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [bindingCapture, onRebindInput]);
+
+  const focusedPanel: FocusedPanel | null = hud?.settingsOpen
+    ? 'settings'
+    : hud && !hud.paused && !hud.win
+      ? hud.helpOpen
+      ? 'help'
+      : hud.codex.open
+        ? 'codex'
+        : hud.vendor.open
+          ? 'vendor'
+          : hud.build.active
+            ? 'build'
+            : hud.inventoryOpen
+              ? 'inventory'
+              : hud.contextMenu.open
+                ? 'context'
+                : null
+      : null;
+  const modalKey: ModalKey | null = hud?.win ? 'win' : focusedPanel === 'settings' ? 'settings' : hud?.paused ? 'pause' : focusedPanel;
+  const closeModal = () => {
+    switch (modalKey) {
+      case 'help':
+        onToggleHelp();
+        return;
+      case 'codex':
+        onToggleCodex();
+        return;
+      case 'vendor':
+        onVendorClose();
+        return;
+      case 'build':
+        onToggleBuild();
+        return;
+      case 'inventory':
+        onToggleInventory();
+        return;
+      case 'context':
+        onContextClose();
+        return;
+      case 'settings':
+        onToggleSettings();
+        return;
+      case 'pause':
+        onResume();
+        return;
+      case 'win':
+        onDismissWin();
+        return;
+      default:
+        return;
+    }
+  };
+  const modalScope = useModalFocusScope(modalKey, modalKey ? closeModal : null);
 
   if (!hud) return null;
 
   const phasePct = Math.round(hud.phaseT * 100);
   const filled = hud.inventory.filter((s) => s.id).length;
+  const occupiedInventory = hud.inventory.flatMap((slot, index) =>
+    slot.id ? [{ slot, index }] : [],
+  );
+  const showHelp = focusedPanel === 'help';
+  const showCodex = focusedPanel === 'codex';
+  const showVendor = focusedPanel === 'vendor';
+  const showBuild = focusedPanel === 'build';
+  const showSettings = focusedPanel === 'settings';
+  const showInventory = focusedPanel === 'inventory';
+  const showContext = focusedPanel === 'context';
+  const showMarket = !hud.paused && hud.market.open && focusedPanel === null;
+  const bindingLabel = (action: InputAction): string =>
+    hud.bindings.find((binding) => binding.action === action)?.display ?? '';
+  const toolbarActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
+  const bindingGroups = () => (['Movement', 'World actions', 'Menus', 'Tools', 'Camera & options'] as const).map((group) => {
+    const bindings = hud.bindings.filter((binding) => binding.group === group);
+    return (
+      <div className="binding-group" key={group}>
+        <p className="label">{group}</p>
+        <div className="binding-list">
+          {bindings.map((binding) => (
+            <div className="binding-row" key={binding.action}>
+              <span>{binding.label}</span>
+              <button
+                type="button"
+                className={bindingCapture === binding.action ? 'binding-key capturing' : 'binding-key'}
+                onClick={() => setBindingCapture(binding.action)}
+              >
+                {bindingCapture === binding.action ? 'Press a key · Esc cancels' : binding.display}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  });
 
   return (
     <div className="hud">
+      {modalKey && modalKey !== 'pause' && modalKey !== 'win' && (
+        <div
+          className={`modal-scrim ${modalKey === 'build' ? 'placement-pass-through' : ''}`}
+          aria-hidden="true"
+        />
+      )}
       <div className="panel hud-top-left">
         <h1 className="panel-title">Tarnation</h1>
         <p className="label">Day</p>
@@ -113,10 +243,20 @@ export function Hud({
         <div className={`phase-bar ${hud.phase === 'night' ? 'night' : ''}`}>
           <i style={{ width: `${phasePct}%` }} />
         </div>
-        <p className="label" style={{ marginTop: 8 }}>
-          Duckettes
-        </p>
-        <p className="value amber">₫ {hud.duckettes}</p>
+        <div className="hud-resource-row" aria-label="Homestead resources">
+          <div>
+            <p className="label">Duckettes</p>
+            <p className="value amber">₫ {hud.duckettes}</p>
+          </div>
+          <div>
+            <p className="label">Wood</p>
+            <p className="value teal">{hud.wood}</p>
+          </div>
+          <div>
+            <p className="label">Seeds</p>
+            <p className="value">{hud.seedStorage.used}/{hud.seedStorage.capacity}</p>
+          </div>
+        </div>
         <section className="settlement-objective" aria-label="Settlement objective">
           <p className="label">Settlement objective</p>
           <p className="settlement-objective-title">{hud.objective.title}</p>
@@ -129,6 +269,20 @@ export function Hud({
             ))}
           </ul>
         </section>
+        {hud.onboarding && (
+          <section className="onboarding-guide" aria-labelledby="onboarding-title">
+            <div className="onboarding-heading">
+              <p className="label">First steps</p>
+              <span aria-label={`Step ${hud.onboarding.step} of ${hud.onboarding.total}`}>
+                {hud.onboarding.step}/{hud.onboarding.total}
+              </span>
+            </div>
+            <h2 id="onboarding-title">{hud.onboarding.title}</h2>
+            <p className="onboarding-instruction">{hud.onboarding.instruction}</p>
+            <p className="onboarding-next">{hud.onboarding.nextGoal}</p>
+            <p className="onboarding-support">{FIRST_TEN_MINUTE_SUPPORT_COPY}</p>
+          </section>
+        )}
         <p
           className={`save-status ${hud.save.state === 'failed' ? 'failed' : ''}`}
           role={hud.save.state === 'failed' ? 'alert' : 'status'}
@@ -138,7 +292,7 @@ export function Hud({
           {hud.save.message}
         </p>
         <button type="button" className="help-toggle" onClick={onToggleHelp}>
-          Help <span>H</span>
+          Help <span>{bindingLabel('help')}</span>
         </button>
         <button
           type="button"
@@ -147,7 +301,7 @@ export function Hud({
           aria-haspopup="dialog"
           aria-expanded={hud.codex.open}
         >
-          Seed Codex <span>K</span>
+          Seed Codex <span>{bindingLabel('codex')}</span>
         </button>
       </div>
 
@@ -181,42 +335,71 @@ export function Hud({
         type="button"
         className={`inv-toggle ${hud.inventoryOpen ? 'open' : ''}`}
         onClick={onToggleInventory}
-        title="Toggle inventory (I)"
+        title={`Toggle inventory (${bindingLabel('inventory')})`}
       >
         <ModelIcon model="backpack" className="inv-toggle-model-icon" />
-        <span className="inv-toggle-key">I</span>
+        <span className="inv-toggle-key">{bindingLabel('inventory')}</span>
       </button>
 
-      {hud.inventoryOpen && !hud.build.active && !hud.vendor.open && (
-        <div className="panel hud-inventory">
-          <p className="label">
+      {showInventory && (
+        <div
+          ref={modalScope.ref}
+          className="panel hud-inventory"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="inventory-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
+          <p className="label" id="inventory-title">
             Inventory · {filled}/{hud.inventory.length}
           </p>
           <p className="label">
             Seed packets · {hud.seedStorage.used}/{hud.seedStorage.capacity}
           </p>
-          <div className="inv-grid">
-            {hud.inventory.map((slot, i) => (
-              <div
-                key={`slot-${i}`}
-                className={`inv-slot ${slot.id ? 'filled' : ''}`}
-                onDoubleClick={() => slot.id && onUseInventory(slot.id)}
-                onContextMenu={(e) => {
-                  if (!slot.id) return;
-                  e.preventDefault();
-                  setTip(null);
-                  setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id);
-                }}
-                onMouseEnter={(e) =>
-                  slot.id &&
-                  setTip({ slot, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().top })
-                }
-                onMouseLeave={() => setTip(null)}
-              >
-                {slot.id && (
+          {occupiedInventory.length === 0 ? (
+            <p className="hint inventory-empty">Inventory empty. Gather materials or visit the merchant.</p>
+          ) : (
+            <div className="inv-grid">
+              {occupiedInventory.map(({ slot, index }) => (
+                <div
+                  key={`slot-${index}-${slot.id}`}
+                  className="inv-slot filled"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setTip(null);
+                    setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id);
+                  }}
+                  onMouseEnter={(e) =>
+                    setTip({ slot, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().top })
+                  }
+                  onMouseLeave={() => setTip(null)}
+                >
                   <>
-                    {slot.model ? <ModelIcon model={slot.model} className="inv-model-icon" /> : <span className="inv-glyph">{slot.glyph}</span>}
-                    <span className="inv-count">{slot.count}</span>
+                    <button
+                      type="button"
+                      className="inv-item"
+                      onClick={() => onUseInventory(slot.id!)}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+                        event.preventDefault();
+                        setDeleteConfirm(slot.id!);
+                      }}
+                      title={`Use ${slot.name} · ${bindingLabel('primary')}`}
+                      aria-label={`Use ${slot.name}, ${slot.count} held`}
+                    >
+                      {slot.model ? <ModelIcon model={slot.model} className="inv-model-icon" /> : <span className="inv-glyph">{slot.glyph}</span>}
+                      <span className="inv-count">{slot.count}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="inv-delete-trigger"
+                      onClick={() => setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id)}
+                      aria-label={`Delete one ${slot.name}`}
+                      title="Delete one"
+                    >
+                      ×
+                    </button>
                     {deleteConfirm === slot.id && (
                       <span className="delete-confirm" onClick={(e) => e.stopPropagation()}>
                         <span>Delete 1?</span>
@@ -235,14 +418,14 @@ export function Hud({
                       </span>
                     )}
                   </>
-                )}
-              </div>
-            ))}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {tip && (
+      {tip && showInventory && (
         <div
           className="item-tooltip"
           style={{ right: 'auto', left: Math.max(8, tip.x - 210), top: Math.max(8, tip.y - 8) }}
@@ -257,7 +440,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.market.open && (
+      {showMarket && (
         <div className="panel hud-market">
           <p className="label">Market stall</p>
           {hud.market.items.length === 0 ? (
@@ -289,18 +472,26 @@ export function Hud({
         </div>
       )}
 
-      {hud.vendor.open && (
-        <div className="panel vendor-panel">
+      {showVendor && (
+        <div
+          ref={modalScope.ref}
+          className="panel vendor-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vendor-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="vendor-heading">
             <div>
               <p className="label">Stationary trading post</p>
-              <h2>Traveling Merchant</h2>
+              <h2 id="vendor-title">Traveling Merchant</h2>
             </div>
             <button type="button" className="build-close" onClick={onVendorClose}>
               Close
             </button>
           </div>
-          <p className="vendor-intro">The merchant stays at this encampment. Buy a permit or deed, then double-click it in your inventory to use it.</p>
+          <p className="vendor-intro">The merchant stays at this encampment. Buy a permit or deed, then select it in your inventory to use it.</p>
           <div className="vendor-tabs" role="tablist" aria-label="Merchant categories">
             {hud.vendor.tabs.map((tab) => (
               <button
@@ -325,8 +516,8 @@ export function Hud({
                 )}
                 <div className="vendor-copy">
                   <p className="vendor-name">{item.name}</p>
-                  <p className="vendor-description">{item.description}</p>
-                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType === 'apply' ? 'Upgrade' : item.useType}</p>
+                  <p className="vendor-description"><span className="vendor-field-label">Result</span> {item.description}</p>
+                  <p className="vendor-meta">{item.kind} · Footprint {item.footprint}</p>
                   <p className="vendor-cost">Cost: {item.price}₫{item.material === '—' ? '' : ` + ${item.material}`}</p>
                   <p className="vendor-owned">Owned: {item.owned}</p>
                   <p className={`vendor-lock ${item.canBuy ? 'available' : 'blocked'}`}>{item.lockReason}</p>
@@ -347,41 +538,186 @@ export function Hud({
         </div>
       )}
 
-      {hud.contextMenu.open && (
+      {showContext && (
         <div
+          ref={modalScope.ref}
           className="context-menu"
+          role="menu"
+          aria-label={`${hud.contextMenu.name} actions`}
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
           style={{ left: `${Math.max(8, hud.contextMenu.x)}px`, top: `${Math.max(8, hud.contextMenu.y)}px` }}
         >
           <p>{hud.contextMenu.name}</p>
-          <button type="button" onClick={onContextRotate}>Rotate</button>
+          <button type="button" role="menuitem" onClick={onContextRotate}>Rotate</button>
           {hud.contextMenu.gate && (
-            <button type="button" onClick={onContextToggleGate}>
+            <button type="button" role="menuitem" onClick={onContextToggleGate}>
               {hud.contextMenu.gateOpen ? 'Close gate' : 'Open gate'}
             </button>
           )}
-          <button type="button" className="danger" onClick={onContextDestroy}>Destroy</button>
-          <button type="button" className="context-cancel" onClick={onContextClose}>Esc · Close</button>
+          <button type="button" role="menuitem" className="danger" onClick={onContextDestroy}>Destroy</button>
+          <button type="button" role="menuitem" className="context-cancel" onClick={onContextClose}>Esc · Close</button>
         </div>
       )}
 
-      {hud.paused && (
+      {hud.paused && !hud.win && !hud.settingsOpen && (
         <div className="pause-overlay">
-          <div className="panel pause-card">
+          <div
+            ref={modalScope.ref}
+            className="panel pause-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pause-title"
+            tabIndex={-1}
+            onKeyDown={modalScope.onKeyDown}
+          >
             <p className="label">Adventure paused</p>
-            <h2>Take a breath</h2>
+            <h2 id="pause-title">Take a breath</h2>
             <p>Nothing advances while the pause menu is open.</p>
             <button type="button" onClick={onResume}>Resume</button>
+            <button type="button" onClick={onToggleSettings}>Settings</button>
             <p className="pause-help">Esc resumes</p>
           </div>
         </div>
       )}
 
-      {hud.build.active && (
-        <div className="panel build-panel">
+      {showSettings && (
+        <div
+          ref={modalScope.ref}
+          className="panel settings-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settings-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
+          <div className="settings-heading">
+            <div>
+              <p className="label">Accessibility & options</p>
+              <h2 id="settings-title">Settings</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onToggleSettings}>Close</button>
+          </div>
+          <p className="settings-intro">These preferences are stored on this device and do not change the homestead save.</p>
+
+          <div className="settings-section" aria-labelledby="settings-sound-title">
+            <h3 id="settings-sound-title">Sound</h3>
+            {([
+              ['masterVolume', 'Master volume'],
+              ['musicVolume', 'Music volume'],
+              ['effectsVolume', 'Effects volume'],
+              ['ambienceVolume', 'Ambience volume'],
+            ] as const).map(([key, label]) => (
+              <label className="settings-range" key={key}>
+                <span>{label}</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={hud.settings[key]}
+                  aria-label={label}
+                  onChange={(event) => onUpdateSetting(key, Number(event.currentTarget.value))}
+                />
+                <output>{Math.round(hud.settings[key] * 100)}%</output>
+              </label>
+            ))}
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={!hud.settings.muted}
+                onChange={(event) => onUpdateSetting('muted', !event.currentTarget.checked)}
+              />
+              <span>Sound feedback on</span>
+            </label>
+            <p className="settings-note">Music and ambience controls are ready for their authored buses; the current fallback uses the effects bus.</p>
+          </div>
+
+          <div className="settings-section" aria-labelledby="settings-motion-title">
+            <h3 id="settings-motion-title">Motion & display</h3>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.reducedMotion}
+                onChange={(event) => onUpdateSetting('reducedMotion', event.currentTarget.checked)}
+              />
+              <span>Reduced motion</span>
+            </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.cameraShake}
+                onChange={(event) => onUpdateSetting('cameraShake', event.currentTarget.checked)}
+              />
+              <span>Camera shake</span>
+            </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={hud.settings.highContrast}
+                onChange={(event) => onUpdateSetting('highContrast', event.currentTarget.checked)}
+              />
+              <span>High-contrast UI</span>
+            </label>
+            <label className="settings-range">
+              <span>UI scale</span>
+              <input
+                type="range"
+                min="0.9"
+                max="1.25"
+                step="0.05"
+                value={hud.settings.uiScale}
+                aria-label="UI scale"
+                onChange={(event) => onUpdateSetting('uiScale', Number(event.currentTarget.value))}
+              />
+              <output>{Math.round(hud.settings.uiScale * 100)}%</output>
+            </label>
+            <label className="settings-range">
+              <span>Text scale</span>
+              <input
+                type="range"
+                min="1"
+                max="1.4"
+                step="0.1"
+                value={hud.settings.textScale}
+                aria-label="Text scale"
+                onChange={(event) => onUpdateSetting('textScale', Number(event.currentTarget.value))}
+              />
+              <output>{Math.round(hud.settings.textScale * 100)}%</output>
+            </label>
+            <p className="settings-note">The day/night schedule stays fixed so crop growth, raids, cooldowns, and the fixed-step economy remain consistent.</p>
+          </div>
+
+          <details className="help-bindings settings-bindings" open>
+            <summary>Keyboard controls</summary>
+            <p className="help-bindings-copy">Choose a primary key. If it is already assigned, the two actions swap so neither action becomes unreachable. Arrow and numpad alternates remain available.</p>
+            {bindingGroups()}
+            <button type="button" className="binding-reset" onClick={() => {
+              setBindingCapture(null);
+              onResetInputBindings();
+            }}>
+              Reset keyboard defaults
+            </button>
+          </details>
+
+          <button type="button" className="settings-reset" onClick={onResetSettings}>Reset presentation settings</button>
+        </div>
+      )}
+
+      {showBuild && (
+        <div
+          ref={modalScope.ref}
+          className="panel build-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="build-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="build-panel-heading">
             <div>
               <p className="label">Town building</p>
-              <h2>Choose a structure</h2>
+              <h2 id="build-title">Choose a structure</h2>
             </div>
             <button type="button" className="build-close" onClick={onToggleBuild}>
               Close
@@ -397,10 +733,12 @@ export function Hud({
                 <div className="build-selected-copy">
                   <p className="build-selected-name">{selected.name}</p>
                   <p className={`build-cost ${selected.canAfford ? '' : 'short'}`}>
-                    {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
+                    Cost: {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
                   </p>
+                  <p className="build-benefit"><span className="build-field-label">Benefit</span> {selected.description}</p>
+                  <p className="build-footprint"><span className="build-field-label">Footprint</span> {selected.footprint}</p>
                   <p className={`build-selected-help ${hud.build.placement.valid ? 'ready' : 'blocked'}`}>
-                    {hud.build.placement.valid ? 'Ready · click a tile to place' : hud.build.placement.reason}
+                    {hud.build.placement.valid ? `Ready · ${bindingLabel('primary')} or click a tile to place` : hud.build.placement.reason}
                   </p>
                 </div>
               </div>
@@ -422,62 +760,85 @@ export function Hud({
               </button>
             ))}
           </div>
-          <p className="build-panel-help">P / Esc close · N next · click ground to place</p>
+          <p className="build-panel-help">{bindingLabel('build')} / {bindingLabel('pause')} close · {bindingLabel('nextBuild')} next · {bindingLabel('rotateOrCycle')} rotate · {bindingLabel('primary')} or click ground to place</p>
         </div>
       )}
 
-      {hud.helpOpen && (
-        <div className="panel help-panel">
+      {showHelp && (
+        <div
+          ref={modalScope.ref}
+          className="panel help-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="help-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="help-heading">
             <div>
               <p className="label">Field guide</p>
-              <h2>How to work the homestead</h2>
+              <h2 id="help-title">How to work the homestead</h2>
             </div>
             <button type="button" className="build-close" onClick={onToggleHelp}>
               Close
             </button>
           </div>
           <p className="help-intro">
-            Choose a tool, point at the ground, and use the left mouse button. Right click is for
-            combat. Every action works from the fixed isometric camera.
+            Choose a tool, point at the ground, and use the left mouse button or <kbd>{bindingLabel('primary')}</kbd>.
+            <kbd>{bindingLabel('secondary')}</kbd> is the optional secondary action. Focused controls can be operated
+            with <kbd>Enter</kbd> or <kbd>Space</kbd>; right-click and double-click are never required.
           </p>
           <div className="help-grid">
             <div>
               <p className="label">Move & work</p>
-              <p><kbd>W A S D</kbd> Move</p>
-              <p><kbd>1</kbd> Shotgun · <kbd>2</kbd> Shovel · <kbd>3</kbd> Axe</p>
-              <p><kbd>6</kbd> Bucket · <kbd>[ ]</kbd> Choose seed</p>
-              <p><kbd>Z</kbd> Dig an irrigation trench</p>
-              <p><kbd>Left click</kbd> Use selected tool</p>
+              <p><kbd>{bindingLabel('moveUp')}</kbd> <kbd>{bindingLabel('moveLeft')}</kbd> <kbd>{bindingLabel('moveDown')}</kbd> <kbd>{bindingLabel('moveRight')}</kbd> Move</p>
+              <p><kbd>{bindingLabel('slot1')}</kbd> Shotgun · <kbd>{bindingLabel('slot2')}</kbd> Shovel · <kbd>{bindingLabel('slot3')}</kbd> Axe</p>
+              <p><kbd>{bindingLabel('toolSlot')}</kbd> Bucket · <kbd>{bindingLabel('seedPrevious')}</kbd> <kbd>{bindingLabel('seedNext')}</kbd> Choose seed</p>
+              <p><kbd>{bindingLabel('trench')}</kbd> Dig an irrigation trench</p>
+              <p><kbd>{bindingLabel('primary')}</kbd> or <kbd>Left click</kbd> Use selected tool</p>
             </div>
             <div>
               <p className="label">Defend & grow</p>
-              <p><kbd>Right click</kbd> Attack</p>
-              <p><kbd>Q</kbd> Boulder · <kbd>B</kbd> Bear trap</p>
-              <p><kbd>R</kbd> Cycle unlocked weapon</p>
+              <p><kbd>{bindingLabel('secondary')}</kbd> or <kbd>Right click</kbd> Attack</p>
+              <p><kbd>{bindingLabel('ultimate')}</kbd> Boulder · <kbd>{bindingLabel('bearTrap')}</kbd> Bear trap</p>
+              <p><kbd>{bindingLabel('rotateOrCycle')}</kbd> Rotate placement or cycle weapon</p>
             </div>
             <div>
               <p className="label">Settlement</p>
-              <p><kbd>E</kbd> Open the merchant shop · permits advance the homestead</p>
-              <p><kbd>P</kbd> Shop nearby · legacy build with <kbd>?legacy</kbd></p>
-              <p><kbd>N</kbd> Next legacy building while placing</p>
-              <p><kbd>X</kbd> Demolish mode · <kbd>F12</kbd> Grid debug</p>
-              <p><kbd>I</kbd> Inventory · <kbd>K</kbd> Seed Codex · <kbd>H</kbd> This guide</p>
-              <p><kbd>+ −</kbd> Camera zoom · <kbd>M</kbd> Reduced motion</p>
-              <p><kbd>V</kbd> Toggle synthesized sound feedback</p>
-              <p><kbd>Esc</kbd> Cancel active mode · pause when idle</p>
+              <p><kbd>{bindingLabel('interact')}</kbd> Open the merchant shop · permits advance the homestead</p>
+              <p><kbd>{bindingLabel('context')}</kbd> Open a placed-asset context menu</p>
+              <p><kbd>{bindingLabel('build')}</kbd> Build catalog · <kbd>{bindingLabel('nextBuild')}</kbd> Next building while placing</p>
+              <p><kbd>{bindingLabel('demolish')}</kbd> Demolish mode · <kbd>{bindingLabel('primary')}</kbd> Destroy hovered asset</p>
+              <p><kbd>{bindingLabel('inventory')}</kbd> Inventory · <kbd>{bindingLabel('codex')}</kbd> Seed Codex · <kbd>{bindingLabel('help')}</kbd> This guide</p>
+              <p><kbd>{bindingLabel('zoomIn')}</kbd> <kbd>{bindingLabel('zoomOut')}</kbd> Camera zoom · <kbd>{bindingLabel('reducedMotion')}</kbd> Reduced motion</p>
+              <p><kbd>{bindingLabel('mute')}</kbd> Toggle sound feedback</p>
+              <p><kbd>{bindingLabel('pause')}</kbd> Cancel active mode · pause when idle</p>
             </div>
           </div>
+          <details className="help-bindings">
+            <summary>Remap keyboard controls</summary>
+            <p className="help-bindings-copy">Choose a primary key. If it is already assigned, the two actions swap so neither action becomes unreachable. Arrow and numpad alternates remain available.</p>
+            {bindingGroups()}
+            <button type="button" className="binding-reset" onClick={() => {
+              setBindingCapture(null);
+              onResetInputBindings();
+            }}>
+              Reset keyboard defaults
+            </button>
+          </details>
           <p className="help-footer">Tip: traits change how crops grow and defend themselves. Water them, protect them from foxes, then sell the harvest at the market stall.</p>
         </div>
       )}
 
-      {hud.codex.open && (
+      {showCodex && (
         <div
+          ref={modalScope.ref}
           className="panel codex-panel"
           role="dialog"
           aria-modal="true"
           aria-labelledby="codex-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
         >
           <div className="codex-heading">
             <div>
@@ -614,9 +975,9 @@ export function Hud({
       )}
 
       <div className="hud-bottom-center">
-        {hud.demolishMode && <div className="demolish-badge">Demolish mode · click placed assets · Esc exits</div>}
+        {hud.demolishMode && <div className="demolish-badge">Demolish mode · {bindingLabel('primary')} or click placed assets · {bindingLabel('pause')} exits</div>}
         {hud.toast && (
-          <div className="toast">
+          <div className="toast" role="status" aria-live="polite" aria-atomic="true">
             <span>{hud.toast}</span>
           </div>
         )}
@@ -626,9 +987,9 @@ export function Hud({
             type="button"
             className={`tool-slot ultimate ${hud.ultimate.ready ? '' : 'cooling'}`}
             onClick={onUltimate}
-            title={`${hud.ultimate.name} (Q)`}
+            title={`${hud.ultimate.name} (${bindingLabel('ultimate')})`}
           >
-            <span className="tool-key">Q</span>
+            <span className="tool-key">{bindingLabel('ultimate')}</span>
             <span className="tool-glyph">
               <ModelIcon model={hud.ultimate.model} />
             </span>
@@ -640,9 +1001,9 @@ export function Hud({
             type="button"
             className={`tool-slot ultimate trap ${hud.bearTrap.ready ? '' : 'cooling'}`}
             onClick={onBearTrap}
-            title={`${hud.bearTrap.name} (B)`}
+            title={`${hud.bearTrap.name} (${bindingLabel('bearTrap')})`}
           >
-            <span className="tool-key">B</span>
+            <span className="tool-key">{bindingLabel('bearTrap')}</span>
             <span className="tool-glyph">
               <ModelIcon model={hud.bearTrap.model} />
             </span>
@@ -659,7 +1020,7 @@ export function Hud({
               onClick={() => onSelectSlot(slot.index)}
               title={slot.empty ? 'Empty' : slot.name}
             >
-              <span className="tool-key">{slot.index + 1}</span>
+              <span className="tool-key">{bindingLabel(toolbarActions[slot.index] ?? 'slot1')}</span>
               <span className="tool-glyph">
                 {slot.model ? (
                   <ModelIcon
@@ -681,7 +1042,7 @@ export function Hud({
             onClick={onSelectToolSlot}
             title={`${hud.toolSlot.name} · ${hud.toolSlot.fill}/${hud.toolSlot.capacity} water`}
           >
-            <span className="tool-key">6</span>
+            <span className="tool-key">{bindingLabel('toolSlot')}</span>
             <span className="tool-glyph">
               {hud.toolSlot.model ? <ModelIcon model={hud.toolSlot.model} /> : hud.toolSlot.glyph}
             </span>
@@ -694,10 +1055,13 @@ export function Hud({
 
       {hud.win && (
         <div
+          ref={modalScope.ref}
           className="win-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="settlement-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
         >
           <div className="panel win-card settlement-card">
             <p className="label">The homestead stands</p>

@@ -17,11 +17,19 @@ import { quotePurchase } from '../sim/economy';
 import { seedMechanismDescription } from '../sim/genetics';
 import { seedPacketCapacity } from '../sim/buildings';
 import { settlementObjective, type SettlementObjective } from '../sim/settlement';
+import type { FirstTenMinuteGuide } from '../sim/onboarding';
 import { assetDefinition, deedAssetId, shopAssets, type AssetCategory, type AssetId, type PurchasableAsset } from '../content/purchasables';
 import type { ModelKey } from './Assets';
+import {
+  formatBinding,
+  INPUT_BINDING_DEFINITIONS,
+  type InputAction,
+  type InputBindings,
+} from './InputBindings';
 import type { EconomyCapability } from './EconomyCapability';
 import type { SaveFeedback } from './SaveTiming';
 import { PLACEABLE_BUILDINGS, type BuildingPlacement } from './PlacementCoordinator';
+import type { GameSettings } from './Settings';
 
 export type HudSlot = {
   id: ItemId | null;
@@ -48,6 +56,8 @@ export type HudBuildOption = {
   model: ModelKey;
   cost: number;
   canAfford: boolean;
+  description: string;
+  footprint: string;
 };
 
 export type HudMarket = {
@@ -61,6 +71,7 @@ export type HudVendorAsset = {
   name: string;
   description: string;
   footprint: string;
+  kind: 'Building' | 'Gate' | 'Permit' | 'Tool';
   useType: PurchasableAsset['useType'];
   gate: boolean;
   model: ModelKey | null;
@@ -117,6 +128,13 @@ export type HudCodex = {
   status: string;
 };
 
+export type HudBinding = {
+  action: InputAction;
+  label: string;
+  group: string;
+  display: string;
+};
+
 /** Floating "+3 Wood" that rises off whatever the player just gathered. */
 export type HudPopup = {
   id: number;
@@ -140,6 +158,7 @@ export type HudSnapshot = {
   };
   inventoryOpen: boolean;
   duckettes: number;
+  wood: number;
   toolbar: HudToolbarSlot[];
   build: {
     active: boolean;
@@ -152,6 +171,9 @@ export type HudSnapshot = {
     };
   };
   helpOpen: boolean;
+  settingsOpen: boolean;
+  settings: GameSettings;
+  bindings: HudBinding[];
   codex: HudCodex;
   toolSlot: {
     name: string;
@@ -192,6 +214,7 @@ export type HudSnapshot = {
     message: string;
   };
   objective: SettlementObjective;
+  onboarding: FirstTenMinuteGuide | null;
   win: null | {
     daysSurvived: number;
     cropsHarvested: number;
@@ -207,6 +230,9 @@ export type HudPresenterContext = {
   selectedBuildIndex: number;
   placement(): Pick<BuildingPlacement, 'valid' | 'reason'>;
   helpOpen: boolean;
+  settingsOpen: boolean;
+  settings: Readonly<GameSettings>;
+  bindings: Readonly<InputBindings>;
   codexOpen: boolean;
   codexSelectedKey: string | null;
   codexCompareKeys: readonly string[];
@@ -225,6 +251,7 @@ export type HudPresenterContext = {
   marketDistance: number;
   popups: readonly HudPopup[];
   save: SaveFeedback;
+  onboarding?: FirstTenMinuteGuide | null;
   winShownLocal: boolean;
 };
 
@@ -261,6 +288,17 @@ function itemIconModel(id: ItemId): ModelKey | null {
   if (crop !== null) return CROP_ICON_MODELS[crop] ?? null;
   if (id.startsWith('trophy:')) return 'trophy';
   return null;
+}
+
+function footprintLabel(asset: PurchasableAsset | null | undefined): string {
+  return asset ? `${asset.footprint.width}×${asset.footprint.height}` : '—';
+}
+
+function vendorKind(asset: PurchasableAsset): HudVendorAsset['kind'] {
+  if (asset.gate) return 'Gate';
+  if (asset.progression) return 'Permit';
+  if (asset.category === 'Weapons' || asset.category === 'Utilities') return 'Tool';
+  return 'Building';
 }
 
 /** Maps live runtime state to the stable React HUD contract. */
@@ -384,24 +422,38 @@ export class HudPresenter {
       },
       inventoryOpen: state.inventoryOpen,
       duckettes: state.duckettes,
+      wood: woodCount(state),
       toolbar,
       build: {
         active: context.buildingMode,
         selectedIndex: context.selectedBuildIndex,
         wood: woodCount(state),
-        options: PLACEABLE_BUILDINGS.map((entry, index) => ({
-          index,
-          name: entry.name,
-          model: entry.model,
-          cost: entry.cost,
-          canAfford: woodCount(state) >= entry.cost,
-        })),
+        options: PLACEABLE_BUILDINGS.map((entry, index) => {
+          const asset = assetDefinition(entry.id);
+          return {
+            index,
+            name: entry.name,
+            model: entry.model,
+            cost: entry.cost,
+            canAfford: woodCount(state) >= entry.cost,
+            description: asset?.description ?? 'A structure for the homestead.',
+            footprint: footprintLabel(asset),
+          };
+        }),
         placement: {
           valid: buildPlacement.valid,
           reason: buildPlacement.reason,
         },
       },
       helpOpen: context.helpOpen,
+      settingsOpen: context.settingsOpen,
+      settings: { ...context.settings },
+      bindings: INPUT_BINDING_DEFINITIONS.map((definition) => ({
+        action: definition.action,
+        label: definition.label,
+        group: definition.group,
+        display: formatBinding(context.bindings, definition.action),
+      })),
       codex: {
         open: context.codexOpen,
         entries: codexEntries,
@@ -449,7 +501,8 @@ export class HudPresenter {
             id: asset.id,
             name: asset.displayName,
             description: asset.description,
-            footprint: `${asset.footprint.width}×${asset.footprint.height}`,
+            footprint: footprintLabel(asset),
+            kind: vendorKind(asset),
             useType: asset.useType,
             gate: asset.gate,
             model: asset.modelKey,
@@ -473,6 +526,7 @@ export class HudPresenter {
       toast: state.toast,
       save: { ...context.save },
       objective,
+      onboarding: context.onboarding ?? null,
       win:
         objective.complete && !state.winShown && !context.winShownLocal
           ? {

@@ -652,6 +652,13 @@ and hit-pause contracts. No simulation, save, economy, asset, or workflow rules 
   context actions.
 - Never require double-click or right-click as the only route.
 
+Status: Complete on `agent/ux-01-input-contract`. The player-facing keyboard/mouse contract is
+typed and remappable; conflicts swap deterministically, malformed persisted bindings reset safely,
+primary/context/placement/demolition routes have keyboard equivalents, inventory use/delete no
+longer depend on double-click/right-click, and live HUD prompts stay synchronized. The full
+deterministic baseline is 293 tests across 42 files; the exact production-preview smoke passed
+after the final label synchronization.
+
 ### UX-02 — Rebuild information hierarchy
 
 - Default fresh inventory closed.
@@ -661,6 +668,17 @@ and hit-pause contracts. No simulation, save, economy, asset, or workflow rules 
 - Remove empty slots, debug keys, scaffolding copy, and implementation terminology.
 - Show cost, benefit, lock reason, capacity, and result before commitment.
 
+Status: Complete on `agent/ux-02-information-hierarchy`. New games and new saves start with
+inventory closed while legacy v3/v4 saves missing panel state retain their existing open-panel
+behavior for compatibility. The persistent HUD reports time, objective/status, Duckettes, wood,
+seed capacity, selected tool, and concise contextual prompts. Inventory renders occupied stacks only;
+focused-panel priority prevents simultaneous inventory, merchant, build, Help, Codex, context, and
+market overlays. Build and merchant detail shows authored result/benefit, cost, footprint,
+capacity/ownership, and lock reason. Visible debug/scaffolding paths and implementation terms were
+removed. The deterministic baseline is 294 tests across 42 files; required checks and
+production-preview smoke pass. UX-03 and UX-04 are complete; UX-05 implementation is complete by
+explicit product-owner waiver of the five-person study, with M8 release verification pending.
+
 ### UX-03 — Make overlays real modals
 
 - Use appropriate dialog/menu semantics, labeled controls, focus trap, Escape behavior, and focus
@@ -668,6 +686,17 @@ and hit-pause contracts. No simulation, save, economy, asset, or workflow rules 
 - Pause simulation according to the decision in Section 4.
 - Announce important save, purchase, error, discovery, and raid states through nonvisual status text.
 - Ensure pointer capture and keyboard state are cleared on modal/focus transitions.
+
+Status: Complete on `agent/ux-03-modal-accessibility`. Launch, pause, Help, Codex, inventory,
+merchant, build, context, and settlement overlays now expose labeled dialog/menu semantics with
+focus entry, wraparound focus trapping, Escape handling, and opener restoration. Modal transitions
+clear held keyboard and pointer state; build mode pauses the world while preserving one fixed-step
+placement commit boundary. Toasts and vendor messages expose nonvisual status text, and the ending
+overlay pauses simulation until dismissed. The deterministic baseline is 299 tests across 43 files;
+the required test, simulation, asset, build, strict TypeScript, diff, and production audit checks
+pass. Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics,
+and no browser warnings or errors. UX-04 is complete; UX-05 implementation is complete by explicit
+product-owner waiver of the five-person study, with M8 release verification pending.
 
 ### UX-04 — Settings and accessibility baseline
 
@@ -680,6 +709,19 @@ and hit-pause contracts. No simulation, save, economy, asset, or workflow rules 
 - Captions/visual equivalents for meaningful audio cues.
 - Test DOM UI against WCAG 2.2 AA where applicable, including keyboard, focus appearance, reflow,
   target size, name/role/value, error identification, and status messages.
+
+Status: Complete on agent/ux-04-settings-accessibility. Browser settings are typed, bounded, and
+persisted outside the save schema. The pausing Settings dialog exposes master/music/effects/ambience
+volume controls, mute, reduced motion, independent camera shake, UI/text scale, high-contrast UI,
+and the existing conflict-safe keyboard rebinding/reset contract. Settings use labeled controls,
+44px minimum control rows, visible focus, color-independent checkbox states, live status regions,
+and a fixed schedule note because day length is coupled to crop, raid, cooldown, and economy timing.
+The current fallback has no authored music or ambience sources, so synthesized cues remain on the
+effects bus until AUD-01. The deterministic baseline is 303 tests across 44 files. Full test,
+simulation, asset, build, strict TypeScript, diff, and production-audit checks pass. Production
+preview smoke verified the pausing Settings dialog, accessible labels, focus trap/restoration,
+contrast toggle, and no browser warnings/errors. UX-05 implementation is complete by explicit
+product-owner waiver of the five-person study, with M8 release verification pending.
 
 ### UX-05 — Author the first ten minutes
 
@@ -697,6 +739,14 @@ Storyboard and test:
 
 Measure completion, confusion, rejected actions, and time per beat with at least five people who did
 not build the game. Revise before adding later content.
+
+Status: Complete by explicit product-owner waiver of the five-person external study for this
+release. The authored first-session implementation is present in `src/sim/onboarding.ts` as a
+derived, non-saved eight-beat guide from movement through the first merchant visit. Launch copy,
+starter-plot transitions, active-binding prompt copy, fox-risk guidance, market/merchant next goals,
+Save status, and concise Help/Settings discovery are covered by 315 deterministic tests across 45
+files and a production-preview smoke. The study protocol remains documented for future validation;
+no participant findings are claimed. M8 remains pending its integrated release verification.
 
 ## 14. Animation and asset QA matrix
 
@@ -941,8 +991,8 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
-| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–05 integrated; milestone release pending |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
+| M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | Release candidate: UX-01–05 complete on the integration branch; UX-05 study waived by explicit product-owner authorization; deterministic and production-preview evidence pass; release workflow/live smoke pending |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |

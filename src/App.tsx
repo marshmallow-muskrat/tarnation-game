@@ -1,10 +1,13 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type CSSProperties } from 'react';
 import { GameRuntime } from './game/GameRuntime';
 import type { HudSnapshot } from './game/HudPresenter';
 import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './game/Assets';
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
 import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
+import { useModalFocusScope } from './ui/modal';
+import type { GameSettingKey, GameSettingValue } from './game/Settings';
+import { FIRST_TEN_MINUTE_LAUNCH_COPY } from './sim/onboarding';
 
 const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
   boot: 'boot assets',
@@ -30,6 +33,7 @@ export function App() {
   const [retryChoice, setRetryChoice] = useState<null | 'continue' | 'new'>(null);
   const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
   const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
+  const launchModalScope = useModalFocusScope(!launchChoice ? 'launch' : null, null);
 
   useEffect(() => () => {
     disposeModelIconRenderer();
@@ -46,8 +50,6 @@ export function App() {
 
     const runtime = new GameRuntime(saveService);
     runtimeRef.current = runtime;
-    // Console handle for debugging: window.tarn.teleport(x, z), .state, .world
-    (window as unknown as { tarn?: unknown }).tarn = runtime;
     let cancelled = false;
 
     runtime
@@ -76,8 +78,6 @@ export function App() {
       cancelled = true;
       runtime.dispose();
       runtimeRef.current = null;
-      const handles = window as unknown as { tarn?: unknown };
-      if (handles.tarn === runtime) delete handles.tarn;
     };
   }, [launchChoice, mountAttempt]);
 
@@ -144,19 +144,33 @@ export function App() {
     setError(null);
   };
 
+  const shellStyle = {
+    '--ui-scale': hud?.settings.uiScale ?? 1,
+    '--text-scale': hud?.settings.textScale ?? 1,
+  } as CSSProperties;
+
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${hud?.settings.highContrast ? 'high-contrast' : ''}`} style={shellStyle}>
       <div className="game-mount">
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} tabIndex={0} aria-label="Tarnation game canvas" />
       </div>
       {!launchChoice && (
-        <div className="launch-overlay">
+        <div
+          ref={launchModalScope.ref}
+          className="launch-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="launch-title"
+          tabIndex={-1}
+          onKeyDown={launchModalScope.onKeyDown}
+        >
           <div className="panel launch-card">
             <p className="label">A fixed-camera farming adventure</p>
-            <h1>Tarnation</h1>
+            <h1 id="launch-title">Tarnation</h1>
             <p className="launch-copy">
               Grow a homestead, protect the harvest, and build a town one deliberate piece at a time.
             </p>
+            <p className="launch-controls">{FIRST_TEN_MINUTE_LAUNCH_COPY}</p>
             <div className="launch-actions">
               <button type="button" onClick={() => beginAdventure('continue')} disabled={!hasSave}>
                 Continue
@@ -251,6 +265,11 @@ export function App() {
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
         onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onToggleHelp={() => runtimeRef.current?.toggleHelp()}
+        onToggleSettings={() => runtimeRef.current?.toggleSettings()}
+        onUpdateSetting={(key: GameSettingKey, value: GameSettingValue) => runtimeRef.current?.updateSetting(key, value)}
+        onResetSettings={() => runtimeRef.current?.resetSettings()}
+        onRebindInput={(action, code) => runtimeRef.current?.rebindInput(action, code)}
+        onResetInputBindings={() => runtimeRef.current?.resetInputBindings()}
         onToggleCodex={() => runtimeRef.current?.toggleCodex()}
         onSelectCodex={(key) => runtimeRef.current?.selectCodexEntry(key)}
         onToggleCodexCompare={(key) => runtimeRef.current?.toggleCodexCompare(key)}
