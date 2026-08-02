@@ -852,11 +852,10 @@ controller-integration tests across 48 files, with compact typed fresh, midgame,
 and prior-version fixtures. Playwright runs six focused production-build journeys covering fresh movement
 and starter-plot work with settings, mature-crop harvest/Codex discovery, merchant purchase, deed placement
 and save reload, deterministic raid, and the authored ending; the launch-card screenshot uses reviewed
-Darwin and Linux baselines and a bounded desktop viewport for hosted software-WebGL runners. `npm run
-perfcheck` enforces fixed budgets for dense farming, raid route fields, and a seeded economy cohort and
-writes an ignored QA report. The deployment workflow runs the deterministic performance and browser gates
-before the final production build/deployment. No production behavior, save schema, fixed-step rule, seeded
-simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
+Darwin and Linux baselines. `npm run perfcheck` enforces fixed budgets for dense farming, raid route fields,
+and a seeded economy cohort and writes an ignored QA report. The deployment workflow runs the deterministic
+performance and browser gates before the final production build/deployment. No production behavior, save
+schema, fixed-step rule, seeded simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
 `GL_CLOSE_PATH_NV` thumbnail-readback warning is filtered as browser-driver noise; all other browser
 warnings, errors, page errors, and failed assertions remain fatal.
 

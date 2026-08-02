@@ -104,8 +104,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   fixture builders already used by the save/farm/economy suites. Six focused Playwright journeys run against
   the production build: fresh movement/starter-plot work/settings, mature-crop harvest and Codex discovery,
   merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
-  reviewed launch-card baselines are platform-specific for Darwin and Linux, and the desktop viewport is
-  bounded for hosted software-WebGL runners. `npm run perfcheck` enforces dense-farm, raid-route,
+  reviewed launch-card baselines are platform-specific for Darwin and Linux. `npm run perfcheck` enforces
+  dense-farm, raid-route,
   and seeded-economy budgets and writes only ignored QA artifacts. The deployment workflow now runs
   `npm run perfcheck`, installs Chromium, and runs `npm run e2e:ci` before the final build/deployment step;
   all other warnings/errors remain fatal, with only the known headless SwiftShader
