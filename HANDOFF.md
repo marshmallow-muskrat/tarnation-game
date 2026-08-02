@@ -111,7 +111,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   loader and shadowed lighting profile. The pure GLB validator checks all 97 unique active files;
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
-  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 is integrated below; ART-04 is next.
+  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
+  ART-05 is next.
 
 - ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
   obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
@@ -126,6 +127,20 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. A fresh local browser smoke reached
   Day 1/daylight and Saved status with no console errors. The deployment workflow already runs
   `npm run test:ci` before asset validation and build.
+
+- ART-04 extracts camera policy into the pure `src/sim/camera.ts` module. The fixed orthographic
+  composition retains a `0.78–1.3` zoom range, a five-unit vertical half-frustum, finite resize
+  fallbacks, a four-unit world-edge target margin that keeps a corner player readable at maximum
+  zoom, and quarter-tile shadow-anchor quantization. The existing day/night light-intensity and fog
+  curve is characterized with readable minimum levels; runtime movement, fixed-step timing, saves,
+  and the production asset path are unchanged. Local visual captures covered default/day framing,
+  minimum zoom, the homestead approach, the full HUD/status/toolbar, and the pausing field guide
+  modal. The fresh tier-1 world view and active picker views for tiers 2–5 were reviewed under the
+  same lighting profile; no player occlusion required a transparency fade. The current game retains
+  no weather state. The deterministic baseline is now 275 tests across 39 files. `npm run test`,
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol
+  TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. The deployment workflow already
+  runs `npm run test:ci` before asset validation and build.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
@@ -142,6 +157,12 @@ The characterization baseline intentionally preserves current behavior for later
   worked ground remains intentionally traversable by actors, interaction-only trees/rocks do not
   become walls, and the empty central camp reservation remains walkable; those are deliberate policy
   contracts rather than unfinished collision.
+- Before ART-04, camera follow used the player position directly even at the authored world edges,
+  and projection/shadow/lighting math lived only in `WorldRenderer`. The edge target now stops just
+  far enough inside the `[2, 238]` movement bounds to keep a corner player in frame at maximum zoom;
+  the player’s movement bounds are unchanged. No weather variant or tall-building fade was invented
+  because neither is present or required by the current authored content. Generated visual captures
+  remain review evidence rather than committed binary assets.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
