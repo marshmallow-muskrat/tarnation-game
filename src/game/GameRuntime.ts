@@ -499,6 +499,7 @@ export class GameRuntime {
   /** Renderer-only randomness; never consume the simulation RNG for decoration. */
   private feedbackSeed = 0x51f15eed;
   private winShownLocal = false;
+  private settlementCelebrated = false;
   private readonly runtimeMetrics = new RuntimeMetrics(performance.now());
   private readonly hudPresenter = new HudPresenter();
 
@@ -543,6 +544,8 @@ export class GameRuntime {
       this.gs = loaded.state;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
+    this.winShownLocal = false;
+    this.settlementCelebrated = false;
     this.raidWarningDay = -1;
     this.codexOpen = false;
     this.codexCompareKeys = [];
@@ -2006,13 +2009,21 @@ export class GameRuntime {
       }
       this.syncWorldTiles();
       this.persist();
-      if (checkWin(this.gs) && !this.gs.winShown) {
-        if (!this.runtimeMetrics.hasCompleted('settlement_goal')) {
-          this.recordOutcome('settlement_goal', 'completed');
-        }
-        this.winShownLocal = false;
-      }
     }
+  }
+
+  private maybeShowSettlementGoal(): void {
+    if (!checkWin(this.gs)) return;
+    if (!this.runtimeMetrics.hasCompleted('settlement_goal')) {
+      this.recordOutcome('settlement_goal', 'completed');
+    }
+    if (this.settlementCelebrated) return;
+    this.settlementCelebrated = true;
+    this.winShownLocal = false;
+    setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
+    this.spawnFeedbackBurst(this.playerX, this.playerZ, 0xf2c266, 14, 0.34);
+    this.audio.play('reward');
+    this.persist();
   }
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
@@ -4160,6 +4171,7 @@ export class GameRuntime {
 
   private pushHud(force: boolean): void {
     if (!this.gs || !this.hudPresenter.hasListener) return;
+    this.maybeShowSettlementGoal();
     this.hudPresenter.push(force, {
       state: this.gs,
       hint: this.interactionHint(selectedSeed(this.gs), selectedSeedPacket(this.gs)),

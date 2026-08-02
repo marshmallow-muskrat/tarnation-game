@@ -117,6 +117,18 @@ export function Hud({
           Duckettes
         </p>
         <p className="value amber">₫ {hud.duckettes}</p>
+        <section className="settlement-objective" aria-label="Settlement objective">
+          <p className="label">Settlement objective</p>
+          <p className="settlement-objective-title">{hud.objective.title}</p>
+          <ul>
+            {hud.objective.steps.map((step) => (
+              <li className={step.complete ? 'complete' : ''} key={step.id}>
+                <span aria-hidden>{step.complete ? '✓' : '○'}</span>
+                <span>{step.label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
         <p
           className={`save-status ${hud.save.state === 'failed' ? 'failed' : ''}`}
           role={hud.save.state === 'failed' ? 'alert' : 'status'}
@@ -677,13 +689,28 @@ export function Hud({
       </div>
 
       {hud.win && (
-        <div className="win-overlay">
-          <div className="panel win-card">
-            <h1>Draft Complete</h1>
-            <p>Days survived · {hud.win.daysSurvived}</p>
-            <p>Crops harvested · {hud.win.cropsHarvested}</p>
-            <p>Wood gathered · {hud.win.woodGathered}</p>
-            <p>Trophies · {hud.win.trophies}</p>
+        <div
+          className="win-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settlement-title"
+        >
+          <div className="panel win-card settlement-card">
+            <p className="label">The homestead stands</p>
+            <h1 id="settlement-title">Homestead Established</h1>
+            <p>Grow, experiment, defend, and develop now have a place here.</p>
+            <ul className="settlement-completion-list">
+              {hud.objective.steps.map((step) => (
+                <li key={step.id}>
+                  <span aria-hidden>✓</span>
+                  <span>{step.label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="win-stats">Days survived · {hud.win.daysSurvived}</p>
+            <p className="win-stats">Crops harvested · {hud.win.cropsHarvested}</p>
+            <p className="win-stats">Wood gathered · {hud.win.woodGathered}</p>
+            <p className="win-stats">Trophies · {hud.win.trophies}</p>
             <button type="button" onClick={onDismissWin}>
               Keep playing
             </button>

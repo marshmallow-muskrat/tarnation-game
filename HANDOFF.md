@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 through CORE-07 are complete on the current integration branch after the ACT-01/02/03/04/05
-  and PERF-05 responsibility extractions; CORE-08 is next.
+- CORE-01 through CORE-08 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; the M5 release gate is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -371,7 +371,22 @@ The characterization baseline intentionally preserves current behavior for later
   now 214 tests across 33 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`,
   the production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
   pass. Production-preview smoke reached fresh Day 1/daylight with Saved status and no console
-  warnings or errors. No save schema, raid damage, economy price, or ending behavior changed.
+  warnings or errors. No save schema, raid damage, or economy price changed in CORE-07; the authored
+  ending replacement is recorded separately under CORE-08.
+
+- CORE-08 replaces the day-five prototype boundary with the derived `Establish the homestead`
+  objective. Grow requires a harvested crop, Experiment requires a discovered hybrid in the Codex,
+  Defend requires a fence, gate, or existing trophy outcome, and Develop requires homestead tier 2+
+  or a Silo/Water Tower. Progress is visible in the HUD and the completed objective opens a
+  `Homestead Established` overlay with the existing counters, a bounded feedback burst, and the
+  existing reward sound; `Keep playing` preserves continued play. The existing `winShown` dismissal
+  field remains the only save representation, so no schema or migration changed. The deterministic
+  baseline is now 223 tests across 34 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. Production-preview smoke reached saved Day 1/daylight, showed
+  all four objective steps, and recorded no console warnings or errors. The existing deployment
+  workflow already runs `npm run test:ci` before asset validation and build; no deployment was
+  performed for this task.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

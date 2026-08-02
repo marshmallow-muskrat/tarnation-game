@@ -382,3 +382,16 @@ restored through the existing seed-inventory transaction; this is a bounded reco
 save-schema field and no change to raid damage, prices, or purchase policy. The economy diagnostic
 continues to represent generic two-day base crops, so its day-3 first-crop-sale result remains a
 documented calibration follow-up while the existing Day 1 wood-sale route remains available.
+
+## 2026-08-01 — Make the settlement endpoint a derived four-pillar objective
+
+CORE-08 replaces the prototype day threshold with one authored `Establish the homestead` objective.
+Grow is satisfied by a recorded crop harvest, Experiment by any discovered hybrid in the Codex,
+Defend by a placed fence or gate or an existing trophy outcome, and Develop by homestead tier 2+
+or a placed Silo/Water Tower. These sources are already saved gameplay state and keep the merchant,
+Codex, defense, and building systems as the progression authorities rather than adding a quest
+schema. The HUD shows each step from fresh play through completion, and the ending presents a
+`Homestead Established` payoff using the existing feedback burst and reward sound before allowing
+continued play. The existing `winShown` field remains the dismissal marker; no save schema or
+migration changes are introduced. The old day-five-only behavior is characterized as insufficient,
+not silently retained as a second ending path.
