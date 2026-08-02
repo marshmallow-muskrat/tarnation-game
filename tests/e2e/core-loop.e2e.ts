@@ -1,7 +1,17 @@
 import { expect, test } from '@playwright/test';
-import { captureBrowserErrors, completedE2eSave, e2eSave, expectNoBrowserErrors, importSave, startAdventure } from './helpers';
+import { FARM_CONTROL_TILE } from '../fixtures';
+import {
+  captureBrowserErrors,
+  completedE2eSave,
+  e2eSave,
+  expectNoBrowserErrors,
+  farmControlE2eSave,
+  importSave,
+  readActiveSave,
+  startAdventure,
+} from './helpers';
 
-test('fresh game supports movement, farm controls, settings, and a reviewed visual launch baseline', async ({ page }) => {
+test('fresh game supports launch, keyboard settings, and observable player movement', async ({ page }) => {
   const errors = captureBrowserErrors(page);
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Tarnation' })).toBeVisible();
@@ -9,30 +19,6 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
 
   await startAdventure(page, 'New Adventure');
   const canvas = page.getByLabel('Tarnation game canvas');
-  await canvas.focus();
-  await page.keyboard.press('Digit2');
-  await page.keyboard.down('KeyA');
-  await page.keyboard.down('KeyS');
-  // The baseline camera is snapped to the authored spawn tile; this short
-  // diagonal movement follows world +Z without drifting across the plot.
-  await page.waitForTimeout(350);
-  await page.keyboard.up('KeyA');
-  await page.keyboard.up('KeyS');
-  const canvasBox = await canvas.boundingBox();
-  if (!canvasBox) throw new Error('game canvas did not expose a layout box');
-  const playerTilePoint = {
-    x: canvasBox.x + canvasBox.width / 2,
-    y: canvasBox.y + canvasBox.height / 2,
-  };
-  const plantingGuide = page.getByRole('region', { name: 'Plant a seed' });
-  await page.mouse.click(playerTilePoint.x, playerTilePoint.y);
-  await expect(plantingGuide).toBeVisible({ timeout: 5_000 });
-  await expect(plantingGuide).toContainText(/Planting spends one packet/i);
-
-  await page.keyboard.press('Digit2');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(350);
-  await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
 
   await page.keyboard.press('Escape');
   // Pause focus starts on Resume; keyboard navigation opens Settings without
@@ -51,7 +37,49 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await expect(highContrast).toBeChecked();
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
 
+  const before = await readActiveSave(page);
+  await canvas.focus();
+  await page.keyboard.down('KeyD');
+  // This is a bounded movement probe, not navigation to a world coordinate.
+  await page.waitForTimeout(250);
+  await page.keyboard.up('KeyD');
+  // The production beforeunload listener is the persistence boundary used by
+  // this assertion; the reload returns to the launch screen without starting
+  // a second adventure.
+  await page.reload();
+  const after = await readActiveSave(page);
+  const displacement = Math.hypot(after.data.playerX - before.data.playerX, after.data.playerZ - before.data.playerZ);
+  expect(after.revision, 'fresh-game movement must advance the persisted save revision').toBeGreaterThan(before.revision);
+  expect(displacement, 'fresh-game movement must persist a meaningful player displacement').toBeGreaterThan(0.05);
+
+  await expectNoBrowserErrors(page, errors);
+});
+
+test('farm controls till a known empty starter-plot grass tile and expose the planting transition', async ({ page }) => {
+  const errors = captureBrowserErrors(page);
+  await page.goto('/');
+  await importSave(page, farmControlE2eSave());
+  await startAdventure(page, 'Continue');
+
+  const before = await readActiveSave(page);
+  expect(before.data.tiles[FARM_CONTROL_TILE.z]?.[FARM_CONTROL_TILE.x]?.state).toBe('grass');
+
+  const canvas = page.getByLabel('Tarnation game canvas');
+  await canvas.focus();
+  await page.keyboard.press('Digit2');
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) throw new Error('game canvas did not expose a layout box');
+  // The fixture places the player on the target tile, so the camera-centered
+  // click used by the mature-crop journey has one deterministic world target.
+  await page.mouse.click(canvasBox.x + canvasBox.width / 2, canvasBox.y + canvasBox.height / 2);
+  await expect(page.locator('.hud-bottom-center .hint')).toContainText(/click to plant/i, { timeout: 5_000 });
+
+  const after = await readActiveSave(page);
+  expect(after.data.tiles[FARM_CONTROL_TILE.z]?.[FARM_CONTROL_TILE.x]?.state, 'hoe action must persist grass → tilled').toBe('tilled');
+  expect(after.revision, 'tilling must advance the persisted save revision').toBeGreaterThan(before.revision);
   await expectNoBrowserErrors(page, errors);
 });
 

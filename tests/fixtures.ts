@@ -1,3 +1,4 @@
+import { STARTER_PLOT } from '../src/content';
 import { createEmptyGrid, emptyTile, type Tile, type TileState } from '../src/sim/farm';
 import { crossbreed, makeSeed, seedId, type Seed } from '../src/sim/genetics';
 import { addItem, createInventory } from '../src/sim/inventory';
@@ -10,6 +11,10 @@ export const FIXTURE_SEED = 0x5eed_0202;
 export const MIDGAME_SEED = 0x4d1d_6a0e;
 export const DENSE_FARM_ORIGIN = 80;
 export const DENSE_FARM_SIZE = 48;
+export const FARM_CONTROL_TILE = {
+  x: STARTER_PLOT.minX + 2,
+  z: STARTER_PLOT.minZ + 2,
+} as const;
 
 export type PriorSaveVersion = 3 | 4 | 5 | 6 | 7;
 
@@ -130,6 +135,25 @@ export function midgameSaveFixture(): SaveData {
   save.simTime = 491;
   save.winShown = false;
   save.trophies = ['Thicket Fox', 'Marsh Stag'];
+  return save;
+}
+
+/** A loaded run positioned on one known empty starter-plot grass tile. */
+export function farmControlSaveFixture(): SaveData {
+  const save = midgameSaveFixture();
+  const { x, z } = FARM_CONTROL_TILE;
+  save.tiles[z]![x] = emptyTile();
+  save.playerX = x + 0.5;
+  save.playerZ = z + 0.5;
+  save.day = 1;
+  save.phase = 'day';
+  save.elapsed = 0;
+  save.stats = { ...save.stats, cropsHarvested: 0, daysSurvived: 1 };
+  save.duckettes = 0;
+  save.selectedCrop = 'beet';
+  save.inventoryOpen = false;
+  save.toolbarSlot = 2;
+  save.toolSlotActive = false;
   return save;
 }
 

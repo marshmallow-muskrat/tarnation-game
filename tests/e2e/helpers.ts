@@ -1,7 +1,7 @@
 import { expect, type Page } from '@playwright/test';
-import { serialize } from '../../src/sim/save';
-import { midgameSaveFixture } from '../fixtures';
-import type { SaveData } from '../../src/sim/save';
+import { SAVE_SERVICE_KEYS, saveChecksum } from '../../src/game/SaveService';
+import { deserialize, serialize, type SaveData } from '../../src/sim/save';
+import { farmControlSaveFixture, midgameSaveFixture } from '../fixtures';
 
 export function e2eSave(mutator?: (save: SaveData) => void): string {
   const save = midgameSaveFixture();
@@ -10,6 +10,10 @@ export function e2eSave(mutator?: (save: SaveData) => void): string {
   save.winShown = false;
   mutator?.(save);
   return serialize(save);
+}
+
+export function farmControlE2eSave(): string {
+  return serialize(farmControlSaveFixture());
 }
 
 export function completedE2eSave(mutator?: (save: SaveData) => void): string {
@@ -32,6 +36,36 @@ export async function startAdventure(page: Page, choice: 'Continue' | 'New Adven
   await expect(page.getByLabel('Tarnation game canvas')).toBeVisible();
   await expect(page.getByText(/^Day \d+$/)).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15_000 });
+}
+
+export async function readActiveSave(page: Page): Promise<{ slot: 'a' | 'b'; revision: number; data: SaveData }> {
+  const stored = await page.evaluate((keys) => {
+    const pointer = window.localStorage.getItem(keys.pointer);
+    if (pointer !== 'a' && pointer !== 'b') return null;
+    const key = pointer === 'a' ? keys.a : keys.b;
+    return { slot: pointer, raw: window.localStorage.getItem(key) };
+  }, SAVE_SERVICE_KEYS);
+  if (!stored?.raw || (stored.slot !== 'a' && stored.slot !== 'b')) throw new Error('active save slot was not persisted');
+
+  let envelope: { version?: unknown; revision?: unknown; checksum?: unknown; payload?: unknown };
+  try {
+    envelope = JSON.parse(stored.raw) as typeof envelope;
+  } catch {
+    throw new Error('active save slot did not contain a JSON envelope');
+  }
+  if (
+    envelope.version !== 1 ||
+    typeof envelope.revision !== 'number' ||
+    !Number.isInteger(envelope.revision) ||
+    typeof envelope.checksum !== 'string' ||
+    typeof envelope.payload !== 'string' ||
+    saveChecksum(envelope.payload) !== envelope.checksum
+  ) {
+    throw new Error('active save slot failed envelope validation');
+  }
+  const data = deserialize(envelope.payload);
+  if (!data) throw new Error('active save payload failed production deserialization');
+  return { slot: stored.slot, revision: envelope.revision, data };
 }
 
 /**
