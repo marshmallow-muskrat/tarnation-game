@@ -143,6 +143,13 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   Vitest tests across 49 files, 8/8 production E2E journeys, strict TypeScript, build, simulation/asset/audio/
   feel/performance checks, diff check, and `npm audit --omit=dev` (0 vulnerabilities). Build identity is
   injected by Vite from the exact Git commit used for the build.
+- REL-01 is complete on `agent/rel-01-dependency-build-hygiene`: Wrangler is pinned to `4.118.0` in the
+  package manifest/lockfile and the deployment workflow uses the pinned `wrangler-action` v4.0.0 commit
+  with the same CLI version. Node 24 is recorded in `.nvmrc`, package engines, and CI. `npm ci` passed;
+  Wrangler Pages local preview served the built site with HTTP 200; the Pages deploy command resolved;
+  full and production-only audits reported zero vulnerabilities; and contribution, changelog, license,
+  and asset/audio provenance guidance were added. The task changed no Vite/React/Three.js, save,
+  simulation, economy, or gameplay behavior.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

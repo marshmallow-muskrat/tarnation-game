@@ -921,6 +921,16 @@ timestep, seeded RNG, or gameplay pricing changed.
 - Add `LICENSE`, contribution expectations, changelog/release notes policy, and asset/audio license
   ledgers before public distribution.
 
+Status: Complete on `agent/rel-01-dependency-build-hygiene`. Wrangler is pinned to stable `4.118.0`
+in `package.json` and `package-lock.json`; the deployment workflow uses the pinned Wrangler Action
+`v4.0.0` commit and the same CLI version. Node 24 is pinned through `.nvmrc`, `package.json` engines,
+and existing CI setup. The existing `wrangler.jsonc` Pages configuration and `pages deploy dist
+--project-name=tarnation --branch=main` command resolve under Wrangler 4; `wrangler pages dev dist`
+served the production bundle locally with HTTP 200. `npm ci` reproduced the locked install. Full and
+production-only audits both report zero vulnerabilities. Contribution, changelog/release-note,
+all-rights-reserved licensing, and asset/audio provenance guidance are now explicit. No Vite, React,
+Three.js, save, simulation, economy, or gameplay behavior changed.
+
 ### REL-02 — Release checklist
 
 - Production flags and prices verified; no free/debug paths.
@@ -1068,7 +1078,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
-| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01 and QA-02 complete; QA-03, REL-01, and REL-02 remain |
+| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01–03 and REL-01 complete; REL-02 remains |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
 Recommended first implementation order:

@@ -14,12 +14,12 @@ npm install
 npm run dev
 ```
 
-- Game: <http://localhost:5173/>
+- Game: <http://localhost:5183/>
 - Asset preview: <http://localhost:5173/picker.html>
 - Typecheck: `npx tsc --noEmit`
 - Production build: `npm run build`
 - Production deploy: automatic after a verified push to `main`
-- Manual recovery deploy: `npm run deploy`
+- Do not deploy task or integration branches manually; the reviewed `main` workflow is the deployment path.
 
 ## Controls
 
@@ -41,10 +41,10 @@ npm run dev
 | `+` / `-` | Camera zoom |
 | M | Reduced motion |
 | V | Toggle sound feedback |
+| H | Field guide |
 | Left click | Use the selected tool |
 | Right click / Space | Use the selected ranged weapon; rotate in placement; context actions on placed assets |
 | E | Fill the bucket at water or open the merchant shop when nearby |
-| F12 | Toggle the labelled grid debugger |
 | Esc | Cancel the active mode, close menus, or pause when idle |
 
 Double-click a deed in the inventory to place, equip, or apply it. Right-click an inventory stack
@@ -68,9 +68,15 @@ and release plan is [`masterplan-v2.md`](masterplan-v2.md). Superseded plans are
 
 The GitHub Actions production workflow runs simulation checks, asset validation, and the production
 build before deploying `main` to Cloudflare Pages. A failed verification step prevents deployment.
+The Help panel also provides a sanitized diagnostics export with build, browser/GPU, save metadata,
+and bounded runtime information; it does not expose a runtime debug console or mutation handle.
 
 ## Asset safety
 
 Models are data entries in `src/content/models.ts`; `src/game/Assets.ts` owns loading and primitive
 fallbacks. Keep scatter batched with instancing. Never allow one missing model to prevent the game
 from starting. See [`ASSETS.md`](ASSETS.md) for the complete pipeline and pack decisions.
+
+Contributor setup, release notes, licensing boundaries, and provenance ledgers are documented in
+[`CONTRIBUTING.md`](CONTRIBUTING.md), [`CHANGELOG.md`](CHANGELOG.md), [`LICENSE`](LICENSE), and
+[`PROVENANCE.md`](PROVENANCE.md).
