@@ -192,3 +192,11 @@ and action counters, first-completion timing, progression totals, and cloned deb
 providing current simulation time/day values. Metrics are not serialized, do not consume seeded
 simulation randomness, and accept explicit clock values in tests so characterization remains
 deterministic.
+
+## 2026-08-01 — Keep HUD view-model assembly separate from React and gameplay
+
+The final PERF-05 extraction slice gives `HudPresenter` ownership of the existing `HudSnapshot` type,
+inventory/market/vendor/build mapping, HUD JSON deduplication, and transient-array copies. React still
+renders the same typed snapshot, while `GameRuntime` supplies live world bearings, save feedback,
+placement status, economy capability, and interaction hints as callbacks. The presenter has no DOM,
+Three.js, save mutation, or simulation-rule authority; its deterministic tests use fixed game state.

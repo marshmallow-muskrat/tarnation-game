@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ModelKey } from '../game/Assets';
 import { getModelIconThumbnail, paintModelIcon } from './ModelIconRenderer';
-import type { HudSlot, HudSnapshot } from '../game/GameRuntime';
+import type { HudSlot, HudSnapshot } from '../game/HudPresenter';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
 

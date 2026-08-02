@@ -200,6 +200,14 @@ The characterization baseline intentionally preserves current behavior for later
   snapshots, and settlement completion. The deterministic baseline is now 134 tests across 21 files;
   the remaining PERF-05 slice is HUD responsibility extraction.
 
+- PERF-05's final extraction slice moves the typed HUD snapshot contract, inventory/market/vendor/build
+  view-model mapping, JSON deduplication, and transient-array copying into `HudPresenter`. `GameRuntime`
+  remains the composition root and supplies live placement, world, save, economy, and interaction
+  callbacks; React continues to render the same snapshot shape. Four focused tests cover fresh HUD
+  mapping, item/market totals, tab normalization with pause/ending state, and deduplication. The
+  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete; M3 release evidence
+  still requires the integrated milestone release workflow and live smoke test.
+
 - Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
   exactly the same position, the existing separation fallback treats them as one unit apart before
   calculating the push, producing only a small deterministic nudge (0.052 units at the current 1.05

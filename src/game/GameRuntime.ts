@@ -23,7 +23,6 @@ import {
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
   HOMESTEAD_UPGRADE_WOOD,
-  INVENTORY_SLOTS,
   MARKET_RANGE,
   MELEE_COOLDOWN,
   MELEE_RANGE,
@@ -45,7 +44,6 @@ import {
   FOX_ATTACK_PERIOD,
   FOX_BURROW_TIME,
   FOX_EAT_TIME,
-  WIN_DAY,
   WORLD_SIZE,
 } from '../content';
 import {
@@ -94,9 +92,9 @@ import {
   totalWeirdness,
 } from '../sim/farm';
 import { crossbreed } from '../sim/genetics';
-import { hasRoomFor, occupiedSlots } from '../sim/inventory';
-import { cropItem, cropName, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
-import { purchaseAsset, quotePurchase } from '../sim/economy';
+import { hasRoomFor } from '../sim/inventory';
+import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
+import { purchaseAsset } from '../sim/economy';
 import {
   type OutcomeKind,
   type OutcomeStatus,
@@ -128,7 +126,6 @@ import {
   completedSaveFeedback,
   savingFeedback,
   type SaveFeedback,
-  type SaveFeedbackState,
 } from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
@@ -137,6 +134,7 @@ import { EquipmentController } from './EquipmentController';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
+import { HudPresenter, TOOLBAR, type HudContextMenu, type HudPopup, type HudSnapshot } from './HudPresenter';
 import {
   InteractionSystem,
   SLOT_AXE,
@@ -170,150 +168,6 @@ import {
   tileIsEnclosed,
   tileKey,
 } from '../sim/placement';
-
-export type HudSlot = {
-  id: ItemId | null;
-  name: string;
-  glyph: string;
-  model: ModelKey | null;
-  count: number;
-  price: number;
-  blurb: string;
-};
-
-export type HudToolbarSlot = {
-  index: number;
-  name: string;
-  glyph: string;
-  model: ModelKey | null;
-  selected: boolean;
-  empty: boolean;
-};
-
-export type HudBuildOption = {
-  index: number;
-  name: string;
-  model: ModelKey;
-  cost: number;
-  canAfford: boolean;
-};
-
-export type HudMarket = {
-  open: boolean;
-  items: { id: ItemId; name: string; glyph: string; model: ModelKey | null; count: number; price: number }[];
-  total: number;
-};
-
-export type HudVendorAsset = {
-  id: AssetId;
-  name: string;
-  description: string;
-  footprint: string;
-  useType: PurchasableAsset['useType'];
-  gate: boolean;
-  model: ModelKey;
-  price: number;
-  material: string;
-  owned: number;
-  canBuy: boolean;
-  lockReason: string;
-};
-
-export type HudVendor = {
-  open: boolean;
-  tab: AssetCategory;
-  tabs: AssetCategory[];
-  items: HudVendorAsset[];
-  economyLabel: string;
-  message: string;
-};
-
-export type HudContextMenu = {
-  open: boolean;
-  x: number;
-  y: number;
-  name: string;
-  placedIndex: number;
-  gate: boolean;
-  gateOpen: boolean;
-};
-
-/** Floating "+3 Wood" that rises off whatever you just gathered. */
-export type HudPopup = {
-  id: number;
-  text: string;
-  /** Viewport fraction, 0..1 from the top-left. */
-  x: number;
-  y: number;
-  /** 1 at spawn → 0 when it should be gone. */
-  life: number;
-};
-
-export type HudSnapshot = {
-  day: number;
-  phase: 'day' | 'night';
-  phaseT: number;
-  hint: string;
-  inventory: HudSlot[];
-  inventoryOpen: boolean;
-  duckettes: number;
-  toolbar: HudToolbarSlot[];
-  build: {
-    active: boolean;
-    selectedIndex: number;
-    wood: number;
-    options: HudBuildOption[];
-    placement: {
-      valid: boolean;
-      reason: string;
-    };
-  };
-  helpOpen: boolean;
-  toolSlot: {
-    name: string;
-    glyph: string;
-    model: ModelKey | null;
-    selected: boolean;
-    fill: number;
-    capacity: number;
-  };
-  ultimate: {
-    name: string;
-    glyph: string;
-    model: ModelKey;
-    ready: boolean;
-    cooldown: number;
-    max: number;
-  };
-  bearTrap: {
-    name: string;
-    glyph: string;
-    model: ModelKey;
-    ready: boolean;
-    cooldown: number;
-    max: number;
-  };
-  market: HudMarket;
-  vendor: HudVendor;
-  contextMenu: HudContextMenu;
-  demolishMode: boolean;
-  paused: boolean;
-  /** Screen-space bearing to the market stall, radians, 0 = straight up. */
-  marketAngle: number;
-  marketDistance: number;
-  popups: HudPopup[];
-  toast: string;
-  save: {
-    state: SaveFeedbackState;
-    message: string;
-  };
-  win: null | {
-    daysSurvived: number;
-    cropsHarvested: number;
-    woodGathered: number;
-    trophies: number;
-  };
-};
 
 type Shot = {
   root: THREE.Object3D;
@@ -438,46 +292,7 @@ const HOMESTEAD_MODEL_KEYS = [
 const HOMESTEAD_X = HOMESTEAD_MIN_X + 8;
 const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
 
-/**
- * Bottom toolbar. Slot 1 is the brown shotgun, slot 2 the shovel you work the
- * ground with, slot 3 the red axe. The bucket has its own water slot, and Boulder
- * Roll its own ability slots to the left.
- */
-const TOOLBAR_ASSET_IDS = [
-  'tool:shotgun',
-  'tool:shovel',
-  'tool:axe',
-] as const;
-
 const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as const satisfies readonly AssetCategory[];
-
-const TOOLBAR = TOOLBAR_ASSET_IDS.map((id) => {
-  const asset = assetDefinition(id);
-  return {
-    name: asset?.displayName ?? '',
-    glyph: '',
-    model: asset?.modelKey ?? null,
-    empty: false,
-  };
-});
-
-const CROP_ICON_MODELS: Record<string, ModelKey> = {
-  Grass: 'grasscrop_4',
-  Dandelion: 'dandelion_4',
-  Beet: 'beet_4',
-  Carrot: 'carrot_4',
-  Lettuce: 'lettuce_4',
-};
-
-function itemIconModel(id: ItemId): ModelKey | null {
-  if (id === ITEM_WOOD) return 'wood_log';
-  const deed = deedAssetId(id);
-  if (deed) return assetDefinition(deed)?.modelKey ?? null;
-  const crop = cropName(id);
-  if (crop !== null) return CROP_ICON_MODELS[crop] ?? null;
-  if (id.startsWith('trophy:')) return 'trophy';
-  return null;
-}
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
@@ -611,10 +426,9 @@ export class GameRuntime {
   private hitPause = 0;
   /** Renderer-only randomness; never consume the simulation RNG for decoration. */
   private feedbackSeed = 0x51f15eed;
-  private onHud: ((s: HudSnapshot) => void) | null = null;
-  private lastHudJson = '';
   private winShownLocal = false;
   private readonly runtimeMetrics = new RuntimeMetrics(performance.now());
+  private readonly hudPresenter = new HudPresenter();
 
   private readonly playerTargetQuaternion = new THREE.Quaternion();
   private readonly playerUp = new THREE.Vector3(0, 1, 0);
@@ -629,7 +443,7 @@ export class GameRuntime {
   ): Promise<void> {
     this.disposed = false;
     this.canvas = canvas;
-    this.onHud = onHud;
+    this.hudPresenter.setListener(onHud);
     this.input.setGestureHandler(() => this.audio.unlock());
 
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
@@ -787,6 +601,7 @@ export class GameRuntime {
     window.removeEventListener('beforeunload', this.persist);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.persist();
+    this.hudPresenter.setListener(null);
     this.world?.dispose();
     const handles = window as unknown as {
       tarnation?: GameRuntime;
@@ -3642,166 +3457,35 @@ export class GameRuntime {
   // ------------------------------------------------------------------- HUD
 
   private pushHud(force: boolean): void {
-    if (!this.onHud) return;
-
-    const seed = selectedSeed(this.gs);
-    const hint = this.interactionHint(seed);
-
-    const inventory: HudSlot[] = this.gs.inventory.map((slot) => {
-      if (!slot) return { id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' };
-      const info = itemInfo(slot.id);
-      return {
-        id: slot.id,
-        name: info.name,
-        glyph: info.glyph,
-        model: itemIconModel(slot.id),
-        count: slot.count,
-        price: info.price,
-        blurb: info.blurb,
-      };
-    });
-    while (inventory.length < INVENTORY_SLOTS) {
-      inventory.push({ id: null, name: '', glyph: '', model: null, count: 0, price: 0, blurb: '' });
-    }
-
-    const buildPlacement = this.buildingMode
-      ? this.placement.status()
-      : {
-          valid: false,
-          reason: 'Open build mode to preview a structure',
-          asset: null,
-          rotation: this.placement.currentRotation,
-        };
-
-    const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
-      index: i,
-      name: t.name,
-      glyph: t.glyph,
-      model: t.model,
-      empty: t.empty,
-      selected: !this.gs.toolSlotActive && this.gs.toolbarSlot === i,
-    }));
-
-    const marketItems = occupiedSlots(this.gs.inventory).map((s) => {
-      const info = itemInfo(s.id);
-      return {
-        id: s.id,
-        name: info.name,
-        glyph: info.glyph,
-        model: itemIconModel(s.id),
-        count: s.count,
-        price: info.price,
-      };
-    });
-
-    const vendorTabs = this.availableVendorTabs();
-    if (!vendorTabs.includes(this.vendorTab)) this.vendorTab = vendorTabs[0] ?? 'Housing';
-
-    const snap: HudSnapshot = {
-      day: this.gs.clock.day,
-      phase: this.gs.clock.phase,
-      phaseT: this.gs.clock.t,
-      hint,
-      inventory,
-      inventoryOpen: this.gs.inventoryOpen,
-      duckettes: this.gs.duckettes,
-      toolbar,
-      build: {
-        active: this.buildingMode,
-        selectedIndex: this.placement.currentIndex,
-        wood: woodCount(this.gs),
-        options: PLACEABLE_BUILDINGS.map((entry, index) => ({
-          index,
-          name: entry.name,
-          model: entry.model,
-          cost: entry.cost,
-          canAfford: woodCount(this.gs) >= entry.cost,
-        })),
-        placement: {
-          valid: buildPlacement.valid,
-          reason: buildPlacement.reason,
-        },
-      },
-      toolSlot: {
-        name: 'Bucket',
-        glyph: '🪣',
-        model: null,
-        selected: this.gs.toolSlotActive,
-        fill: this.gs.bucketFill,
-        capacity: BUCKET_CAPACITY,
-      },
-      ultimate: {
-        name: 'Boulder',
-        glyph: '',
-        model: 'rock_2',
-        ready: this.gs.boulderCooldown <= 0,
-        cooldown: Math.ceil(this.gs.boulderCooldown),
-        max: BOULDER_COOLDOWN,
-      },
-      bearTrap: {
-        name: 'Bear Trap',
-        glyph: '',
-        model: 'bear_trap_open',
-        ready: this.gs.bearTrapCooldown <= 0,
-        cooldown: Math.ceil(this.gs.bearTrapCooldown),
-        max: BEAR_TRAP_COOLDOWN,
+    if (!this.gs || !this.hudPresenter.hasListener) return;
+    this.hudPresenter.push(force, {
+      state: this.gs,
+      hint: this.interactionHint(selectedSeed(this.gs)),
+      buildingMode: this.buildingMode,
+      selectedBuildIndex: this.placement.currentIndex,
+      placement: () => {
+        const status = this.placement.status();
+        return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
-      market: {
-        open: this.nearMarket,
-        items: marketItems,
-        total: marketItems.reduce((n, i) => n + i.price * i.count, 0),
+      toolSlotModel: null,
+      marketOpen: this.nearMarket,
+      vendorOpen: this.vendorOpen,
+      vendorTab: this.vendorTab,
+      vendorTabs: this.availableVendorTabs(),
+      vendorMessage: this.vendorMessage,
+      economy: this.economyCapability,
+      setVendorTab: (tab) => {
+        this.vendorTab = tab;
       },
-      vendor: {
-        open: this.vendorOpen,
-        tab: this.vendorTab,
-        tabs: vendorTabs,
-        economyLabel: this.economyCapability.label,
-        items: shopAssets(this.vendorTab).map((asset) => {
-          const quote = quotePurchase(this.gs, asset, this.economyCapability);
-          return {
-            id: asset.id,
-            name: asset.displayName,
-            description: asset.description,
-            footprint: `${asset.footprint.width}×${asset.footprint.height}`,
-            useType: asset.useType,
-            gate: asset.gate,
-            model: asset.modelKey,
-            price: asset.price,
-            material: Object.entries(asset.materialCost)
-              .map(([name, cost]) => `${cost} ${name}`)
-              .join(', ') || '—',
-            owned: quote.owned,
-            canBuy: quote.canBuy,
-            lockReason: quote.reasons.join(' · ') || 'Ready to buy',
-          };
-        }),
-        message: this.vendorMessage,
-      },
-      contextMenu: { ...this.contextMenu },
+      contextMenu: this.contextMenu,
       demolishMode: this.demolishMode,
       paused: this.pauseOpen,
       marketAngle: this.world.screenAngleTo(this.playerX, this.playerZ, this.stallX, this.stallZ),
-      marketDistance: Math.round(
-        Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ),
-      ),
-      popups: this.popups.map((p) => ({ ...p })),
-      toast: this.gs.toast,
-      save: { ...this.saveFeedback },
-      win:
-        this.gs.clock.day >= WIN_DAY && !this.gs.winShown && !this.winShownLocal
-          ? {
-              daysSurvived: Math.max(this.gs.stats.daysSurvived, this.gs.clock.day),
-              cropsHarvested: this.gs.stats.cropsHarvested,
-              woodGathered: this.gs.stats.woodGathered,
-              trophies: this.gs.stats.trophies,
-            }
-          : null,
-    };
-
-    const json = JSON.stringify(snap);
-    if (!force && json === this.lastHudJson) return;
-    this.lastHudJson = json;
-    this.onHud(snap);
+      marketDistance: Math.round(Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ)),
+      popups: this.popups,
+      save: this.saveFeedback,
+      winShownLocal: this.winShownLocal,
+    });
   }
 }

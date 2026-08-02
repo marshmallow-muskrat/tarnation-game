@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
-import { GameRuntime, type HudSnapshot } from './game/GameRuntime';
+import { GameRuntime } from './game/GameRuntime';
+import type { HudSnapshot } from './game/HudPresenter';
 import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './game/Assets';
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
