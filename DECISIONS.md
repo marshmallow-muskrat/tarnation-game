@@ -682,7 +682,7 @@ and integration work can continue without weakening the required checks.
 
 The first hosted run also exposed two harness portability contracts: the launch-card baseline must be
 platform-specific because system font metrics change its measured height, and modal buttons that synchronously
-rerender a WebGL-backed React HUD can leave Playwright's pointer actionability wait pending after the handler
-has run. The E2E suite now keeps `darwin` and `linux` baselines and activates those already-asserted controls
-through the same DOM button handler before asserting the resulting state. This changes no production UI or
-gameplay behavior.
+rerender a WebGL-backed React HUD can leave Playwright's pointer actionability wait pending. The E2E suite
+now keeps `darwin` and `linux` baselines and uses the UI's real keyboard focus paths for pause/settings,
+merchant dismissal, and ending dismissal before asserting the resulting state. This changes no production UI
+or gameplay behavior.

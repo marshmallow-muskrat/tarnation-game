@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { activateButton, captureBrowserErrors, completedE2eSave, e2eSave, expectNoBrowserErrors, importSave, startAdventure } from './helpers';
+import { captureBrowserErrors, completedE2eSave, e2eSave, expectNoBrowserErrors, importSave, startAdventure } from './helpers';
 
 test('fresh game supports movement, farm controls, settings, and a reviewed visual launch baseline', async ({ page }) => {
   const errors = captureBrowserErrors(page);
@@ -34,12 +34,26 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
 
   await page.keyboard.press('Escape');
-  await page.getByRole('button', { name: 'Settings' }).click();
+  // Pause focus starts on Resume; keyboard navigation opens Settings without
+  // waiting for a pointer actionability pass while the WebGL loop is busy.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
   const settings = page.getByRole('dialog', { name: 'Settings' });
   await expect(settings).toBeVisible();
-  await expect(settings.getByLabel('Reduced motion')).toBeVisible();
-  await settings.getByLabel('High-contrast UI').check();
-  await settings.getByRole('button', { name: 'Close' }).click();
+  const reducedMotion = settings.getByLabel('Reduced motion');
+  const highContrast = settings.getByLabel('High-contrast UI');
+  await expect(reducedMotion).toBeVisible();
+  await expect(highContrast).toBeVisible();
+  // Settings focus starts on Close, followed by the four volume ranges and
+  // sound checkbox, so Reduced motion is the sixth Tab stop.
+  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  await expect(reducedMotion).toBeChecked();
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Space');
+  await expect(highContrast).toBeChecked();
+  await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
   await expectNoBrowserErrors(page, errors);
 });
@@ -94,11 +108,10 @@ test('midgame fixture covers merchant purchase, building preview, and save reloa
   await expect(merchant.getByText('Silo', { exact: true })).toBeVisible();
   const buyButtons = merchant.getByRole('button', { name: 'Buy', exact: true });
   await expect(buyButtons.first()).toBeEnabled();
-  await activateButton(buyButtons.first());
+  await buyButtons.first().click();
   await expect(merchant.getByRole('status')).toContainText(/added to inventory|Purchased|Bought|owned/i);
-  const closeMerchant = merchant.getByRole('button', { name: 'Close' });
-  await expect(closeMerchant).toBeVisible();
-  await activateButton(closeMerchant);
+  await expect(merchant.getByRole('button', { name: 'Close' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(merchant).toBeHidden();
 
   await page.getByLabel('Tarnation game canvas').focus();
@@ -147,9 +160,8 @@ test('night raid and completed objective remain visible through import and dismi
   const ending = page.getByRole('dialog', { name: 'Homestead Established' });
   await expect(ending).toBeVisible({ timeout: 15_000 });
   await expect(ending).toContainText('Grow, experiment, defend, and develop');
-  const keepPlaying = ending.getByRole('button', { name: 'Keep playing' });
-  await expect(keepPlaying).toBeVisible();
-  await activateButton(keepPlaying);
+  await expect(ending.getByRole('button', { name: 'Keep playing' })).toBeVisible();
+  await page.keyboard.press('Escape');
   await expect(ending).toBeHidden();
   await expectNoBrowserErrors(page, errors);
 });

@@ -1,4 +1,4 @@
-import { expect, type Locator, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { serialize } from '../../src/sim/save';
 import { midgameSaveFixture } from '../fixtures';
 import type { SaveData } from '../../src/sim/save';
@@ -40,13 +40,6 @@ export async function startAdventure(page: Page, choice: 'Continue' | 'New Adven
  * Visibility/enabled assertions remain at each call site; this fires the same
  * browser button handler as a pointer click.
  */
-export async function activateButton(button: Locator): Promise<void> {
-  await button.evaluate((element) => {
-    if (!(element instanceof HTMLButtonElement)) throw new Error('expected a button control');
-    element.click();
-  });
-}
-
 export function captureBrowserErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on('console', (message) => {
