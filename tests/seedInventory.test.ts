@@ -14,6 +14,7 @@ import {
   addSeedToInventory,
   discardSeedFromInventory,
   harvestCropTransaction,
+  onNewDay,
   plantSeedPacket,
   selectedSeedPacket,
   sortSeedInventory,
@@ -88,6 +89,16 @@ describe('counted seed packet inventory', () => {
     expect(addSeedToInventory(game, extra)).toBe(true);
     expect(seedPacketCapacity(game.placedBuildings)).toBe(SEED_PACKET_SLOTS + 8);
     expect(game.seedInventory).toHaveLength(SEED_PACKET_SLOTS + 1);
+  });
+
+  it('restores one deterministic grass packet at dawn when a raid emptied seed storage', () => {
+    const game = createGameState(0x0102_0304);
+    game.seedInventory = [];
+
+    expect(onNewDay(game).seedReserveAdded).toBe(true);
+    expect(game.seedInventory).toMatchObject([{ seed: { species: 'grass' }, count: 1 }]);
+    expect(onNewDay(game).seedReserveAdded).toBe(false);
+    expect(game.seedInventory).toHaveLength(1);
   });
 
   it('consumes exactly one selected packet only when planting can commit', () => {

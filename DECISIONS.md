@@ -370,3 +370,15 @@ obstacle, enclosure, world-tile, and trench topology. Merchant descriptions and 
 Coops, barns, windmills, and other cosmetic buildings remain unreleased until their animal or processing loops exist.
 Rotation, collision, enclosure, demolition refunds, save round-trips, and capacity/source rules remain covered by pure
 or deterministic characterization tests. No save schema or migration rule changes in CORE-06.
+
+## 2026-08-02 — Make the multi-day arc explicit and recoverable
+
+CORE-07 keeps the onboarding guide as derived UI rather than introducing a second saved quest
+system. Day 2 presents the current functional choices—Silo, Water Tower, crop strategy through the
+breeding tool, or fence/gate defense—and dusk uses a deterministic, once-per-day telegraph before
+the existing raid. After the first market sale, the guide points at whichever of genetics or a
+functional building is still missing. If dawn finds no counted seed packets, one Grass packet is
+restored through the existing seed-inventory transaction; this is a bounded recovery path with no
+save-schema field and no change to raid damage, prices, or purchase policy. The economy diagnostic
+continues to represent generic two-day base crops, so its day-3 first-crop-sale result remains a
+documented calibration follow-up while the existing Day 1 wood-sale route remains available.

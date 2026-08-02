@@ -287,10 +287,13 @@ export function setToast(gs: GameState, msg: string, duration = 3): void {
 export function onNewDay(gs: GameState): {
   lostTilth: { x: number; y: number }[];
   regrown: { tx: number; ty: number }[];
+  seedReserveAdded: boolean;
 } {
+  const seedReserveAdded = gs.seedInventory.length === 0 && addSeedToInventory(gs, makeSeed('grass'));
   return {
     lostTilth: decayUnplantedTilth(gs.tiles, gs.clock.day),
     regrown: respawnTrees(gs),
+    seedReserveAdded,
   };
 }
 

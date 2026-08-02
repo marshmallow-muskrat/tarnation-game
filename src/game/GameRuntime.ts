@@ -117,6 +117,7 @@ import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/i
 import { buildCodexCatalog } from '../sim/codex';
 import { purchaseAsset } from '../sim/economy';
 import { progressionLockReason } from '../sim/progression';
+import { dayTwoChoiceHint, multiDayArcHint, RAID_TELEGRAPH, shouldTelegraphRaid } from '../sim/gameArc';
 import {
   type OutcomeKind,
   type OutcomeStatus,
@@ -457,6 +458,7 @@ export class GameRuntime {
   private merchantZ = CENTRAL_CAMP.merchantZ;
   private nearMerchant = false;
   private firstPlotGuideActive = false;
+  private raidWarningDay = -1;
   private fixtureRoots: THREE.Object3D[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
@@ -541,6 +543,7 @@ export class GameRuntime {
       this.gs = loaded.state;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
+    this.raidWarningDay = -1;
     this.codexOpen = false;
     this.codexCompareKeys = [];
     this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
@@ -1953,6 +1956,11 @@ export class GameRuntime {
     this.world.setPortableLightActive(this.hasPortableLightSource());
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
 
+    if (shouldTelegraphRaid(this.gs.clock, this.raidWarningDay)) {
+      this.raidWarningDay = this.gs.clock.day;
+      setToast(this.gs, RAID_TELEGRAPH, 4);
+    }
+
     if (clock.matured.length) {
       for (const m of clock.matured) this.syncCropTile(m.x, m.y);
       this.syncWorldTiles(clock.matured.map(({ x, y }) => ({ tx: x, ty: y })));
@@ -1985,15 +1993,13 @@ export class GameRuntime {
       this.clearDeathMarkers();
       this.clearLootMarkers();
       this.clearFeedbackBursts();
-      const { lostTilth, regrown } = onNewDay(this.gs);
+      const { lostTilth, regrown, seedReserveAdded } = onNewDay(this.gs);
       this.refreshCropTargetsFromTiles();
-      setToast(
-        this.gs,
-        lostTilth.length
-          ? `Day ${this.gs.clock.day} — ${lostTilth.length} bare plots went back to grass`
-          : `Day ${this.gs.clock.day}`,
-        3,
-      );
+      const dayNotes = [`Day ${this.gs.clock.day}`];
+      if (lostTilth.length) dayNotes.push(`${lostTilth.length} bare plots went back to grass`);
+      if (this.gs.clock.day === 2) dayNotes.push(dayTwoChoiceHint());
+      if (seedReserveAdded) dayNotes.push('reserve Grass seed restored');
+      setToast(this.gs, dayNotes.join(' · '), 4);
       if (lostTilth.length || regrown.length) {
         this.world.getFarmTrees()?.rebuildAll();
         this.world.markShadowsDirty();
@@ -4084,7 +4090,7 @@ export class GameRuntime {
   ): string {
     const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
     const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · C breed · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
@@ -4094,6 +4100,13 @@ export class GameRuntime {
       if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
         return formatFirstPlotHint(stage, seed?.displayName);
       }
+      const arcHint = multiDayArcHint({
+        day: this.gs.clock.day,
+        cropsHarvested: this.gs.stats.cropsHarvested,
+        codex: this.gs.codex,
+        placedBuildings: this.gs.placedBuildings,
+      });
+      if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
     }
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
