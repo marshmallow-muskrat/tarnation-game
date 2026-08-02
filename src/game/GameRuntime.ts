@@ -113,6 +113,13 @@ import {
 } from './Assets';
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
+import {
+  ActionStateMachine,
+  DEFAULT_INTERACT_ACTION_TIMING,
+  DEFAULT_RANGED_ACTION_TIMING,
+  DEFAULT_TOOL_ACTION_TIMING,
+  type ActionEvent,
+} from './ActionStateMachine';
 import { buildMarketStall } from './MarketStall';
 import {
   disposeCloneOwnedMaterials,
@@ -181,6 +188,12 @@ type Shot = {
   life: number;
   ricochet: number;
   dmg: number;
+};
+
+type PendingPlayerAction = {
+  clip: PlayerClip;
+  onContact?: () => void;
+  onFire?: () => void;
 };
 
 type Boulder = {
@@ -295,7 +308,9 @@ const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
 const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as const satisfies readonly AssetCategory[];
 
 export class GameRuntime {
-  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {
+    this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
+  }
 
   private readonly economyCapability = getEconomyCapability();
 
@@ -339,6 +354,9 @@ export class GameRuntime {
   private playerRoot!: THREE.Object3D;
   private playerActions!: PlayerActionController;
   private equipment!: EquipmentController;
+  private readonly actionState = new ActionStateMachine<null>();
+  private readonly pendingPlayerActions = new Map<number, PendingPlayerAction>();
+  private processingActionEvents = false;
   private playerX = WORLD_SIZE / 2;
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
@@ -470,6 +488,7 @@ export class GameRuntime {
       }
       this.gs = loaded.state;
     }
+    this.syncActionMenuState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -594,6 +613,8 @@ export class GameRuntime {
     this.bearTrapRoots.clear();
     this.gateCloseTimers.clear();
     this.treeChops.clear();
+    this.cancelPlayerActions('focus_lost');
+    this.input.setFocusHandler(null);
     this.input.dispose();
     this.input.setGestureHandler(null);
     this.audio.dispose();
@@ -869,7 +890,7 @@ export class GameRuntime {
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
     this.gs.toolSlotActive = false;
@@ -884,7 +905,9 @@ export class GameRuntime {
     this.buildingMode = false;
     this.placement.clear();
     this.demolishMode = false;
-    this.playerActions.cancel();
+    this.gs.inventoryOpen = false;
+    this.syncActionMenuState();
+    this.cancelPlayerActions();
     this.clearShots();
     this.gs.toolSlotActive = true;
     this.toolMode = 'farm';
@@ -903,7 +926,7 @@ export class GameRuntime {
     }
     this.buildingMode = !this.buildingMode;
     this.toolMode = 'farm';
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     this.clearShots();
     this.gs.toolSlotActive = false;
     this.equipment.refresh(this.gs);
@@ -930,13 +953,14 @@ export class GameRuntime {
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
-      this.playerActions.cancel();
     }
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
   toggleInventory(): void {
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -960,14 +984,17 @@ export class GameRuntime {
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
+    this.cancelPlayerActions();
     this.velX = 0;
     this.velZ = 0;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
   closeVendor(): void {
     this.vendorOpen = false;
     this.vendorMessage = '';
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1016,12 +1043,11 @@ export class GameRuntime {
     if (!assetId) return;
     const asset = assetDefinition(assetId);
     if (!asset || !this.gs.inventory.some((slot) => slot?.id === id)) return;
+    this.gs.inventoryOpen = false;
+    this.syncActionMenuState();
     if (asset.id === 'utility:bear-trap') {
       this.gs.bearTrapCooldown = 0;
-      if (this.tryBearTrap()) {
-        takeFromInventory(this.gs, id, 1);
-        this.persist();
-      }
+      this.tryBearTrap(() => takeFromInventory(this.gs, id, 1));
       this.pushHud(true);
       return;
     }
@@ -1098,7 +1124,7 @@ export class GameRuntime {
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     this.clearShots();
     setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
     this.pushHud(true);
@@ -1116,12 +1142,17 @@ export class GameRuntime {
       return;
     }
     if (this.buildingMode || this.placement.activeDeedAssetId) {
+      this.cancelPlayerActions();
       this.recordOutcome('building', 'cancelled');
       this.buildingMode = false;
       this.placement.clear();
       this.world.setBuildPreview(null);
       setToast(this.gs, 'Placement cancelled', 1.2);
       this.pushHud(true);
+      return;
+    }
+    if (this.actionState.isBusy) {
+      this.cancelPlayerActions();
       return;
     }
     if (this.demolishMode) {
@@ -1139,20 +1170,29 @@ export class GameRuntime {
       this.pushHud(true);
       return;
     }
+    if (this.gs.inventoryOpen) {
+      this.gs.inventoryOpen = false;
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
     if (this.pauseOpen) {
       this.pauseOpen = false;
+      this.syncActionMenuState();
       this.pushHud(true);
       return;
     }
     this.pauseOpen = true;
     this.velX = 0;
     this.velZ = 0;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
   resumeGame(): void {
     if (!this.pauseOpen) return;
     this.pauseOpen = false;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1166,6 +1206,7 @@ export class GameRuntime {
       gate: false,
       gateOpen: false,
     };
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1197,6 +1238,7 @@ export class GameRuntime {
       gate: asset.gate,
       gateOpen: this.gs.placedBuildings[index]!.gateOpen === true,
     };
+    this.syncActionMenuState();
     this.pushHud(true);
     return true;
   }
@@ -1288,7 +1330,7 @@ export class GameRuntime {
 
   useBearTrap(): void {
     this.recordAction('bear_trap');
-    if (this.tryBearTrap()) this.persist();
+    this.tryBearTrap();
   }
 
   /** Console helpers — teleport, hand out items, jump the clock. */
@@ -1358,6 +1400,70 @@ export class GameRuntime {
 
   private recordAction(kind: string): void {
     this.runtimeMetrics.recordAction(kind);
+  }
+
+  private handleFocusChange(focused: boolean): void {
+    if (focused) {
+      this.actionState.enable();
+      if (this.gs) this.syncActionMenuState();
+      return;
+    }
+    const cancelled = this.actionState.disable();
+    for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+    this.playerActions?.cancel();
+    this.velX = 0;
+    this.velZ = 0;
+  }
+
+  private cancelPlayerActions(reason: 'cancel' | 'focus_lost' = 'cancel'): void {
+    const cancelled = this.actionState.cancel(reason);
+    for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+    this.playerActions?.cancel();
+  }
+
+  private syncActionMenuState(): void {
+    const menuOpen =
+      this.pauseOpen ||
+      this.helpOpen ||
+      this.vendorOpen ||
+      this.contextMenu.open ||
+      this.gs.inventoryOpen;
+    if (menuOpen) {
+      const cancelled = this.actionState.enterMenu();
+      for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+      this.playerActions?.cancel();
+    } else {
+      this.actionState.exitMenu();
+    }
+  }
+
+  private flushActionEvents(): void {
+    if (this.processingActionEvents) return;
+    this.processingActionEvents = true;
+    try {
+      while (true) {
+        const events = this.actionState.drainEvents();
+        if (events.length === 0) break;
+        for (const event of events) this.applyActionEvent(event);
+      }
+    } finally {
+      this.processingActionEvents = false;
+    }
+  }
+
+  private applyActionEvent(event: ActionEvent<null>): void {
+    const pending = this.pendingPlayerActions.get(event.actionId);
+    if (!pending) return;
+    if (event.type === 'start') {
+      if (event.kind === 'tool') this.meleeCd = MELEE_COOLDOWN;
+      this.playerActions?.play(pending.clip);
+    } else if (event.type === 'contact') {
+      pending.onContact?.();
+    } else if (event.type === 'fire') {
+      pending.onFire?.();
+    } else if (event.type === 'complete') {
+      this.pendingPlayerActions.delete(event.actionId);
+    }
   }
 
   private recordOutcome(
@@ -1523,12 +1629,27 @@ export class GameRuntime {
 
   private update(dt: number): void {
     this.handleHotkeys();
+    if (this.actionState.currentState === 'disabled') {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
       return;
     }
     if (this.pauseOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
+    if (this.gs.inventoryOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      return;
+    }
+    if (this.contextMenu.open) {
       this.velX = 0;
       this.velZ = 0;
       return;
@@ -1577,6 +1698,9 @@ export class GameRuntime {
       toolSlotActive: this.gs.toolSlotActive,
       toolbarSlot: this.gs.toolbarSlot,
     });
+
+    this.actionState.advance(dt);
+    this.flushActionEvents();
 
     const clock = stepGameClock(this.gs, dt);
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
@@ -1635,6 +1759,8 @@ export class GameRuntime {
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
     const stick = this.input.getMoveStick();
+    this.actionState.setMovementIntent(Math.hypot(stick.x, stick.y) > 1e-6);
+    const movementScale = this.actionState.movementScale;
     const { forward, right } = this.world.getScreenBasis();
     let wishX = right.x * stick.x + forward.x * stick.y;
     let wishZ = right.z * stick.x + forward.z * stick.y;
@@ -1642,8 +1768,8 @@ export class GameRuntime {
     if (wlen > 1e-6) {
       wishX /= wlen;
       wishZ /= wlen;
-      this.velX += wishX * PLAYER_ACCEL * dt;
-      this.velZ += wishZ * PLAYER_ACCEL * dt;
+      this.velX += wishX * PLAYER_ACCEL * movementScale * dt;
+      this.velZ += wishZ * PLAYER_ACCEL * movementScale * dt;
       this.headingTarget = Math.atan2(wishX, wishZ);
     } else {
       const damp = Math.exp(-PLAYER_DAMP * dt);
@@ -1651,9 +1777,10 @@ export class GameRuntime {
       this.velZ *= damp;
     }
     const sp = Math.hypot(this.velX, this.velZ);
-    if (sp > PLAYER_SPEED) {
-      this.velX = (this.velX / sp) * PLAYER_SPEED;
-      this.velZ = (this.velZ / sp) * PLAYER_SPEED;
+    const maxSpeed = PLAYER_SPEED * movementScale;
+    if (sp > maxSpeed) {
+      this.velX = (this.velX / sp) * maxSpeed;
+      this.velZ = (this.velZ / sp) * maxSpeed;
     }
     const nextX = THREE.MathUtils.clamp(this.playerX + this.velX * dt, minX, maxX);
     const nextZ = THREE.MathUtils.clamp(this.playerZ + this.velZ * dt, minZ, maxZ);
@@ -1906,37 +2033,46 @@ export class GameRuntime {
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
-    const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
-    if (!this.placement.activeDeedAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
-    else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
-      this.recordOutcome('building', 'rejected');
-      setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
-      return;
-    }
-    this.recordOutcome('building', 'completed', 'build');
-    placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
-    this.runtimeMetrics.recordBuildingPlaced();
-    this.playerActions.play('pickUp');
-    this.refreshObstacleTopology();
-    this.syncBuildings();
-    this.recalculateEnclosure();
-    this.persist();
-    this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
-    this.audio.play('build');
-    setToast(this.gs, `Built ${selected.displayName}`, 1.6);
-    this.buildingMode = false;
-    this.placement.clear();
-    this.pushHud(true);
+    const deedPlacement = this.placement.activeDeedAssetId !== null;
+    if (!this.beginInteractAction('pickUp', () => {
+      const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
+      if (!deedPlacement) {
+        if (!takeFromInventory(this.gs, ITEM_WOOD, legacyCost)) {
+          this.recordOutcome('building', 'rejected');
+          setToast(this.gs, `Need ${legacyCost} Wood`, 1.6);
+          return;
+        }
+      } else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+        this.recordOutcome('building', 'rejected');
+        setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
+        return;
+      }
+      this.recordOutcome('building', 'completed', 'build');
+      placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
+      this.runtimeMetrics.recordBuildingPlaced();
+      this.refreshObstacleTopology();
+      this.syncBuildings();
+      this.recalculateEnclosure();
+      this.persist();
+      this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
+      this.audio.play('build');
+      setToast(this.gs, `Built ${selected.displayName}`, 1.6);
+      this.buildingMode = false;
+      this.placement.clear();
+      this.pushHud(true);
+    })) this.recordOutcome('building', 'rejected');
   }
 
   private useBucket(): void {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
-      fillBucket(this.gs);
-      this.recordAction('fill_bucket');
-      this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
-      this.audio.play('water');
-      setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
-      this.persist();
+      this.beginMeleeAction('pickUp', () => {
+        fillBucket(this.gs);
+        this.recordAction('fill_bucket');
+        this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
+        this.audio.play('water');
+        setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
+        this.persist();
+      });
       return;
     }
     const tilePos = this.pointerTile();
@@ -1945,17 +2081,20 @@ export class GameRuntime {
     const tile = getTile(this.gs.tiles, tx, ty);
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return;
-    this.waterWithBucket(tx, ty, tile?.state === 'planted' && !tile.watered);
+    this.beginMeleeAction('pickUp', () => {
+      this.waterWithBucket(tx, ty, tile?.state === 'planted' && !tile.watered);
+    });
   }
 
   private useAxe(): void {
-    if (!this.beginMeleeAction('swordSlash')) return;
     // A tree is a direct click target. Ground aiming remains a fallback for
     // ordinary melee, but the player never has to line up a reticle with timber.
     const tilePos = this.pointerTreeTile() ?? this.pointerTile();
-    if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
-    // Nothing to chop — swing at whatever is in front of you instead.
-    this.applyMeleeDamage(AXE_DAMAGE);
+    this.beginMeleeAction('swordSlash', () => {
+      if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
+      // Nothing to chop — swing at whatever is in front of you instead.
+      this.applyMeleeDamage(AXE_DAMAGE);
+    });
   }
 
   private useShovel(): void {
@@ -1988,9 +2127,9 @@ export class GameRuntime {
     }
 
     if (this.toolMode === 'trench') {
-      if (this.meleeCd > 0) return;
-      if (digTrench(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('pickUp');
+      if (tile.state === 'planted' || tile.state === 'mature' || tile.state === 'breeding') return;
+      this.beginMeleeAction('pickUp', () => {
+        if (!digTrench(this.gs.tiles, tx, ty)) return;
         for (const [dx, dy] of [
           [0, 0],
           [1, 0],
@@ -2013,23 +2152,24 @@ export class GameRuntime {
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
         this.audio.play('tool');
         this.persist();
-      }
+      });
       return;
     }
 
     if (this.toolMode === 'breed') {
-      if (this.meleeCd > 0) return;
-      if (makeBreedingBed(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('pickUp');
-        this.syncWorldTiles([{ tx, ty }]);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
-        this.audio.play('build');
-        setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
-        this.persist();
+      if (tile.state === 'tilled') {
+        this.beginMeleeAction('pickUp', () => {
+          if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
+          this.syncWorldTiles([{ tx, ty }]);
+          this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
+          this.audio.play('build');
+          setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
+          this.persist();
+        });
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
-        const parents = clearBreedingParents(this.gs.tiles, tx, ty);
-        if (parents) {
-          this.beginMeleeAction('pickUp');
+        this.beginMeleeAction('pickUp', () => {
+          const parents = clearBreedingParents(this.gs.tiles, tx, ty);
+          if (!parents) return;
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
           addSeedToInventory(this.gs, child);
           this.gs.tiles[ty]![tx]!.state = 'tilled';
@@ -2038,74 +2178,73 @@ export class GameRuntime {
           this.audio.play('reward');
           setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
           this.persist();
-        }
+        });
       }
       return;
     }
 
     if (tile.state === 'grass') {
-      if (this.meleeCd > 0) return;
       if (this.tileBlockedForTilling(tx, ty)) {
         setToast(this.gs, "This ground can't be worked", 1.4);
         return;
       }
-      if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
+      this.beginMeleeAction('pickUp', () => {
+        if (!tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) return;
         this.recordAction('till');
-        this.beginMeleeAction('pickUp');
         this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
         this.audio.play('tool');
         this.persist();
-      }
+      });
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
       this.recordOutcome('plant', 'attempted');
-      if (this.meleeCd > 0) {
-        this.recordOutcome('plant', 'rejected');
-        return;
-      }
       const seed = selectedSeed(this.gs);
       if (!seed) {
         this.recordOutcome('plant', 'rejected');
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
-      if (plantTile(this.gs.tiles, tx, ty, seed)) {
+      if (!this.beginMeleeAction('pickUp', () => {
+        if (!plantTile(this.gs.tiles, tx, ty, seed)) {
+          this.recordOutcome('plant', 'rejected');
+          return;
+        }
         this.recordOutcome('plant', 'completed');
         this.runtimeMetrics.recordCropPlanted();
-        this.beginMeleeAction('pickUp');
         this.syncCropTile(tx, ty);
         this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
-      } else this.recordOutcome('plant', 'rejected');
+      })) this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
-      this.waterWithBucket(tx, ty, true);
+      this.beginMeleeAction('pickUp', () => this.waterWithBucket(tx, ty, true));
     } else if (tile.state === 'mature') {
       this.recordOutcome('harvest', 'attempted');
-      if (this.meleeCd > 0) {
+      if (!tile.seed) {
         this.recordOutcome('harvest', 'rejected');
         return;
       }
-      const res = harvestTile(this.gs.tiles, tx, ty);
-      if (res.ok && res.seed) {
-        this.beginMeleeAction('pickUp');
-        const id = cropItem(res.seed.displayName);
-        if (!addToInventory(this.gs, id, res.count)) {
-          this.recordOutcome('harvest', 'rejected');
-          return;
-        }
-        this.recordOutcome('harvest', 'completed');
-        this.runtimeMetrics.recordCropHarvested(res.count);
-        this.gs.stats.cropsHarvested += res.count;
-        addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
-        this.syncCropTile(tx, ty);
-        this.syncWorldTiles([{ tx, ty }]);
-        this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
-        this.audio.play('reward');
-        this.persist();
-      } else this.recordOutcome('harvest', 'rejected');
+      if (!this.beginMeleeAction('pickUp', () => {
+        const res = harvestTile(this.gs.tiles, tx, ty);
+        if (res.ok && res.seed) {
+          const id = cropItem(res.seed.displayName);
+          if (!addToInventory(this.gs, id, res.count)) {
+            this.recordOutcome('harvest', 'rejected');
+            return;
+          }
+          this.recordOutcome('harvest', 'completed');
+          this.runtimeMetrics.recordCropHarvested(res.count);
+          this.gs.stats.cropsHarvested += res.count;
+          addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
+          this.syncCropTile(tx, ty);
+          this.syncWorldTiles([{ tx, ty }]);
+          this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
+          this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+          this.audio.play('reward');
+          this.persist();
+        } else this.recordOutcome('harvest', 'rejected');
+      })) this.recordOutcome('harvest', 'rejected');
     }
   }
 
@@ -2235,46 +2374,46 @@ export class GameRuntime {
     const { dx, dz } = this.aimDirection();
     const sideX = dz;
     const sideZ = -dx;
-    const pelletMaterial = new THREE.MeshStandardMaterial({
-      color: 0x4b4b45,
-      metalness: 0.65,
-      roughness: 0.35,
-    });
-
-    for (let i = 0; i < SHOTGUN_PELLETS; i++) {
-      const spread = (i - (SHOTGUN_PELLETS - 1) / 2) * SHOTGUN_SPREAD;
-      const rawX = dx + sideX * spread;
-      const rawZ = dz + sideZ * spread;
-      const length = Math.hypot(rawX, rawZ) || 1;
-      const pelletX = rawX / length;
-      const pelletZ = rawZ / length;
-      const geometry = new THREE.SphereGeometry(0.065, 6, 4);
-      const mesh = new THREE.Mesh(geometry, pelletMaterial);
-      mesh.position.set(
-        this.playerX + pelletX * 0.4,
-        this.world.heightAt(this.playerX, this.playerZ) + 0.82,
-        this.playerZ + pelletZ * 0.4,
-      );
-      mesh.castShadow = true;
-      this.world.getSharedActors().add(mesh);
-      this.shots.push({
-        root: mesh,
-        kind: 'pellet',
-        geometry,
-        material: pelletMaterial,
-        x: this.playerX,
-        z: this.playerZ,
-        vx: pelletX * SHOTGUN_SPEED,
-        vz: pelletZ * SHOTGUN_SPEED,
-        life: SHOT_LIFETIME,
-        ricochet: 0,
-        dmg: 1,
+    this.beginRangedAction(() => {
+      const pelletMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4b4b45,
+        metalness: 0.65,
+        roughness: 0.35,
       });
-    }
-    this.shotCd = SHOTGUN_COOLDOWN;
-    this.playerActions.play('shoot');
-    this.audio.play('shot');
-    this.world.shake(0.06, 0.05);
+      for (let i = 0; i < SHOTGUN_PELLETS; i++) {
+        const spread = (i - (SHOTGUN_PELLETS - 1) / 2) * SHOTGUN_SPREAD;
+        const rawX = dx + sideX * spread;
+        const rawZ = dz + sideZ * spread;
+        const length = Math.hypot(rawX, rawZ) || 1;
+        const pelletX = rawX / length;
+        const pelletZ = rawZ / length;
+        const geometry = new THREE.SphereGeometry(0.065, 6, 4);
+        const mesh = new THREE.Mesh(geometry, pelletMaterial);
+        mesh.position.set(
+          this.playerX + pelletX * 0.4,
+          this.world.heightAt(this.playerX, this.playerZ) + 0.82,
+          this.playerZ + pelletZ * 0.4,
+        );
+        mesh.castShadow = true;
+        this.world.getSharedActors().add(mesh);
+        this.shots.push({
+          root: mesh,
+          kind: 'pellet',
+          geometry,
+          material: pelletMaterial,
+          x: this.playerX,
+          z: this.playerZ,
+          vx: pelletX * SHOTGUN_SPEED,
+          vz: pelletZ * SHOTGUN_SPEED,
+          life: SHOT_LIFETIME,
+          ricochet: 0,
+          dmg: 1,
+        });
+      }
+      this.shotCd = SHOTGUN_COOLDOWN;
+      this.audio.play('shot');
+      this.world.shake(0.06, 0.05);
+    });
   }
 
   private clearShots(): void {
@@ -2299,40 +2438,76 @@ export class GameRuntime {
   private fireBow(): void {
     if (this.shotCd > 0) return;
     const { dx, dz } = this.aimDirection();
-    const { root } = cloneModel('arrow');
-    root.scale.multiplyScalar(0.85);
-    root.position.set(
-      this.playerX + dx * 0.35,
-      this.world.heightAt(this.playerX, this.playerZ) + 0.95,
-      this.playerZ + dz * 0.35,
-    );
-    root.rotation.y = Math.atan2(dx, dz);
-    root.castShadow = true;
-    this.world.getSharedActors().add(root);
-    this.shots.push({
-      root,
-      kind: 'arrow',
-      x: this.playerX,
-      z: this.playerZ,
-      vx: dx * BOW_SPEED,
-      vz: dz * BOW_SPEED,
-      life: SHOT_LIFETIME,
-      ricochet: 0,
-      dmg: 2,
+    this.beginRangedAction(() => {
+      const { root } = cloneModel('arrow');
+      root.scale.multiplyScalar(0.85);
+      root.position.set(
+        this.playerX + dx * 0.35,
+        this.world.heightAt(this.playerX, this.playerZ) + 0.95,
+        this.playerZ + dz * 0.35,
+      );
+      root.rotation.y = Math.atan2(dx, dz);
+      root.castShadow = true;
+      this.world.getSharedActors().add(root);
+      this.shots.push({
+        root,
+        kind: 'arrow',
+        x: this.playerX,
+        z: this.playerZ,
+        vx: dx * BOW_SPEED,
+        vz: dz * BOW_SPEED,
+        life: SHOT_LIFETIME,
+        ricochet: 0,
+        dmg: 2,
+      });
+      this.shotCd = BOW_COOLDOWN;
+      this.audio.play('shot');
     });
-    this.shotCd = BOW_COOLDOWN;
-    this.playerActions.play('shoot');
-    this.audio.play('shot');
   }
 
-  private beginMeleeAction(clip: PlayerClip): boolean {
-    if (this.meleeCd > 0) return false;
+  private beginMeleeAction(clip: PlayerClip, onContact: () => void): boolean {
+    if (!this.actionState.isBusy && this.meleeCd > 0) return false;
     // Do not restart a one-shot halfway through its authored motion when the
     // player holds the mouse down. That turns a readable chop/dig into a
     // jittering pose; let the current swing finish before accepting the next.
-    if (this.playerActions.isOneShotRunning) return false;
-    this.meleeCd = MELEE_COOLDOWN;
-    this.playerActions.play(clip);
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'tool',
+      timing: DEFAULT_TOOL_ACTION_TIMING,
+      payload: null,
+      bufferable: true,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, { clip, onContact });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private beginRangedAction(onFire: () => void): boolean {
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'ranged',
+      timing: DEFAULT_RANGED_ACTION_TIMING,
+      payload: null,
+      bufferable: false,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, { clip: 'shoot', onFire });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private beginInteractAction(clip: PlayerClip, onContact: () => void): boolean {
+    if (this.actionState.isBusy || this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'interact',
+      timing: DEFAULT_INTERACT_ACTION_TIMING,
+      payload: null,
+      bufferable: false,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, { clip, onContact });
+    this.flushActionEvents();
     return true;
   }
 
@@ -2360,8 +2535,7 @@ export class GameRuntime {
     damage: number,
     clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash',
   ): void {
-    if (!this.beginMeleeAction(clip)) return;
-    this.applyMeleeDamage(damage);
+    this.beginMeleeAction(clip, () => this.applyMeleeDamage(damage));
   }
 
   private tryBoulderRoll(): boolean {
@@ -2448,7 +2622,7 @@ export class GameRuntime {
     boulder.material.dispose();
   }
 
-  private tryBearTrap(): boolean {
+  private tryBearTrap(onPlaced?: () => void): boolean {
     if (this.gs.bearTrapCooldown > 0) {
       setToast(this.gs, `Bear trap ready in ${Math.ceil(this.gs.bearTrapCooldown)}s`, 1.2);
       return false;
@@ -2469,18 +2643,21 @@ export class GameRuntime {
       setToast(this.gs, 'Place the bear trap on clear ground nearby', 1.5);
       return false;
     }
-    if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
-      setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
-      return false;
-    }
-    this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
-    this.playerActions.play('pickUp');
-    this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
-    this.syncBearTrapModels();
-    this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
-    this.audio.play('trap');
-    setToast(this.gs, 'Bear trap set', 1.4);
-    return true;
+    return this.beginInteractAction('pickUp', () => {
+      if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
+        setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
+        return;
+      }
+      this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
+      onPlaced?.();
+      this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
+      this.syncBearTrapModels();
+      this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
+      this.audio.play('trap');
+      setToast(this.gs, 'Bear trap set', 1.4);
+      this.persist();
+      this.pushHud(true);
+    });
   }
 
   private stepShots(dt: number): void {

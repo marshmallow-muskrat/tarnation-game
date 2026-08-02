@@ -15,12 +15,14 @@ export class InputController {
   private rmbPressed = false;
   private canvas: HTMLCanvasElement | null = null;
   private onGesture: (() => void) | null = null;
+  private onFocusChange: ((focused: boolean) => void) | null = null;
   private disposed = false;
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     window.addEventListener('blur', this.onBlur);
+    window.addEventListener('focus', this.onFocus);
   }
 
   attach(canvas: HTMLCanvasElement): void {
@@ -36,12 +38,17 @@ export class InputController {
     this.onGesture = handler;
   }
 
+  setFocusHandler(handler: ((focused: boolean) => void) | null): void {
+    this.onFocusChange = handler;
+  }
+
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('blur', this.onBlur);
+    window.removeEventListener('focus', this.onFocus);
     if (this.canvas) {
       this.canvas.removeEventListener('pointerdown', this.onPointerDown);
       this.canvas.removeEventListener('pointerup', this.onPointerUp);
@@ -57,6 +64,7 @@ export class InputController {
     this.lmbPressed = false;
     this.rmbPressed = false;
     this.onGesture = null;
+    this.onFocusChange = null;
   }
 
   /** Call once per frame after consuming JustPressed flags. */
@@ -128,6 +136,11 @@ export class InputController {
     this.rmb = false;
     this.lmbPressed = false;
     this.rmbPressed = false;
+    this.onFocusChange?.(false);
+  };
+
+  private onFocus = (): void => {
+    this.onFocusChange?.(true);
   };
 
   private onContextMenu = (e: MouseEvent): void => e.preventDefault();
