@@ -322,3 +322,22 @@ absolute bite defense and mature-crop destruction defense, with explicit failed-
 The derived effects add no save fields, preserve v9 compatibility, and do not change Codex identity
 or packet stacking. The economy diagnostic remains a generic two-day base-crop model until a later
 calibration task intentionally models trait distributions.
+
+## 2026-08-02 — Finish the Seed Codex without changing save compatibility
+
+CORE-04 presents a pure, deterministic catalog derived from the existing `CodexEntry[]`: saved
+IDs are displayed once in discovery order, then absent base crop species appear as stable unknown
+silhouettes in authored crop-definition order. A fresh `createGameState` records the five starter
+species as day-1 discoveries so the player can immediately inspect the released roster; loading a
+pre-Codex save with an empty Codex does not fabricate discoveries and instead keeps those species
+unknown until the player recovers/discovers them. Existing hybrid IDs, parentage, traits, mechanism
+text, and discovered days remain the saved source of truth, and the compact v9 wire format is
+unchanged.
+
+The Codex is a pausing modal. Selection and comparison use explicit buttons and keyboard operation,
+comparison is limited to two discovered entries, and the modal exposes a polite live status sentence
+for screen readers. Discovery feedback is brief: a first-time recovered or bred seed gets a
+`New Codex entry` toast, while repeat discoveries retain the existing hybrid feedback. Selection and
+comparison state is transient UI state and is not persisted. The catalog defensively deduplicates
+duplicate IDs without mutating the save; all discovery, duplicate, migration, round-trip, and HUD
+status contracts are covered by deterministic tests.
