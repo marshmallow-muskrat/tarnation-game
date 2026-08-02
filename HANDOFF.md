@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 through CORE-08 are complete on the current integration branch after the ACT-01/02/03/04/05
-  and PERF-05 responsibility extractions; the M5 release gate is next.
+- CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
+  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -460,3 +460,10 @@ Deployment record:
   passed simulation checks, the deterministic 138-test suite, asset validation, build, and automatic
   deployment. Live smoke passed launch, Continue, Day 1/daylight, Saved status, market cue, and
   starter controls with no observed console errors or warnings.
+- `7ae1417` — M5 complete core loop: CORE-01–08 — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30735477015](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30735477015)
+  passed simulation checks, the 223-test deterministic suite in both local and CI-style modes, asset
+  validation, production build, and automatic deployment. Live smoke passed Continue, Day 1/daylight,
+  Saved status, the visible four-pillar settlement objective, starter controls, and no console
+  warnings or errors. The current production title remains `Tarnation — Draft 0.3`; the removed
+  `Draft Complete` text is no longer presented as the player-facing ending.
