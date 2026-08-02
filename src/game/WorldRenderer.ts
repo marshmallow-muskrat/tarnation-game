@@ -15,6 +15,7 @@ import { standardMaterial } from './materials';
 import { hash2 } from './noise';
 import { ScatterChunks } from './ScatterChunks';
 import { buildTerrain, SOIL_NONE, SOIL_TILLED, SOIL_WATERED, type TerrainSystem } from './terrain';
+import { disposeCloneOwnedMaterials, disposeModelClone, disposeObjectResources } from './ResourceDisposal';
 
 const _matrix = new THREE.Matrix4();
 const _color = new THREE.Color();
@@ -76,6 +77,7 @@ export class WorldRenderer {
 
   private actors = new THREE.Group();
   private farmActors = new THREE.Group();
+  private disposed = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
@@ -453,6 +455,7 @@ export class WorldRenderer {
           this.buildPreviewMaterials.push({ material: copy, color });
           return copy;
         });
+        disposeCloneOwnedMaterials(source);
         obj.material = copies.length === 1 ? copies[0]! : copies;
       });
       this.buildPreviewRoot = root;
@@ -505,9 +508,11 @@ export class WorldRenderer {
 
   private removeBuildPreview(): void {
     if (!this.buildPreviewRoot) return;
-    this.buildPreviewRoot.removeFromParent();
+    const root = this.buildPreviewRoot;
+    root.removeFromParent();
     for (const entry of this.buildPreviewMaterials) entry.material.dispose();
     this.buildPreviewMaterials = [];
+    disposeModelClone(root);
     this.buildPreviewRoot = null;
     this.buildPreviewKey = null;
     if (this.buildPreviewFootprint) {
@@ -759,6 +764,37 @@ export class WorldRenderer {
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Release procedural world resources and the renderer exactly once. */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.setGridDebug(false);
+    this.removeBuildPreview();
+    this.farmTrees?.dispose();
+    this.scatter.dispose();
+
+    disposeObjectResources(this.terrain.mesh, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.terrain.water, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.terrain.bankScatter, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.structureTiles, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.hoverGroup, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.motePoints, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.sky, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.horizonGroup, { geometries: true, materials: true, textures: true });
+
+    for (const root of [...this.actors.children, ...this.farmActors.children]) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
+    this.scene.clear();
+    this.overworldRoot.clear();
+    this.actors.clear();
+    this.farmActors.clear();
+    this.renderer.renderLists.dispose();
+    this.renderer.dispose();
+    this.renderer.forceContextLoss();
   }
 
   getFarmActors(): THREE.Group {

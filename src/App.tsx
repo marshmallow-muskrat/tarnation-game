@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react';
 import { GameRuntime, type HudSnapshot } from './game/GameRuntime';
-import { resetFailedAssets, type AssetLoadProgress } from './game/Assets';
+import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './game/Assets';
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
 import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
@@ -30,7 +30,10 @@ export function App() {
   const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
   const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
 
-  useEffect(() => () => disposeModelIconRenderer(), []);
+  useEffect(() => () => {
+    disposeModelIconRenderer();
+    disposeAssetCache();
+  }, []);
 
   useEffect(() => {
     setSaveRead(saveService.read());

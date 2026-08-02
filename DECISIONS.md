@@ -111,8 +111,8 @@ PERF-01 assigns all 109 manifest models to exactly one ordered load group: `boot
 controls, initial crops/trees/fox, ambient animals, fixtures, and homestead tier one are ready before
 the world becomes controllable. Later groups load in bounded four-request batches. Missing models
 retain primitive fallbacks, but first-play progress exposes the affected count and offers a retry;
-catalog icons and build previews re-render when their real model becomes available. Full GPU
-disposal remains separate PERF-03 work.
+catalog icons and build previews re-render when their real model becomes available. PERF-03 now
+defines the separate ownership and teardown boundary for the world GPU resources.
 
 ## 2026-08-01 — Render model icons through one bounded shared context
 
@@ -120,4 +120,15 @@ disposal remains separate PERF-03 work.
 then copy those pixels into ordinary 2D canvases. A 32-entry least-recently-used cache prevents
 repeated toolbar, inventory, merchant, and building icons from rerendering or creating their own
 contexts. App teardown clears cached thumbnails and disposes the shared renderer. The game renderer
-and the asset-picker renderer remain separate owners; full world GPU/resource disposal is PERF-03.
+and the asset-picker renderer remain separate owners; PERF-03 separately owns world GPU/resource
+disposal.
+
+## 2026-08-01 — Make runtime resource ownership explicit
+
+The shared asset cache owns loaded glTF geometry, materials, and textures. World and runtime owners
+dispose their procedural geometry/materials, dynamic projectile/effect resources, animation mixers,
+listeners, and renderer exactly once. A model clone may dispose only clone-owned materials; shared
+asset references use a release callback so a retired fallback remains alive until its last clone is
+gone. App teardown invalidates abandoned async loads and releases the cache, while repeated React
+development remounts and New Adventure cycles create fresh world/input/runtime owners without changing
+simulation or save behavior. The asset-picker remains a separate explicitly scoped renderer owner.

@@ -76,6 +76,7 @@ export class ScatterChunks {
 
   /** Resolved once after first_play loading, then reused by every live chunk. */
   private modelParts: ScatterModelParts | null = null;
+  private disposed = false;
 
   constructor(
     heightAt: (x: number, z: number) => number,
@@ -87,6 +88,34 @@ export class ScatterChunks {
 
   getRoot(): THREE.Group {
     return this.root;
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.root.clear();
+    this.live.clear();
+    const modelGeometries = new Set<THREE.BufferGeometry>();
+    for (const variants of [
+      this.modelParts?.grass,
+      this.modelParts?.rock,
+      this.modelParts?.bush,
+      this.modelParts?.flower,
+    ]) {
+      for (const variant of variants ?? []) {
+        for (const part of variant) modelGeometries.add(part.geometry);
+      }
+    }
+    for (const geometry of modelGeometries) geometry.dispose();
+    this.geoBlade.dispose();
+    this.geoPebble.dispose();
+    this.geoBush.dispose();
+    this.geoFlower.dispose();
+    this.matGrass.dispose();
+    this.matPebble.dispose();
+    this.matBush.dispose();
+    this.matFlower.dispose();
+    this.modelParts = null;
   }
 
   /** Call each frame with player world position. */

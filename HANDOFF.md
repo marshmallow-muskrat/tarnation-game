@@ -70,7 +70,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Establish complete GPU/runtime disposal ownership.
+- Complete incremental world-update and runtime-responsibility work (PERF-04/05).
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -126,7 +126,8 @@ The characterization baseline intentionally preserves current behavior for later
   local production preview showed `first-play` progress at 25/66 on a cold launch and 52/66 after a
   warm reload; both reached Day 1/daylight with Saved HUD state and no console warnings/errors.
   Asset group validation and the integrated deterministic baseline now total 101 tests across 13
-  files. PERF-02 is now integrated below; full GPU/runtime disposal remains separate PERF-03 work.
+  files. PERF-02 is now integrated below; PERF-03 completes the remaining GPU/runtime disposal
+  ownership work.
 
 - PERF-02 replaces the per-`ModelIcon` WebGL renderer with one shared offscreen renderer and a
   bounded 32-entry least-recently-used cache of 96px thumbnails. Visible icon canvases are 2D
@@ -135,8 +136,20 @@ The characterization baseline intentionally preserves current behavior for later
   renderer. The built local preview reached Day 1/daylight with the starter icon set and no console
   warnings/errors; the source-level renderer audit leaves only the game renderer, this one shared
   icon renderer, and the intentionally separate asset-picker renderer. The integrated baseline is
-  now 103 deterministic tests across 14 files. PERF-03 is next; world resource ownership remains
-  intentionally unchanged.
+  now 103 deterministic tests across 14 files. PERF-03 follows as the completed lifecycle/disposal
+  slice below.
+
+- PERF-03 gives the runtime, world renderer, procedural scatter/tree owners, dynamic effects, animation
+  mixers, input/audio listeners, shared icon renderer, and model cache idempotent teardown paths.
+  Asset-cache geometry/material/texture ownership is separated from clone-owned materials, and a
+  retired fallback remains valid until its last active clone releases it. Stale async loads are
+  generation-guarded so React development cleanup cannot repopulate a torn-down cache. The built
+  production preview completed three fresh Continue/remount cycles and three New Adventure cycles to
+  Day 1/daylight with Saved HUD state and no console warnings/errors. The deterministic baseline is
+  now 106 tests across 15 files;
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` all pass. PERF-04 is next; route-field, crop batching,
+  scatter occupancy, and hot-path extraction remain intentionally separate.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
