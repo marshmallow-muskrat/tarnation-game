@@ -4100,14 +4100,14 @@ export class GameRuntime {
       if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
         return formatFirstPlotHint(stage, seed?.displayName);
       }
-      const arcHint = multiDayArcHint({
-        day: this.gs.clock.day,
-        cropsHarvested: this.gs.stats.cropsHarvested,
-        codex: this.gs.codex,
-        placedBuildings: this.gs.placedBuildings,
-      });
-      if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
     }
+    const arcHint = multiDayArcHint({
+      day: this.gs.clock.day,
+      cropsHarvested: this.gs.stats.cropsHarvested,
+      codex: this.gs.codex,
+      placedBuildings: this.gs.placedBuildings,
+    });
+    if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
