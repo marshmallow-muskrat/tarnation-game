@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { equippedToolKeyFor, SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from '../src/game/EquipmentController';
+import { equippedToolKeyFor } from '../src/game/EquipmentController';
+import { SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from '../src/game/InteractionSystem';
 import { chooseLocomotionAction } from '../src/game/PlayerActionController';
 
 describe('equipment selection and player action characterization', () => {
