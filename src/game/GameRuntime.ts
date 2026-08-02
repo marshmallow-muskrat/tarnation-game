@@ -127,6 +127,12 @@ import {
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import { buildMarketStall } from './MarketStall';
+import {
+  disposeCloneOwnedMaterials,
+  disposeModelClone,
+  disposeObjectResources,
+  markMaterialOwner,
+} from './ResourceDisposal';
 import { browserSaveStorage, SaveService } from './SaveService';
 import {
   advanceSaveTimer,
@@ -363,6 +369,8 @@ type FoxActions = {
 type Shot = {
   root: THREE.Object3D;
   kind: 'arrow' | 'pellet';
+  geometry?: THREE.BufferGeometry;
+  material?: THREE.Material;
   x: number;
   z: number;
   vx: number;
@@ -374,6 +382,8 @@ type Shot = {
 
 type Boulder = {
   mesh: THREE.Mesh;
+  geometry: THREE.BufferGeometry;
+  material: THREE.Material;
   x: number;
   z: number;
   vx: number;
@@ -415,6 +425,7 @@ type AnimalActions = {
 
 type DeathMarker = {
   root: THREE.Group;
+  corpse: THREE.Object3D;
   age: number;
   lifetime: number;
   fadeAt: number;
@@ -861,41 +872,94 @@ export class GameRuntime {
   }
 
   private loadBackgroundAssets(onProgress?: (progress: AssetLoadProgress) => void): void {
-    void preloadGroup('nearby', onProgress)
-      .then(() => {
-        if (this.disposed) return;
-        this.syncBuildings();
-      })
-      .then(() => preloadGroup('catalog', onProgress))
-      .then(() => {
-        if (this.disposed) return;
-        // A saved run may contain a building whose model belongs to the catalog
-        // group. Re-sync once that group is ready so the initial fallback is
-        // replaced without delaying first play.
-        this.syncBuildings();
-      })
-      .then(() => preloadGroup('optional', onProgress))
-      .catch((err: unknown) => {
-        console.error('[Assets] background load failed', err);
-      });
+    const load = async (): Promise<void> => {
+      if (this.disposed) return;
+      await preloadGroup('nearby', onProgress);
+      if (this.disposed) return;
+      this.syncBuildings();
+      await preloadGroup('catalog', onProgress);
+      if (this.disposed) return;
+      // A saved run may contain a building whose model belongs to the catalog
+      // group. Re-sync once that group is ready so the initial fallback is
+      // replaced without delaying first play.
+      this.syncBuildings();
+      if (this.disposed) return;
+      await preloadGroup('optional', onProgress);
+    };
+    void load().catch((err: unknown) => {
+      console.error('[Assets] background load failed', err);
+    });
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.disposed = true;
     this.running = false;
     cancelAnimationFrame(this.raf);
+    this.clearShots();
+    this.clearBoulders();
+    this.clearFoxes(false);
+    this.clearAnimals();
+    this.clearCrops();
     this.clearDeathMarkers();
     this.clearLootMarkers();
     this.clearFeedbackBursts();
+
+    this.playerMixer?.stopAllAction();
+    if (this.playerMixer && this.playerRoot) this.playerMixer.uncacheRoot(this.playerRoot);
+    this.playerMixer = null;
+    this.merchantMixer?.stopAllAction();
+    if (this.merchantMixer && this.merchantRoot) this.merchantMixer.uncacheRoot(this.merchantRoot);
+    this.merchantMixer = null;
+    if (this.equippedToolSocket) this.equippedToolSocket.removeFromParent();
+    if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
+    this.equippedToolSocket = null;
+    this.equippedToolRoot = null;
+    this.equippedToolKey = null;
+    if (this.playerRoot) {
+      this.playerRoot.removeFromParent();
+      disposeModelClone(this.playerRoot);
+    }
+    if (this.stallRoot) {
+      this.stallRoot.removeFromParent();
+      disposeObjectResources(this.stallRoot, { geometries: true, materials: true, textures: true });
+      this.stallRoot = null;
+    }
+    for (const root of this.fixtureRoots) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
+    this.fixtureRoots = [];
+    if (this.merchantRoot) {
+      this.merchantRoot.removeFromParent();
+      disposeModelClone(this.merchantRoot);
+      this.merchantRoot = null;
+    }
+    if (this.homesteadRoot) {
+      this.homesteadRoot.removeFromParent();
+      disposeModelClone(this.homesteadRoot);
+      this.homesteadRoot = null;
+    }
+    for (const root of this.buildingRoots.values()) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
+    this.buildingRoots.clear();
+    for (const root of this.bearTrapRoots.values()) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
+    this.bearTrapRoots.clear();
+    this.gateCloseTimers.clear();
+    this.treeChops.clear();
     this.input.dispose();
     this.input.setGestureHandler(null);
     this.audio.dispose();
-    this.playerMixer?.stopAllAction();
-    this.merchantMixer?.stopAllAction();
     window.removeEventListener('resize', this.resize);
     window.removeEventListener('beforeunload', this.persist);
     document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     this.persist();
+    this.world?.dispose();
     const handles = window as unknown as {
       tarnation?: GameRuntime;
     };
@@ -1010,6 +1074,7 @@ export class GameRuntime {
                 : null;
     if (desired === this.equippedToolKey && this.equippedToolSocket?.parent === this.handBone) return;
     this.equippedToolSocket?.removeFromParent();
+    if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
     this.equippedToolSocket = null;
     this.equippedToolRoot = null;
     this.equippedToolKey = null;
@@ -1151,7 +1216,10 @@ export class GameRuntime {
   }
 
   private spawnMerchantCamp(): void {
-    for (const root of this.fixtureRoots) root.removeFromParent();
+    for (const root of this.fixtureRoots) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
     this.fixtureRoots = [];
     for (const fixture of CENTRAL_CAMP_FIXTURES) {
       const asset = assetDefinition(fixture.id);
@@ -1186,9 +1254,15 @@ export class GameRuntime {
   }
 
   private syncBuildings(): void {
-    this.homesteadRoot?.removeFromParent();
+    if (this.homesteadRoot) {
+      this.homesteadRoot.removeFromParent();
+      disposeModelClone(this.homesteadRoot);
+    }
     this.homesteadRoot = null;
-    for (const root of this.buildingRoots.values()) root.removeFromParent();
+    for (const root of this.buildingRoots.values()) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
     this.buildingRoots.clear();
 
     const tier = Math.min(Math.max(this.gs.homesteadTier, 1), HOMESTEAD_MODEL_KEYS.length);
@@ -1214,7 +1288,10 @@ export class GameRuntime {
   }
 
   private syncBearTrapModels(): void {
-    for (const root of this.bearTrapRoots.values()) root.removeFromParent();
+    for (const root of this.bearTrapRoots.values()) {
+      root.removeFromParent();
+      disposeModelClone(root);
+    }
     this.bearTrapRoots.clear();
     for (let ty = 0; ty < GRID_H; ty++) {
       for (let tx = 0; tx < GRID_W; tx++) {
@@ -2846,7 +2923,8 @@ export class GameRuntime {
       const length = Math.hypot(rawX, rawZ) || 1;
       const pelletX = rawX / length;
       const pelletZ = rawZ / length;
-      const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.065, 6, 4), pelletMaterial);
+      const geometry = new THREE.SphereGeometry(0.065, 6, 4);
+      const mesh = new THREE.Mesh(geometry, pelletMaterial);
       mesh.position.set(
         this.playerX + pelletX * 0.4,
         this.world.heightAt(this.playerX, this.playerZ) + 0.82,
@@ -2857,6 +2935,8 @@ export class GameRuntime {
       this.shots.push({
         root: mesh,
         kind: 'pellet',
+        geometry,
+        material: pelletMaterial,
         x: this.playerX,
         z: this.playerZ,
         vx: pelletX * SHOTGUN_SPEED,
@@ -2873,8 +2953,22 @@ export class GameRuntime {
   }
 
   private clearShots(): void {
-    for (const shot of this.shots) shot.root.removeFromParent();
-    this.shots.length = 0;
+    for (let i = this.shots.length - 1; i >= 0; i--) this.removeShotAt(i);
+  }
+
+  private removeShotAt(index: number): void {
+    const shot = this.shots[index];
+    if (!shot) return;
+    this.shots.splice(index, 1);
+    shot.root.removeFromParent();
+    if (shot.kind === 'arrow') {
+      disposeModelClone(shot.root);
+      return;
+    }
+    shot.geometry?.dispose();
+    if (shot.material && !this.shots.some((other) => other.material === shot.material)) {
+      shot.material.dispose();
+    }
   }
 
   private fireBow(): void {
@@ -2951,10 +3045,9 @@ export class GameRuntime {
       return false;
     }
     const { dx, dz } = this.aimDirection();
-    const mesh = new THREE.Mesh(
-      new THREE.DodecahedronGeometry(BOULDER_RADIUS, 1),
-      new THREE.MeshStandardMaterial({ color: 0x6f6a5e, flatShading: true, roughness: 0.95 }),
-    );
+    const geometry = new THREE.DodecahedronGeometry(BOULDER_RADIUS, 1);
+    const material = new THREE.MeshStandardMaterial({ color: 0x6f6a5e, flatShading: true, roughness: 0.95 });
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
     mesh.position.set(
       this.playerX,
@@ -2964,6 +3057,8 @@ export class GameRuntime {
     this.world.getSharedActors().add(mesh);
     this.boulders.push({
       mesh,
+      geometry,
+      material,
       x: this.playerX,
       z: this.playerZ,
       vx: dx * BOULDER_SPEED,
@@ -3010,10 +3105,22 @@ export class GameRuntime {
         b.x > WORLD_SIZE - 1 ||
         b.z > WORLD_SIZE - 1
       ) {
-        b.mesh.removeFromParent();
-        this.boulders.splice(i, 1);
+        this.removeBoulderAt(i);
       }
     }
+  }
+
+  private clearBoulders(): void {
+    for (let i = this.boulders.length - 1; i >= 0; i--) this.removeBoulderAt(i);
+  }
+
+  private removeBoulderAt(index: number): void {
+    const boulder = this.boulders[index];
+    if (!boulder) return;
+    this.boulders.splice(index, 1);
+    boulder.mesh.removeFromParent();
+    boulder.geometry.dispose();
+    boulder.material.dispose();
   }
 
   private tryBearTrap(): boolean {
@@ -3063,8 +3170,7 @@ export class GameRuntime {
       }
 
       if (s.life <= 0) {
-        s.root.removeFromParent();
-        this.shots.splice(i, 1);
+        this.removeShotAt(i);
         continue;
       }
 
@@ -3097,8 +3203,7 @@ export class GameRuntime {
         }
       }
       if (consumed) {
-        s.root.removeFromParent();
-        this.shots.splice(i, 1);
+        this.removeShotAt(i);
       }
     }
   }
@@ -3124,7 +3229,7 @@ export class GameRuntime {
     this.hitPause = 0.05;
     this.spawnFeedbackBurst(w.x, w.z, 0xef7561, 8, 0.32);
     this.audio.play('defeat');
-    w.actions.mixer?.stopAllAction();
+    this.stopMixer(w.actions.mixer, w.root);
     this.spawnDeathMarker(w.root, w.baseScale, w.x, w.z, w.root.rotation.y, 'fox');
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
     // Dead is dead — drop it now rather than waiting for the next sweep.
@@ -3141,7 +3246,7 @@ export class GameRuntime {
       this.audio.play('hit');
       return;
     }
-    a.actions.mixer?.stopAllAction();
+    this.stopMixer(a.actions.mixer, a.root);
     this.spawnFeedbackBurst(a.x, a.z, 0xef7561, 8, 0.32);
     this.audio.play('defeat');
     this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
@@ -3168,12 +3273,13 @@ export class GameRuntime {
       if (!(obj instanceof THREE.Mesh)) return;
       const source = Array.isArray(obj.material) ? obj.material : [obj.material];
       const copies = source.map((material) => {
-        const copy = material.clone();
+        const copy = markMaterialOwner(material.clone(), 'clone');
         copy.transparent = true;
         copy.opacity = 1;
         materials.push(copy);
         return copy;
       });
+      disposeCloneOwnedMaterials(source);
       obj.material = copies.length === 1 ? copies[0]! : copies;
       obj.castShadow = true;
       obj.receiveShadow = true;
@@ -3204,6 +3310,7 @@ export class GameRuntime {
     this.world.getFarmActors().add(group);
     this.deathMarkers.push({
       root: group,
+      corpse,
       age: 0,
       lifetime: 12,
       fadeAt: 9.5,
@@ -3220,7 +3327,7 @@ export class GameRuntime {
 
   private removeDeathMarker(marker: DeathMarker): void {
     marker.root.removeFromParent();
-    for (const material of marker.materials) material.dispose();
+    disposeModelClone(marker.corpse);
     marker.patchMaterial.dispose();
     marker.patchGeometry.dispose();
   }
@@ -3259,14 +3366,19 @@ export class GameRuntime {
     this.world.getFarmActors().add(root);
     this.lootMarkers.push({ root, age: 0, lifetime: 9, x, z });
     while (this.lootMarkers.length > 12) {
-      this.lootMarkers[0]!.root.removeFromParent();
+      const oldest = this.lootMarkers[0]!;
+      oldest.root.removeFromParent();
+      disposeModelClone(oldest.root);
       this.lootMarkers.shift();
     }
     this.world.markShadowsDirty();
   }
 
   private clearLootMarkers(): void {
-    for (const marker of this.lootMarkers) marker.root.removeFromParent();
+    for (const marker of this.lootMarkers) {
+      marker.root.removeFromParent();
+      disposeModelClone(marker.root);
+    }
     this.lootMarkers = [];
   }
 
@@ -3276,6 +3388,7 @@ export class GameRuntime {
       marker.age += dt;
       if (marker.age >= marker.lifetime) {
         marker.root.removeFromParent();
+        disposeModelClone(marker.root);
         this.lootMarkers.splice(i, 1);
         continue;
       }
@@ -3457,12 +3570,29 @@ export class GameRuntime {
     this.world.markShadowsDirty();
   }
 
-  private clearFoxes(): void {
+  private clearFoxes(restoreTraps = true): void {
     for (const w of this.foxes) {
-      this.resetFoxTrap(w);
+      if (restoreTraps) this.resetFoxTrap(w);
+      this.stopMixer(w.actions.mixer, w.root);
       w.root.removeFromParent();
+      disposeModelClone(w.root);
     }
     this.foxes = [];
+  }
+
+  private stopMixer(mixer: THREE.AnimationMixer | null, root: THREE.Object3D): void {
+    if (!mixer) return;
+    mixer.stopAllAction();
+    mixer.uncacheRoot(root);
+  }
+
+  private clearAnimals(): void {
+    for (const animal of this.animals) {
+      this.stopMixer(animal.actions.mixer, animal.root);
+      animal.root.removeFromParent();
+      disposeModelClone(animal.root);
+    }
+    this.animals = [];
   }
 
   private resetFoxTrap(w: Fox): void {
@@ -3800,7 +3930,9 @@ export class GameRuntime {
         const dist = Math.hypot(edge.x - w.x, edge.y - w.z);
         if (route.atGoal || dist < 0.5) {
           w.dead = true;
+          this.stopMixer(w.actions.mixer, w.root);
           w.root.removeFromParent();
+          disposeModelClone(w.root);
         }
       }
     }
@@ -3868,8 +4000,7 @@ export class GameRuntime {
   }
 
   private rebuildCrops(): void {
-    for (const c of this.crops) c.root.removeFromParent();
-    this.crops = [];
+    this.clearCrops();
     let n = 0;
     const maxVis = 800;
     for (let ty = 0; ty < GRID_H && n < maxVis; ty++) {
@@ -3888,7 +4019,9 @@ export class GameRuntime {
         if (col) {
           root.traverse((o) => {
             if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial) {
-              o.material = o.material.clone();
+              const source = o.material;
+              o.material = markMaterialOwner(source.clone(), 'clone');
+              disposeCloneOwnedMaterials([source]);
               o.material.color.set(col);
             }
           });
@@ -3899,6 +4032,14 @@ export class GameRuntime {
       }
     }
     this.world.markShadowsDirty();
+  }
+
+  private clearCrops(): void {
+    for (const crop of this.crops) {
+      crop.root.removeFromParent();
+      disposeModelClone(crop.root);
+    }
+    this.crops = [];
   }
 
   private seedPlainsAnimals(): void {

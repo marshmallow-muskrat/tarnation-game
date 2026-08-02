@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { cloneModel, loadModel, type ModelKey } from '../game/Assets';
+import { disposeModelClone } from '../game/ResourceDisposal';
 import { BoundedLruCache } from './ThumbnailCache';
 
 type IconView = {
@@ -113,7 +114,8 @@ async function renderThumbnail(model: ModelKey, requestGeneration: number): Prom
     state.renderer.render(state.scene, state.camera);
 
     const thumbnail = copyThumbnail(state.canvas);
-    thumbnailCache.set(model, { thumbnail, root });
+    const evicted = thumbnailCache.set(model, { thumbnail, root });
+    if (evicted) disposeModelClone(evicted.root);
     return thumbnail;
   } finally {
     state.scene.remove(root);
@@ -156,6 +158,7 @@ export function disposeModelIconRenderer(): void {
   for (const icon of thumbnailCache.clear()) {
     icon.thumbnail.width = 0;
     icon.thumbnail.height = 0;
+    disposeModelClone(icon.root);
   }
   if (!rendererState) return;
   rendererState.scene.clear();
