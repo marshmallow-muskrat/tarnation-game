@@ -560,8 +560,8 @@ their current actions.
 inventory controls provide explicit use and delete actions so double-click and right-click are never
 the only route. Pointer input remains available, and the fixed timestep, seeded simulation, save
 schema, `src/sim/` purity, and production asset path are unchanged. Modal semantics and focus
-trapping/restoration are implemented in UX-03; settings coverage and onboarding remain the scoped
-UX-04–UX-05 follow-ups.
+trapping/restoration are implemented in UX-03; settings coverage is implemented in UX-04 and
+onboarding remains the scoped UX-05 follow-up.
 
 ## 2026-08-01 — Rebuild information hierarchy without changing simulation or save rules
 
@@ -586,4 +586,18 @@ cannot leak into the world. The build catalog is a deliberate exception to a blo
 catalog pauses the fixed-step world, but pointer placement still reaches the canvas and commits only
 at its normal fixed-step action boundary. Settlement presentation also pauses until the player
 dismisses it. No save schema, migration, economy, seeded RNG, `src/sim/` rule, or asset path changed;
-settings/scaling/contrast and onboarding remain UX-04–UX-05.
+settings/scaling/contrast are implemented in UX-04 and onboarding remains UX-05.
+
+## 2026-08-02 — Keep accessibility preferences outside the homestead save
+
+UX-04 stores presentation and device preferences under `tarnation.settings`, never in the v9 save
+schema: bounded master/music/effects/ambience volumes, mute, reduced motion, camera shake, UI/text
+scale, and high-contrast UI. The existing `tarnation.audioMuted` and `tarnation.reducedMotion` keys
+are read as compatibility fallbacks. Settings are applied live through typed audio gain buses and
+the renderer's camera-shake/reduced-motion controls; all four active settings sections have labeled
+controls, visible focus, color-independent state, and 44px minimum control rows. The existing
+conflict-safe input rebinding is available from Settings as well as Help. The day/night schedule
+stays fixed because a partial day-length preference would desynchronize crop growth, raid timing,
+cooldowns, and economy pacing under the fixed timestep. No save field, migration, seeded RNG,
+`src/sim/` rule, or asset path changed. Synthesized audio remains a fallback on the effects bus until
+AUD-01 authors the production music, ambience, and UI buses; onboarding remains UX-05.

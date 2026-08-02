@@ -51,6 +51,7 @@ export class WorldRenderer {
   private targetZoom = 1;
   private zoom = 1;
   private reducedMotion = false;
+  private cameraShakeEnabled = true;
 
   private hemisphere!: THREE.HemisphereLight;
   private keyLight!: THREE.DirectionalLight;
@@ -751,7 +752,7 @@ export class WorldRenderer {
   }
 
   shake(duration: number, amplitude: number): void {
-    if (this.reducedMotion) {
+    if (this.reducedMotion || !this.cameraShakeEnabled) {
       this.shakeTime = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);
@@ -769,6 +770,15 @@ export class WorldRenderer {
   setReducedMotion(enabled: boolean): void {
     this.reducedMotion = enabled;
     if (enabled) {
+      this.shakeTime = 0;
+      this.shakeAmp = 0;
+      this.shakeOffset.set(0, 0, 0);
+    }
+  }
+
+  setCameraShakeEnabled(enabled: boolean): void {
+    this.cameraShakeEnabled = enabled;
+    if (!enabled) {
       this.shakeTime = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);

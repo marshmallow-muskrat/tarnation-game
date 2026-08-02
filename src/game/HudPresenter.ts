@@ -28,6 +28,7 @@ import {
 import type { EconomyCapability } from './EconomyCapability';
 import type { SaveFeedback } from './SaveTiming';
 import { PLACEABLE_BUILDINGS, type BuildingPlacement } from './PlacementCoordinator';
+import type { GameSettings } from './Settings';
 
 export type HudSlot = {
   id: ItemId | null;
@@ -169,6 +170,8 @@ export type HudSnapshot = {
     };
   };
   helpOpen: boolean;
+  settingsOpen: boolean;
+  settings: GameSettings;
   bindings: HudBinding[];
   codex: HudCodex;
   toolSlot: {
@@ -225,6 +228,8 @@ export type HudPresenterContext = {
   selectedBuildIndex: number;
   placement(): Pick<BuildingPlacement, 'valid' | 'reason'>;
   helpOpen: boolean;
+  settingsOpen: boolean;
+  settings: Readonly<GameSettings>;
   bindings: Readonly<InputBindings>;
   codexOpen: boolean;
   codexSelectedKey: string | null;
@@ -438,6 +443,8 @@ export class HudPresenter {
         },
       },
       helpOpen: context.helpOpen,
+      settingsOpen: context.settingsOpen,
+      settings: { ...context.settings },
       bindings: INPUT_BINDING_DEFINITIONS.map((definition) => ({
         action: definition.action,
         label: definition.label,
