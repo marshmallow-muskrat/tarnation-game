@@ -511,3 +511,21 @@ mask with a one-tile clearance around physical structures and interaction props,
 path source; no authored path layer exists yet. This changes the previously documented behavior in
 which foxes and ambient animals could cross water or structures, but does not change saves, the
 fixed timestep, seeded simulation, enclosure rules, or the reservation/physical-collision split.
+
+## 2026-08-02 — Keep camera edges targetable and lighting readable
+
+ART-04 keeps the fixed isometric composition and moves the camera’s safety contracts into the pure
+`src/sim/camera.ts` module. Interactive zoom remains bounded from `0.78` through `1.3`; the
+orthographic projection preserves a five-unit vertical half-frustum and treats invalid or minimized
+viewport dimensions as one pixel instead of producing a non-finite matrix. Camera follow and snap
+targets stay four world units inside the existing `[2, 238]` movement bounds, which keeps a player at
+the map corner visible at maximum zoom without changing movement or collision. Shadow anchors retain
+their existing quarter-tile quantization, and the current day/night light and fog values are now
+purely characterized with readable minimum light floors.
+
+The current game has no weather state, so no weather branch was added. The fresh tier-1 world view and
+the active picker views for tiers 2–5 remain readable under the same lighting profile; no transparency
+fade was introduced for a tall building that does not currently occlude the player. Local visual
+evidence covered day framing, zoom bounds, the homestead approach, HUD/status/toolbar focus, and the
+pausing field guide; generated screenshots are review artifacts rather than committed binary files.
+No save schema, simulation timing, asset catalog, or later VFX/UX task is changed.

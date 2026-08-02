@@ -14,6 +14,15 @@ import {
   WORLD_SIZE,
 } from '../content';
 import type { Tile } from '../sim/farm';
+import {
+  CAMERA_WORLD_EDGE_MARGIN,
+  clampCameraCoordinate,
+  clampCameraZoom,
+  cameraFrustum,
+  lightingProfile,
+  quantizeShadowAnchor,
+  SHADOW_ANCHOR_STEP,
+} from '../sim/camera';
 import { cloneModel, isModelReady, type ModelKey } from './Assets';
 import { FarmTrees } from './FarmTrees';
 import { standardMaterial } from './materials';
@@ -25,7 +34,6 @@ import { disposeCloneOwnedMaterials, disposeModelClone, disposeObjectResources }
 const _matrix = new THREE.Matrix4();
 const _color = new THREE.Color();
 const _pos = new THREE.Vector3();
-const SHADOW_ANCHOR_STEP = 0.25;
 
 /**
  * Three.js scene — one world, no zones. Worked soil is painted into the terrain's
@@ -539,21 +547,14 @@ export class WorldRenderer {
   }
 
   applyDayNight(phase: 'day' | 'night', t: number): void {
-    let night = 0;
-    if (phase === 'night') {
-      night = t < 0.1 ? t / 0.1 : t > 0.9 ? (1 - t) / 0.1 : 1;
-    } else if (t > 0.88) {
-      night = ((t - 0.88) / 0.12) * 0.45;
-    }
-    this.keyLight.intensity = THREE.MathUtils.lerp(2.2, 0.55, night);
-    this.hemisphere.intensity = THREE.MathUtils.lerp(1.1, 0.45, night);
-    this.heroLight.intensity =
-      THREE.MathUtils.lerp(3.0, 5.5, night) +
-      (this.portableLightActive ? THREE.MathUtils.lerp(0.6, 2.5, night) : 0);
+    const lighting = lightingProfile(phase, t, this.portableLightActive);
+    this.keyLight.intensity = lighting.keyIntensity;
+    this.hemisphere.intensity = lighting.hemisphereIntensity;
+    this.heroLight.intensity = lighting.heroIntensity;
     this.heroLight.distance = this.portableLightActive ? 10 : 6;
-    this.fogTarget.copy(this.fogDay).lerp(this.fogNight, night);
+    this.fogTarget.copy(this.fogDay).lerp(this.fogNight, lighting.nightBlend);
     if (this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.density = THREE.MathUtils.lerp(0.012, 0.028, night);
+      this.scene.fog.density = lighting.fogDensity;
     }
   }
 
@@ -705,8 +706,8 @@ export class WorldRenderer {
   }
 
   followPlayer(x: number, z: number, leadX: number, leadZ: number, dt: number): void {
-    const targetX = x + leadX;
-    const targetZ = z + leadZ;
+    const targetX = clampCameraCoordinate(x + leadX, 2, WORLD_SIZE - 2, CAMERA_WORLD_EDGE_MARGIN);
+    const targetZ = clampCameraCoordinate(z + leadZ, 2, WORLD_SIZE - 2, CAMERA_WORLD_EDGE_MARGIN);
     const hy = this.terrain.heightAt(x, z);
 
     this.updateShadowAnchor(x, z, hy);
@@ -741,6 +742,8 @@ export class WorldRenderer {
   }
 
   snapCamera(x: number, z: number): void {
+    x = clampCameraCoordinate(x, 2, WORLD_SIZE - 2, CAMERA_WORLD_EDGE_MARGIN);
+    z = clampCameraCoordinate(z, 2, WORLD_SIZE - 2, CAMERA_WORLD_EDGE_MARGIN);
     const hy = this.terrain.heightAt(x, z);
     this.updateShadowAnchor(x, z, hy);
     this.cameraTarget.set(x, hy, z);
@@ -763,7 +766,7 @@ export class WorldRenderer {
   }
 
   adjustZoom(delta: number): number {
-    this.targetZoom = THREE.MathUtils.clamp(this.targetZoom + delta, 0.78, 1.3);
+    this.targetZoom = clampCameraZoom(this.targetZoom + delta);
     return this.targetZoom;
   }
 
@@ -888,13 +891,16 @@ export class WorldRenderer {
   }
 
   resize(w: number, h: number): void {
-    this.renderer.setSize(w, h, false);
-    const aspect = w / h;
-    const frustum = 5;
-    this.camera.left = -frustum * aspect;
-    this.camera.right = frustum * aspect;
-    this.camera.top = frustum;
-    this.camera.bottom = -frustum;
+    const frustum = cameraFrustum(w, h);
+    this.renderer.setSize(
+      Math.max(1, Number.isFinite(w) ? w : 1),
+      Math.max(1, Number.isFinite(h) ? h : 1),
+      false,
+    );
+    this.camera.left = frustum.left;
+    this.camera.right = frustum.right;
+    this.camera.top = frustum.top;
+    this.camera.bottom = frustum.bottom;
     this.camera.updateProjectionMatrix();
   }
 
@@ -1009,9 +1015,9 @@ export class WorldRenderer {
   }
 
   private updateShadowAnchor(x: number, z: number, y: number): void {
-    const anchorX = Math.round(x / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
-    const anchorY = Math.round(y / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
-    const anchorZ = Math.round(z / SHADOW_ANCHOR_STEP) * SHADOW_ANCHOR_STEP;
+    const anchorX = quantizeShadowAnchor(x, SHADOW_ANCHOR_STEP);
+    const anchorY = quantizeShadowAnchor(y, SHADOW_ANCHOR_STEP);
+    const anchorZ = quantizeShadowAnchor(z, SHADOW_ANCHOR_STEP);
     if (
       this.shadowAnchor.x === anchorX &&
       this.shadowAnchor.y === anchorY &&

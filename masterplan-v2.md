@@ -618,6 +618,15 @@ is currently released.
 - Add screenshots for dawn/day/dusk/night, each weather state if retained, every building tier, full
   crops, raid peak, and modal overlays.
 
+Status: Complete on the integration branch. The pure camera policy preserves the fixed orthographic
+composition, bounds zoom to `0.78–1.3`, keeps minimized viewports finite, holds edge targets inside a
+four-unit player-readable margin, and quantizes the moving shadow anchor to quarter-tile steps. The
+existing day/night intensity and fog curve is now characterized without Three.js and retains readable
+light floors. Local visual review covered default/day framing, minimum zoom, the authored homestead
+approach, HUD/status/toolbar readability, and the pausing field-guide modal; no weather state exists
+in the current game, and no tall-building fade was needed for the authored homestead tiers and
+approach. The visual capture record intentionally avoids committing generated binary screenshots.
+
 ### ART-05 — VFX grammar
 
 - Define a small palette: valid/invalid placement, work contact, water, reward, damage/threat, and
@@ -925,7 +934,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
-| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–03 complete; ART-04–05 pending |
+| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–04 complete; ART-05 pending |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
