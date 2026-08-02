@@ -30,11 +30,14 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   const canvas = page.getByLabel('Tarnation game canvas');
   await canvas.focus();
   await page.keyboard.press('Digit2');
+  await page.keyboard.down('KeyA');
   await page.keyboard.down('KeyS');
   // Hosted software-WebGL runners need a few more fixed-step frames before
-  // the player is inside the starter tile's tool range. S moves down-screen,
-  // toward the nearest edge of the marked plot from the authored spawn tile.
+  // the player is inside the starter tile's tool range. A+S cancels the
+  // isometric x drift and moves toward the nearest z edge of the marked plot
+  // from the authored spawn tile.
   await page.waitForTimeout(500);
+  await page.keyboard.up('KeyA');
   await page.keyboard.up('KeyS');
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) throw new Error('game canvas did not expose a layout box');
