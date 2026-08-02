@@ -143,13 +143,14 @@ import {
 import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
 import { FoxNavigation } from './FoxNavigation';
+import { EquipmentController } from './EquipmentController';
+import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import {
-  EquipmentController,
+  InteractionSystem,
   SLOT_AXE,
   SLOT_SHOTGUN,
   SLOT_SHOVEL,
-} from './EquipmentController';
-import { PlayerActionController, type PlayerClip } from './PlayerActionController';
+} from './InteractionSystem';
 import { getEconomyCapability } from './EconomyCapability';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
@@ -581,6 +582,20 @@ export class GameRuntime {
   private gs!: GameState;
   private world!: WorldRenderer;
   private input = new InputController();
+  private readonly interaction = new InteractionSystem(this.input, {
+    rotatePlacement: () => this.rotatePlacement(),
+    placeSelectedBuilding: () => this.placeSelectedBuilding(),
+    destroyAtPointer: () => this.destroyAtPointer(),
+    openPlacedContext: () => this.openPlacedContext(),
+    recordToolAttempt: () => this.recordAction('tool'),
+    recordCombatAttempt: () => this.recordAction('combat'),
+    useBucket: () => this.useBucket(),
+    fireWeapon: () => this.fireWeapon(),
+    useShovel: () => this.useShovel(),
+    useAxe: () => this.useAxe(),
+    useCombatAxe: () => this.meleeSwing(AXE_DAMAGE),
+    emptyToolSlot: (index) => setToast(this.gs, `Slot ${index + 1} is empty`, 1.2),
+  });
   private audio = new AudioFeedback();
   private canvas!: HTMLCanvasElement;
   private accum = 0;
@@ -1851,16 +1866,12 @@ export class GameRuntime {
       return;
     }
 
-    if (this.input.consumeRmb() || this.input.justPressed('Space')) {
-      if (this.buildingMode) this.rotatePlacement();
-      else if (this.demolishMode) this.destroyAtPointer();
-      else if (!this.openPlacedContext()) this.useCombatAction();
-    }
-    if (this.input.consumeLmb()) {
-      if (this.buildingMode) this.placeSelectedBuilding();
-      else if (this.demolishMode) this.destroyAtPointer();
-      else this.useSelectedTool();
-    }
+    this.interaction.process({
+      buildingMode: this.buildingMode,
+      demolishMode: this.demolishMode,
+      toolSlotActive: this.gs.toolSlotActive,
+      toolbarSlot: this.gs.toolbarSlot,
+    });
 
     const clock = stepGameClock(this.gs, dt);
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
@@ -2205,38 +2216,6 @@ export class GameRuntime {
   private pointerTreeTile(): { tx: number; ty: number } | null {
     const ndc = this.input.getPointerNdc();
     return this.world.raycastTree(ndc.x, ndc.y);
-  }
-
-  private useSelectedTool(): void {
-    this.recordAction('tool');
-    if (this.gs.toolSlotActive) {
-      this.useBucket();
-      return;
-    }
-    switch (this.gs.toolbarSlot) {
-      case SLOT_SHOTGUN:
-        this.fireWeapon();
-        return;
-      case SLOT_SHOVEL:
-        this.useShovel();
-        return;
-      case SLOT_AXE:
-        this.useAxe();
-        return;
-      default:
-        setToast(this.gs, `Slot ${this.gs.toolbarSlot + 1} is empty`, 1.2);
-    }
-  }
-
-  /** Combat input must respect the selected toolbar slot. */
-  private useCombatAction(): void {
-    this.recordAction('combat');
-    if (this.gs.toolSlotActive) return;
-    if (this.gs.toolbarSlot === SLOT_SHOTGUN) {
-      this.fireWeapon();
-      return;
-    }
-    if (this.gs.toolbarSlot === SLOT_AXE) this.meleeSwing(AXE_DAMAGE);
   }
 
   private tryUpgradeHomestead(): void {

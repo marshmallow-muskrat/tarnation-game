@@ -5,12 +5,9 @@ import type {
   CarryAnimationProfile,
   PlayerActionController,
 } from './PlayerActionController';
+import { SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from './InteractionSystem';
 
 export type EquippedToolKey = 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel';
-
-export const SLOT_SHOTGUN = 0;
-export const SLOT_SHOVEL = 1;
-export const SLOT_AXE = 2;
 
 export type EquipmentSelection = {
   toolbarSlot: number;

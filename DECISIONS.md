@@ -155,3 +155,12 @@ slot-to-model selection, measured grip profiles, the hand socket, support-hand s
 disposal. `GameRuntime` remains the composition root and still owns fixed-step movement and gameplay
 effects. No simulation rule, save field, input binding, clip name, asset fallback, or timing contract
 changes; remaining PERF-05 responsibility extractions stay separate.
+
+## 2026-08-01 — Keep pointer-action priority in a dedicated interaction boundary
+
+The second PERF-05 extraction slice gives pointer-button priority and selected-tool/combat dispatch to
+`InteractionSystem`. Building rotation/place, demolish, placed-asset context opening, combat fallback,
+bucket/tool selection, and attempt recording remain ordered as they were in `GameRuntime`; the runtime
+continues to own the callbacks that mutate gameplay and presentation state. The system has no DOM or
+simulation dependency, so its routing contract is characterized with deterministic fake input. No save,
+fixed-timestep, seeded-RNG, or gameplay-rule changes are introduced.

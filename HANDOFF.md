@@ -169,8 +169,15 @@ The characterization baseline intentionally preserves current behavior for later
   behavior are unchanged; the controllers are renderer-facing and keep `src/sim` pure. Five focused
   characterization tests cover bucket hiding, toolbar/weapon model mapping, unsupported slots, empty
   locomotion, and the carry idle/run threshold. The integrated deterministic baseline is now 114 tests
-  across 17 files. Remaining PERF-05 slices are interaction, fox direction, placement, metrics, and
-  HUD responsibility extraction.
+  across 17 files.
+
+- PERF-05's second extraction slice moves pointer priority and selected-tool/combat dispatch into the
+  renderer-facing `InteractionSystem`. Build rotation/place, demolish, placed-asset context menus,
+  combat fallback, bucket/tool selection, and attempt metrics retain their existing order and callbacks;
+  `GameRuntime` remains the composition root for gameplay effects. Seven focused routing tests cover the
+  player-visible tool mapping and build/context/demolish/combat/Space priority rules. The integrated
+  deterministic baseline is now 121 tests across 18 files. Remaining PERF-05 slices are fox direction,
+  placement, metrics, and HUD responsibility extraction.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
