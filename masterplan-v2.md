@@ -900,6 +900,18 @@ release-boundary action under the authorized autonomous task loop and are not ch
 - Never include personal data or the full save without explicit player action.
 - Replace `window.tarn` and F12 debug exposure with development-only tooling.
 
+Status: Complete on `agent/qa-03-production-diagnostics`. The Help panel now provides a player-initiated
+diagnostics JSON export with injected version/exact commit/build identity, sanitized browser and GPU
+capabilities, current save version and bounded non-sensitive metadata, the active fixed seed, at most 32
+recent action/outcome/transition events, at most 32 unique asset fallback failures, and aggregate frame/fixed
+step performance data. The pure sanitizer clamps numbers, removes control characters, bounds text and arrays,
+and serializes deterministically; it has no full save fields, personal data, mutation path, or unbounded log.
+The production browser journey verifies the download, build identity, bounded shape, absence of `window.tarn`,
+and absence of F12-only instructions. Local verification passed with 333 deterministic Vitest tests across 49
+files, 8/8 production-build E2E journeys, strict unused-symbol TypeScript, build, and the existing simulation,
+asset, audio, feel, performance, diff, and production audit gates. No save schema, simulation rule, fixed
+timestep, seeded RNG, or gameplay pricing changed.
+
 ### REL-01 — Dependency and build hygiene
 
 - Upgrade Wrangler 3 through a dedicated deployment PR; the audit currently reports transitive dev

@@ -190,6 +190,7 @@ import {
   markMaterialOwner,
 } from './ResourceDisposal';
 import { browserSaveStorage, SaveService } from './SaveService';
+import type { SaveSlot, SaveStatus } from './SaveService';
 import {
   advanceSaveTimer,
   completedSaveFeedback,
@@ -215,6 +216,14 @@ import {
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics } from './RuntimeMetrics';
+import { BUILD_INFO } from './BuildInfo';
+import {
+  DiagnosticsEventBuffer,
+  DiagnosticsPerformanceTracker,
+  serializeDiagnostics,
+  type DiagnosticsAssetFailureInput,
+  type DiagnosticsBrowserInput,
+} from './Diagnostics';
 import { FeedbackEffectPool } from './FeedbackEffects';
 import {
   ACTION_IMPACT_PHASES,
@@ -229,7 +238,7 @@ import {
   SLOT_SHOVEL,
 } from './InteractionSystem';
 import { getEconomyCapability } from './EconomyCapability';
-import type { PlacedBuilding } from '../sim/save';
+import { SAVE_VERSION, type PlacedBuilding } from '../sim/save';
 import {
   assetDefinition,
   deedAssetId,
@@ -555,6 +564,13 @@ export class GameRuntime {
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
   private saveFeedback: SaveFeedback = { state: 'saved', message: 'Save ready' };
+  private saveMode: 'new' | 'loaded' = 'new';
+  private lastSaveStatus: SaveStatus = 'unavailable';
+  private lastSaveRevision: number | null = null;
+  private lastSaveSlot: SaveSlot | null = null;
+  private readonly diagnosticsEvents = new DiagnosticsEventBuffer();
+  private readonly diagnosticsPerformance = new DiagnosticsPerformanceTracker();
+  private readonly assetFailures: DiagnosticsAssetFailureInput[] = [];
 
   private animals: PlainsAnimal[] = [];
   private animalsSeeded = false;
@@ -591,8 +607,12 @@ export class GameRuntime {
     this.feedbackEffects = new FeedbackEffectPool();
     this.applyPresentationSettings();
     initAssetLoaders(this.world.renderer);
-    await preloadGroup('boot', options.onAssetProgress);
-    await preloadGroup('first_play', options.onAssetProgress);
+    const onAssetProgress = (progress: AssetLoadProgress): void => {
+      this.recordAssetProgress(progress);
+      options.onAssetProgress?.(progress);
+    };
+    await preloadGroup('boot', onAssetProgress);
+    await preloadGroup('first_play', onAssetProgress);
     // React development mode can dispose an effect while the asynchronous
     // asset preload is still in flight. Do not let that abandoned runtime
     // attach input handlers or render over the replacement runtime.
@@ -600,6 +620,7 @@ export class GameRuntime {
 
     if (options.newAdventure) {
       this.gs = createGameState();
+      this.saveMode = 'new';
     } else {
       const loaded = this.saveService.read();
       if (loaded.status !== 'ok') {
@@ -609,6 +630,9 @@ export class GameRuntime {
         throw new Error('No valid save was found. Choose New Adventure to start a clean save.');
       }
       this.gs = loaded.state;
+      this.saveMode = 'loaded';
+      this.lastSaveStatus = loaded.status;
+      this.lastSaveSlot = loaded.slot ?? null;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
     this.firstTenMinuteMovementStarted = false;
@@ -669,7 +693,7 @@ export class GameRuntime {
     this.persist();
     this.loop(performance.now());
     this.pushHud(true);
-    this.loadBackgroundAssets(options.onAssetProgress);
+    this.loadBackgroundAssets(onAssetProgress);
 
   }
 
@@ -691,6 +715,14 @@ export class GameRuntime {
     void load().catch((err: unknown) => {
       console.error('[Assets] background load failed', err);
     });
+  }
+
+  private recordAssetProgress(progress: AssetLoadProgress): void {
+    for (const key of progress.fallbackKeys) {
+      if (this.assetFailures.some((failure) => failure.group === progress.group && failure.key === key)) continue;
+      if (this.assetFailures.length >= 32) this.assetFailures.shift();
+      this.assetFailures.push({ group: progress.group, key });
+    }
   }
 
   dispose(): void {
@@ -788,6 +820,10 @@ export class GameRuntime {
     const result = this.saveService.save(this.gs);
     if (result.status === 'ok') this.saveTimer = 0;
     this.saveFeedback = completedSaveFeedback(result);
+    if (result.status !== this.lastSaveStatus) this.recordDiagnosticsEvent('save', result.status);
+    this.lastSaveStatus = result.status;
+    this.lastSaveRevision = result.revision ?? this.lastSaveRevision;
+    this.lastSaveSlot = result.slot ?? this.lastSaveSlot;
     if (result.status !== 'ok') {
       console.error(`[Save] ${result.status}: ${result.message ?? 'save was not written'}`);
       if (previousSaveState !== 'failed') this.audio.playEvent('save-error');
@@ -1219,6 +1255,54 @@ export class GameRuntime {
     }
     this.syncActionMenuState();
     this.pushHud(true);
+  }
+
+  exportDiagnostics(): void {
+    if (!this.gs || !this.world) return;
+    const browser: DiagnosticsBrowserInput = {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      language: navigator.language,
+      online: navigator.onLine,
+      devicePixelRatio: window.devicePixelRatio,
+      hardwareConcurrency: Number.isFinite(navigator.hardwareConcurrency)
+        ? navigator.hardwareConcurrency
+        : null,
+    };
+    const serialized = serializeDiagnostics({
+      build: BUILD_INFO,
+      browser,
+      gpu: this.world.getDiagnostics(),
+      save: {
+        version: SAVE_VERSION,
+        seed: this.gs.seed,
+        day: this.gs.clock.day,
+        phase: this.gs.clock.phase,
+        simTime: this.gs.simTime,
+        mode: this.saveMode,
+        status: this.lastSaveStatus,
+        revision: this.lastSaveRevision,
+        slot: this.lastSaveSlot,
+        inventorySlotsUsed: this.gs.inventory.filter((slot) => slot !== null).length,
+        seedStacks: this.gs.seedInventory.length,
+        codexEntries: this.gs.codex.length,
+        placedBuildings: this.gs.placedBuildings.length,
+        homesteadTier: this.gs.homesteadTier,
+        cropsHarvested: this.gs.stats.cropsHarvested,
+        duckettes: this.gs.duckettes,
+      },
+      fixedSeed: this.gs.seed,
+      recentEvents: this.diagnosticsEvents.snapshot(),
+      assetFailures: this.assetFailures,
+      performance: this.diagnosticsPerformance.snapshot(),
+    });
+    const url = URL.createObjectURL(new Blob([serialized], { type: 'application/json' }));
+    const link = document.createElement('a');
+    const safeVersion = BUILD_INFO.version.replace(/[^a-z0-9.-]/gi, '-');
+    link.href = url;
+    link.download = `tarnation-diagnostics-${safeVersion}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
   }
 
   toggleCodex(): void {
@@ -1822,6 +1906,18 @@ export class GameRuntime {
 
   private recordAction(kind: string): void {
     this.runtimeMetrics.recordAction(kind);
+    this.recordDiagnosticsEvent('action', undefined, kind);
+  }
+
+  private recordDiagnosticsEvent(kind: string, status?: string, detail?: string): void {
+    if (!this.gs) return;
+    this.diagnosticsEvents.record({
+      kind,
+      detail,
+      status,
+      day: this.gs.clock.day,
+      simTime: this.gs.simTime,
+    });
   }
 
   private handleFocusChange(focused: boolean): void {
@@ -1914,6 +2010,7 @@ export class GameRuntime {
     legacyActionKind: string = kind,
   ): void {
     this.runtimeMetrics.recordOutcome(kind, status, this.gs.simTime, legacyActionKind);
+    this.recordDiagnosticsEvent('outcome', status, kind);
   }
 
   // ------------------------------------------------------------------- loop
@@ -1921,6 +2018,7 @@ export class GameRuntime {
   private last = 0;
   private loop = (now: number): void => {
     if (!this.running) return;
+    const frameStartedAt = performance.now();
     this.raf = requestAnimationFrame(this.loop);
     const dt = Math.min(0.05, (now - (this.last || now)) / 1000);
     this.last = now;
@@ -1929,13 +2027,16 @@ export class GameRuntime {
       this.hitPause -= dt;
       this.world.render();
       this.input.endFrame();
+      this.diagnosticsPerformance.recordFrame(performance.now() - frameStartedAt, 0);
       return;
     }
 
     this.accum += dt;
+    let fixedSteps = 0;
     while (this.accum >= FIXED_DT) {
       this.update(FIXED_DT);
       this.accum -= FIXED_DT;
+      fixedSteps++;
     }
 
     this.playerActions.update(dt);
@@ -1973,6 +2074,7 @@ export class GameRuntime {
 
     this.world.render();
     this.input.endFrame();
+    this.diagnosticsPerformance.recordFrame(performance.now() - frameStartedAt, fixedSteps);
     this.pushHud(false);
   };
 
@@ -2271,6 +2373,7 @@ export class GameRuntime {
       this.audio.setPhase('day');
       this.audio.playEvent('day-transition');
       this.runtimeMetrics.setDaysReached(this.gs.clock.day);
+      this.recordDiagnosticsEvent('day_transition', undefined, `day_${this.gs.clock.day}`);
       this.clearFoxes();
       this.clearDeathMarkers();
       this.clearLootMarkers();

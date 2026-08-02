@@ -134,6 +134,15 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
   rule; release PRs remain the enforced process, with protection and the single final human review to be
   configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
+- QA-03 is complete on `agent/qa-03-production-diagnostics`: the pausing Help panel exports a sanitized,
+  deterministic diagnostics JSON containing exact build identity, browser/GPU capabilities, save version and
+  bounded metadata, fixed seed, at most 32 recent action/outcome/transition events, at most 32 unique asset
+  fallback failures, and aggregate frame/fixed-step performance. The export intentionally excludes full save
+  contents, personal data, unbounded logs, and mutation/debug APIs. Production E2E verifies the download and
+  checks that `window.tarn` and F12-only instructions are absent. Local QA-03 verification passed with 333
+  Vitest tests across 49 files, 8/8 production E2E journeys, strict TypeScript, build, simulation/asset/audio/
+  feel/performance checks, diff check, and `npm audit --omit=dev` (0 vulnerabilities). Build identity is
+  injected by Vite from the exact Git commit used for the build.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

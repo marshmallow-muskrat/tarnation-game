@@ -21,6 +21,7 @@ type Props = {
   onToggleBuild: () => void;
   onSelectBuild: (index: number) => void;
   onToggleHelp: () => void;
+  onExportDiagnostics: () => void;
   onToggleSettings: () => void;
   onUpdateSetting: (key: GameSettingKey, value: GameSettingValue) => void;
   onResetSettings: () => void;
@@ -88,6 +89,7 @@ export function Hud({
   onToggleBuild,
   onSelectBuild,
   onToggleHelp,
+  onExportDiagnostics,
   onToggleSettings,
   onUpdateSetting,
   onResetSettings,
@@ -827,6 +829,9 @@ export function Hud({
             </button>
           </details>
           <p className="help-footer">Tip: traits change how crops grow and defend themselves. Water them, protect them from foxes, then sell the harvest at the market stall.</p>
+          <button type="button" className="binding-reset" onClick={onExportDiagnostics}>
+            Export diagnostics
+          </button>
         </div>
       )}
 
