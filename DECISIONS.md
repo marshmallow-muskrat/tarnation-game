@@ -164,3 +164,12 @@ bucket/tool selection, and attempt recording remain ordered as they were in `Gam
 continues to own the callbacks that mutate gameplay and presentation state. The system has no DOM or
 simulation dependency, so its routing contract is characterized with deterministic fake input. No save,
 fixed-timestep, seeded-RNG, or gameplay-rule changes are introduced.
+
+## 2026-08-01 — Keep fox direction and navigation ownership separate from the raid state machine
+
+The third PERF-05 extraction slice gives `FoxDirector` ownership of the existing incremental
+navigation field, target selection, role speed mapping, route following, and actor separation. The
+`GameRuntime` remains the composition root for fox state transitions, traps, crop effects, animation,
+audio, feedback, and save/economy callbacks. The director preserves the fixed 4,096-node navigation
+budget, topology invalidation, seeded target/raid behavior, and the current exact-overlap nudge; the
+last behavior is documented as a follow-up rather than silently corrected.

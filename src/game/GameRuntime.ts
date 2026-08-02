@@ -19,7 +19,6 @@ import {
   FIXED_DT,
   GRID_H,
   GRID_W,
-  HAULER_SPEED,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
@@ -28,7 +27,6 @@ import {
   MARKET_RANGE,
   MELEE_COOLDOWN,
   MELEE_RANGE,
-  NIBBLER_SPEED,
   PLAYER_ACCEL,
   PLAYER_DAMP,
   PLAYER_SPEED,
@@ -46,9 +44,7 @@ import {
   FOX_ATTACK_LUNGE,
   FOX_ATTACK_PERIOD,
   FOX_BURROW_TIME,
-  FOX_SEPARATION,
   FOX_EAT_TIME,
-  FOX_SPEED,
   WIN_DAY,
   WORLD_SIZE,
 } from '../content';
@@ -114,7 +110,6 @@ import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
   nearestEdgePoint,
-  type FoxType,
 } from '../sim/raid';
 import {
   cloneModel,
@@ -142,7 +137,7 @@ import {
 } from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
-import { FoxNavigation } from './FoxNavigation';
+import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import {
@@ -340,41 +335,6 @@ export type HudSnapshot = {
   };
 };
 
-type FoxState = 'burrow' | 'seek' | 'attack' | 'eat' | 'flee' | 'trapped';
-
-type Fox = {
-  root: THREE.Object3D;
-  baseScale: number;
-  actions: FoxActions;
-  x: number;
-  z: number;
-  state: FoxState;
-  kind: FoxType;
-  hp: number;
-  timer: number;
-  targetTx: number;
-  targetTy: number;
-  eatTimer: number;
-  dead: boolean;
-  haulSeed: boolean;
-  attackSlot: number;
-  attackAngle: number;
-  trappedTx: number;
-  trappedTy: number;
-  path: { tx: number; ty: number }[];
-  pathGoalKey: string;
-  pathTimer: number;
-  pathTopologyVersion: number;
-};
-
-type FoxActions = {
-  mixer: THREE.AnimationMixer | null;
-  idle?: THREE.AnimationAction;
-  walk?: THREE.AnimationAction;
-  attack?: THREE.AnimationAction;
-  active?: THREE.AnimationAction;
-};
-
 type Shot = {
   root: THREE.Object3D;
   kind: 'arrow' | 'pellet';
@@ -488,9 +448,6 @@ const CROP_MODEL_BASE: Record<keyof typeof CROP_DEFS, string> = {
   carrot: 'carrot',
   lettuce: 'lettuce',
 };
-
-/** Bounded reverse-BFS work per fixed simulation step. */
-const FOX_NAVIGATION_BUDGET = 4096;
 
 const PLAINS_ANIMALS: readonly { model: ModelKey; name: string }[] = [
   { model: 'stag', name: 'Marsh Stag' },
@@ -676,7 +633,14 @@ export class GameRuntime {
   private interactiveOccupancy = new Set<string>();
   private topologyVersion = 0;
   private occupancyVersion = 0;
-  private readonly foxNavigation = new FoxNavigation();
+  private readonly foxDirector = new FoxDirector({
+    worldToFarmTile: (x, z) => this.worldToFarmTile(x, z),
+    farmTileWorld: (tx, ty) => this.farmTileWorld(tx, ty),
+    heightAt: (x, z) => this.world.heightAt(x, z),
+    isEnclosed: (tx, ty) => this.isEnclosed(tx, ty),
+    topologyVersion: () => this.topologyVersion,
+    obstacleTiles: () => this.obstacleTiles,
+  } satisfies FoxDirectionWorld);
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
   private saveFeedback: SaveFeedback = { state: 'saved', message: 'Save ready' };
@@ -989,7 +953,7 @@ export class GameRuntime {
     for (const key of this.fixtureObstacles) this.obstacleTiles.add(key);
     for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
     this.topologyVersion++;
-    this.foxNavigation.clear();
+    this.foxDirector.clear();
     this.refreshInteractiveOccupancy();
   }
 
@@ -3299,12 +3263,6 @@ export class GameRuntime {
     w.actions.active = next;
   }
 
-  private foxSpeed(w: Fox): number {
-    if (w.kind === 'nibbler') return NIBBLER_SPEED;
-    if (w.kind === 'hauler') return HAULER_SPEED;
-    return FOX_SPEED;
-  }
-
   private nearestOpenBearTrap(x: number, z: number): { tx: number; ty: number; wx: number; wz: number } | null {
     const r = Math.ceil(BEAR_TRAP_RADIUS + 0.5);
     const cx = Math.floor(x);
@@ -3326,84 +3284,9 @@ export class GameRuntime {
     return best;
   }
 
-  /** Move raid animals on the shared, incrementally expanded 8-neighbour field. */
-  private moveFoxTowardTile(
-    w: Fox,
-    goalTx: number,
-    goalTy: number,
-    speed: number,
-    dt: number,
-  ): { atGoal: boolean; hasPath: boolean } {
-    const goalKey = tileKey(goalTx, goalTy);
-    const current = this.worldToFarmTile(w.x, w.z);
-    if (!current) return { atGoal: false, hasPath: false };
-    const goalPosition = this.farmTileWorld(goalTx, goalTy);
-    if (
-      current.tx === goalTx &&
-      current.ty === goalTy &&
-      Math.hypot(goalPosition.x - w.x, goalPosition.z - w.z) < 0.46
-    ) {
-      return { atGoal: true, hasPath: true };
-    }
-    if (
-      w.pathGoalKey !== goalKey ||
-      w.pathTopologyVersion !== this.topologyVersion ||
-      w.pathTimer <= 0 ||
-      (w.path.length === 0 && (current.tx !== goalTx || current.ty !== goalTy))
-    ) {
-      const route = this.foxNavigation.route(
-        current.tx,
-        current.ty,
-        goalTx,
-        goalTy,
-        this.topologyVersion,
-        this.obstacleTiles,
-      );
-      w.pathGoalKey = goalKey;
-      w.pathTopologyVersion = this.topologyVersion;
-      if (route.status === 'pending') {
-        w.path = [];
-        w.pathTimer = 0.05;
-        return { atGoal: false, hasPath: true };
-      }
-      if (route.status === 'unreachable') {
-        w.path = [];
-        w.pathTimer = 0.45;
-        return { atGoal: false, hasPath: false };
-      }
-      w.path = route.path;
-      w.pathTimer = 0.45;
-    } else {
-      w.pathTimer -= dt;
-    }
-
-    const next = w.path[0];
-    if (!next) {
-      const target = this.farmTileWorld(goalTx, goalTy);
-      if (Math.hypot(target.x - w.x, target.z - w.z) < 0.46) {
-        return { atGoal: true, hasPath: true };
-      }
-      return { atGoal: false, hasPath: false };
-    }
-    const target = this.farmTileWorld(next.tx, next.ty);
-    const dx = target.x - w.x;
-    const dz = target.z - w.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.22) {
-      w.path.shift();
-      if (w.path.length === 0) return { atGoal: true, hasPath: true };
-      return this.moveFoxTowardTile(w, goalTx, goalTy, speed, dt);
-    }
-    w.x += (dx / dist) * speed * dt;
-    w.z += (dz / dist) * speed * dt;
-    w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-    w.root.rotation.y = Math.atan2(dx, dz);
-    return { atGoal: false, hasPath: true };
-  }
-
   private stepFoxes(dt: number): void {
     const crops = this.cropTargetList();
-    this.foxNavigation.advance(FOX_NAVIGATION_BUDGET);
+    this.foxDirector.advance();
     for (const w of [...this.foxes]) {
       if (w.dead) continue;
       w.actions.mixer?.update(dt);
@@ -3452,7 +3335,7 @@ export class GameRuntime {
           w.state = 'seek';
           w.root.scale.setScalar(w.baseScale);
           this.playFoxAction(w, 'walk');
-          this.pickTarget(w, crops);
+          this.foxDirector.pickTarget(w, crops);
         }
         continue;
       }
@@ -3514,7 +3397,7 @@ export class GameRuntime {
           const targetZ = this.playerZ + Math.cos(w.attackAngle) * radius;
           const playerTile = this.worldToFarmTile(this.playerX, this.playerZ);
           const route = playerTile
-            ? this.moveFoxTowardTile(w, playerTile.tx, playerTile.ty, this.foxSpeed(w) * 0.5, dt)
+            ? this.foxDirector.moveTowardTile(w, playerTile.tx, playerTile.ty, this.foxDirector.speedFor(w.kind) * 0.5, dt)
             : { atGoal: false, hasPath: false };
           if (route.atGoal || Math.hypot(targetX - w.x, targetZ - w.z) < 0.28) {
             w.state = 'attack';
@@ -3525,14 +3408,14 @@ export class GameRuntime {
           }
           continue;
         } else if (w.targetTx < 0) {
-          this.pickTarget(w, crops);
+          this.foxDirector.pickTarget(w, crops);
           if (w.targetTx < 0) {
             w.state = 'flee';
             continue;
           }
         }
 
-        const route = this.moveFoxTowardTile(w, w.targetTx, w.targetTy, this.foxSpeed(w), dt);
+        const route = this.foxDirector.moveTowardTile(w, w.targetTx, w.targetTy, this.foxDirector.speedFor(w.kind), dt);
         if (!route.hasPath) {
           w.state = 'flee';
           continue;
@@ -3589,10 +3472,10 @@ export class GameRuntime {
       if (w.state === 'flee') {
         this.playFoxAction(w, 'walk');
         const edge = nearestEdgePoint(w.x, w.z);
-        const sp = this.foxSpeed(w) * (w.haulSeed ? 1.15 : 1.3);
+        const sp = this.foxDirector.speedFor(w.kind) * (w.haulSeed ? 1.15 : 1.3);
         const edgeTx = THREE.MathUtils.clamp(Math.round(edge.x), 0, WORLD_SIZE - 1);
         const edgeTy = THREE.MathUtils.clamp(Math.round(edge.y), 0, WORLD_SIZE - 1);
-        const route = this.moveFoxTowardTile(w, edgeTx, edgeTy, sp, dt);
+        const route = this.foxDirector.moveTowardTile(w, edgeTx, edgeTy, sp, dt);
         const dist = Math.hypot(edge.x - w.x, edge.y - w.z);
         if (route.atGoal || dist < 0.5) {
           w.dead = true;
@@ -3602,67 +3485,8 @@ export class GameRuntime {
         }
       }
     }
-    this.separateFoxes();
+    this.foxDirector.separate(this.foxes);
     this.foxes = this.foxes.filter((w) => !w.dead);
-  }
-
-  private separateFoxes(): void {
-    for (let i = 0; i < this.foxes.length; i++) {
-      const a = this.foxes[i]!;
-      if (a.dead || a.state === 'trapped') continue;
-      for (let j = i + 1; j < this.foxes.length; j++) {
-        const b = this.foxes[j]!;
-        if (b.dead || b.state === 'trapped') continue;
-        let dx = a.x - b.x;
-        let dz = a.z - b.z;
-        let distance = Math.hypot(dx, dz);
-        if (distance >= FOX_SEPARATION) continue;
-        if (distance < 0.001) {
-          const angle = (i * 2.17 + j * 1.31) % (Math.PI * 2);
-          dx = Math.sin(angle);
-          dz = Math.cos(angle);
-          distance = 1;
-        }
-        const push = (FOX_SEPARATION - distance) * 0.52;
-        a.x += (dx / distance) * push;
-        a.z += (dz / distance) * push;
-        b.x -= (dx / distance) * push;
-        b.z -= (dz / distance) * push;
-      }
-    }
-    for (const w of this.foxes) {
-      if (w.dead || w.state === 'trapped') continue;
-      w.x = THREE.MathUtils.clamp(w.x, 2, WORLD_SIZE - 2);
-      w.z = THREE.MathUtils.clamp(w.z, 2, WORLD_SIZE - 2);
-      w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-    }
-  }
-
-  private pickTarget(w: Fox, crops: { x: number; y: number }[]): void {
-    const exposed = crops.filter((crop) => !this.isEnclosed(crop.x, crop.y));
-    if (!exposed.length) {
-      w.targetTx = -1;
-      w.targetTy = -1;
-      w.path = [];
-      w.pathGoalKey = '';
-      w.pathTimer = 0;
-      return;
-    }
-    let best = exposed[0]!;
-    let bestD = Infinity;
-    for (const c of exposed) {
-      const wc = this.farmTileWorld(c.x, c.y);
-      const d = Math.hypot(w.x - wc.x, w.z - wc.z);
-      if (d < bestD) {
-        bestD = d;
-        best = c;
-      }
-    }
-    w.targetTx = best.x;
-    w.targetTy = best.y;
-    w.path = [];
-    w.pathGoalKey = '';
-    w.pathTimer = 0;
   }
 
   private cropTargetList(): { x: number; y: number }[] {
