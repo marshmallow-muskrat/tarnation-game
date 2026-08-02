@@ -561,3 +561,16 @@ inventory controls provide explicit use and delete actions so double-click and r
 the only route. Pointer input remains available, and the fixed timestep, seeded simulation, save
 schema, `src/sim/` purity, and production asset path are unchanged. Full modal semantics, focus
 trapping/restoration, settings coverage, and onboarding remain the scoped UX-02–UX-05 follow-ups.
+
+## 2026-08-01 — Rebuild information hierarchy without changing simulation or save rules
+
+UX-02 makes new games and `createNewSave()` start with inventory closed, while preserving explicit
+saved panel state and the current v3/v4 migration default that a missing `inventoryOpen` field stays
+open. The HUD keeps time, the settlement objective, save status, Duckettes, wood, seed capacity,
+selected toolbar, and a concise contextual prompt; inventory renders occupied stacks only. Focused-panel
+priority prevents simultaneous catalog, inventory, Help, Codex, build, context, and market overlays,
+and authored result/benefit, cost, footprint, capacity/ownership, and lock reason are shown before
+purchase or placement. Visible implementation/debug scaffolding (`?legacy`, F12 grid toggle,
+`window.tarn`, Draft title, all-controls hint, and `place/apply/equip` labels) is removed. No
+simulation rule, fixed timestep, seeded RNG, save schema, or migration data is changed; modal
+semantics and focus restoration remain UX-03.

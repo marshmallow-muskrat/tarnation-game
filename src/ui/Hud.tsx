@@ -125,6 +125,31 @@ export function Hud({
 
   const phasePct = Math.round(hud.phaseT * 100);
   const filled = hud.inventory.filter((s) => s.id).length;
+  const occupiedInventory = hud.inventory.flatMap((slot, index) =>
+    slot.id ? [{ slot, index }] : [],
+  );
+  const focusedPanel = hud.paused
+    ? null
+    : hud.helpOpen
+      ? 'help'
+      : hud.codex.open
+        ? 'codex'
+        : hud.vendor.open
+          ? 'vendor'
+          : hud.build.active
+            ? 'build'
+            : hud.inventoryOpen
+              ? 'inventory'
+              : hud.contextMenu.open
+                ? 'context'
+                : null;
+  const showHelp = focusedPanel === 'help';
+  const showCodex = focusedPanel === 'codex';
+  const showVendor = focusedPanel === 'vendor';
+  const showBuild = focusedPanel === 'build';
+  const showInventory = focusedPanel === 'inventory';
+  const showContext = focusedPanel === 'context';
+  const showMarket = !hud.paused && hud.market.open && focusedPanel === null;
   const bindingLabel = (action: InputAction): string =>
     hud.bindings.find((binding) => binding.action === action)?.display ?? '';
   const toolbarActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
@@ -139,10 +164,20 @@ export function Hud({
         <div className={`phase-bar ${hud.phase === 'night' ? 'night' : ''}`}>
           <i style={{ width: `${phasePct}%` }} />
         </div>
-        <p className="label" style={{ marginTop: 8 }}>
-          Duckettes
-        </p>
-        <p className="value amber">₫ {hud.duckettes}</p>
+        <div className="hud-resource-row" aria-label="Homestead resources">
+          <div>
+            <p className="label">Duckettes</p>
+            <p className="value amber">₫ {hud.duckettes}</p>
+          </div>
+          <div>
+            <p className="label">Wood</p>
+            <p className="value teal">{hud.wood}</p>
+          </div>
+          <div>
+            <p className="label">Seeds</p>
+            <p className="value">{hud.seedStorage.used}/{hud.seedStorage.capacity}</p>
+          </div>
+        </div>
         <section className="settlement-objective" aria-label="Settlement objective">
           <p className="label">Settlement objective</p>
           <p className="settlement-objective-title">{hud.objective.title}</p>
@@ -213,7 +248,7 @@ export function Hud({
         <span className="inv-toggle-key">{bindingLabel('inventory')}</span>
       </button>
 
-      {hud.inventoryOpen && !hud.build.active && !hud.vendor.open && (
+      {showInventory && (
         <div className="panel hud-inventory">
           <p className="label">
             Inventory · {filled}/{hud.inventory.length}
@@ -221,24 +256,24 @@ export function Hud({
           <p className="label">
             Seed packets · {hud.seedStorage.used}/{hud.seedStorage.capacity}
           </p>
-          <div className="inv-grid">
-            {hud.inventory.map((slot, i) => (
-              <div
-                key={`slot-${i}`}
-                className={`inv-slot ${slot.id ? 'filled' : ''}`}
-                onContextMenu={(e) => {
-                  if (!slot.id) return;
-                  e.preventDefault();
-                  setTip(null);
-                  setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id);
-                }}
-                onMouseEnter={(e) =>
-                  slot.id &&
-                  setTip({ slot, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().top })
-                }
-                onMouseLeave={() => setTip(null)}
-              >
-                {slot.id && (
+          {occupiedInventory.length === 0 ? (
+            <p className="hint inventory-empty">Inventory empty. Gather materials or visit the merchant.</p>
+          ) : (
+            <div className="inv-grid">
+              {occupiedInventory.map(({ slot, index }) => (
+                <div
+                  key={`slot-${index}-${slot.id}`}
+                  className="inv-slot filled"
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setTip(null);
+                    setDeleteConfirm(deleteConfirm === slot.id ? null : slot.id);
+                  }}
+                  onMouseEnter={(e) =>
+                    setTip({ slot, x: e.currentTarget.getBoundingClientRect().left, y: e.currentTarget.getBoundingClientRect().top })
+                  }
+                  onMouseLeave={() => setTip(null)}
+                >
                   <>
                     <button
                       type="button"
@@ -247,7 +282,7 @@ export function Hud({
                       onKeyDown={(event) => {
                         if (event.key !== 'Delete' && event.key !== 'Backspace') return;
                         event.preventDefault();
-                        setDeleteConfirm(slot.id);
+                        setDeleteConfirm(slot.id!);
                       }}
                       title={`Use ${slot.name} · ${bindingLabel('primary')}`}
                       aria-label={`Use ${slot.name}, ${slot.count} held`}
@@ -282,14 +317,14 @@ export function Hud({
                       </span>
                     )}
                   </>
-                )}
-              </div>
-            ))}
-          </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {tip && (
+      {tip && showInventory && (
         <div
           className="item-tooltip"
           style={{ right: 'auto', left: Math.max(8, tip.x - 210), top: Math.max(8, tip.y - 8) }}
@@ -304,7 +339,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.market.open && (
+      {showMarket && (
         <div className="panel hud-market">
           <p className="label">Market stall</p>
           {hud.market.items.length === 0 ? (
@@ -336,7 +371,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.vendor.open && (
+      {showVendor && (
         <div className="panel vendor-panel">
           <div className="vendor-heading">
             <div>
@@ -372,8 +407,8 @@ export function Hud({
                 )}
                 <div className="vendor-copy">
                   <p className="vendor-name">{item.name}</p>
-                  <p className="vendor-description">{item.description}</p>
-                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType === 'apply' ? 'Upgrade' : item.useType}</p>
+                  <p className="vendor-description"><span className="vendor-field-label">Result</span> {item.description}</p>
+                  <p className="vendor-meta">{item.kind} · Footprint {item.footprint}</p>
                   <p className="vendor-cost">Cost: {item.price}₫{item.material === '—' ? '' : ` + ${item.material}`}</p>
                   <p className="vendor-owned">Owned: {item.owned}</p>
                   <p className={`vendor-lock ${item.canBuy ? 'available' : 'blocked'}`}>{item.lockReason}</p>
@@ -394,7 +429,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.contextMenu.open && (
+      {showContext && (
         <div
           className="context-menu"
           style={{ left: `${Math.max(8, hud.contextMenu.x)}px`, top: `${Math.max(8, hud.contextMenu.y)}px` }}
@@ -423,7 +458,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.build.active && (
+      {showBuild && (
         <div className="panel build-panel">
           <div className="build-panel-heading">
             <div>
@@ -444,8 +479,10 @@ export function Hud({
                 <div className="build-selected-copy">
                   <p className="build-selected-name">{selected.name}</p>
                   <p className={`build-cost ${selected.canAfford ? '' : 'short'}`}>
-                    {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
+                    Cost: {selected.cost === 0 ? 'Free' : `${selected.cost} Wood`} · {hud.build.wood} carried
                   </p>
+                  <p className="build-benefit"><span className="build-field-label">Benefit</span> {selected.description}</p>
+                  <p className="build-footprint"><span className="build-field-label">Footprint</span> {selected.footprint}</p>
                   <p className={`build-selected-help ${hud.build.placement.valid ? 'ready' : 'blocked'}`}>
                     {hud.build.placement.valid ? `Ready · ${bindingLabel('primary')} or click a tile to place` : hud.build.placement.reason}
                   </p>
@@ -473,7 +510,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.helpOpen && (
+      {showHelp && (
         <div className="panel help-panel">
           <div className="help-heading">
             <div>
@@ -512,7 +549,7 @@ export function Hud({
               <p><kbd>{bindingLabel('demolish')}</kbd> Demolish mode · <kbd>{bindingLabel('primary')}</kbd> Destroy hovered asset</p>
               <p><kbd>{bindingLabel('inventory')}</kbd> Inventory · <kbd>{bindingLabel('codex')}</kbd> Seed Codex · <kbd>{bindingLabel('help')}</kbd> This guide</p>
               <p><kbd>{bindingLabel('zoomIn')}</kbd> <kbd>{bindingLabel('zoomOut')}</kbd> Camera zoom · <kbd>{bindingLabel('reducedMotion')}</kbd> Reduced motion</p>
-              <p><kbd>{bindingLabel('mute')}</kbd> Toggle synthesized sound feedback</p>
+              <p><kbd>{bindingLabel('mute')}</kbd> Toggle sound feedback</p>
               <p><kbd>{bindingLabel('pause')}</kbd> Cancel active mode · pause when idle</p>
             </div>
           </div>
@@ -552,7 +589,7 @@ export function Hud({
         </div>
       )}
 
-      {hud.codex.open && (
+      {showCodex && (
         <div
           className="panel codex-panel"
           role="dialog"

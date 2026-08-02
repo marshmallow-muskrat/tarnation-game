@@ -203,7 +203,7 @@ import {
 } from './ToolInteraction';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
-import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
+import { RuntimeMetrics } from './RuntimeMetrics';
 import { FeedbackEffectPool } from './FeedbackEffects';
 import { HudPresenter, TOOLBAR, type HudContextMenu, type HudPopup, type HudSnapshot } from './HudPresenter';
 import {
@@ -446,7 +446,6 @@ export class GameRuntime {
   private codexSelectedKey: string | null = null;
   private codexCompareKeys: string[] = [];
   private reducedMotion = false;
-  private debugGrid = false;
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
   private vendorMessage = '';
@@ -1110,15 +1109,26 @@ export class GameRuntime {
   }
 
   toggleBuildMode(): void {
-    if (!this.buildingMode && !this.legacyBuildEnabled() && !this.nearMerchant && !this.placement.activeDeedAssetId) {
+    if (!this.buildingMode && !this.nearMerchant && !this.placement.activeDeedAssetId) {
       setToast(this.gs, 'Visit the Traveling Merchant to buy building deeds', 2);
       return;
     }
-    if (!this.buildingMode && !this.legacyBuildEnabled() && this.nearMerchant && !this.placement.activeDeedAssetId) {
+    if (!this.buildingMode && this.nearMerchant && !this.placement.activeDeedAssetId) {
       this.openVendor();
       return;
     }
-    this.buildingMode = !this.buildingMode;
+    const opening = !this.buildingMode;
+    if (opening) {
+      this.helpOpen = false;
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.gs.inventoryOpen = false;
+      this.demolishMode = false;
+      this.resetContextMenuState();
+    }
+    this.buildingMode = opening;
     this.toolMode = 'farm';
     this.cancelPlayerActions();
     this.clearShots();
@@ -1143,9 +1153,22 @@ export class GameRuntime {
   }
 
   toggleHelp(): void {
-    if (!this.helpOpen) this.codexOpen = false;
-    this.helpOpen = !this.helpOpen;
-    if (this.helpOpen) {
+    const opening = !this.helpOpen;
+    if (opening) {
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.buildingMode = false;
+      this.placement.clear();
+      this.demolishMode = false;
+      this.gs.inventoryOpen = false;
+      this.resetContextMenuState();
+      this.cancelPlayerActions();
+      this.clearShots();
+    }
+    this.helpOpen = opening;
+    if (opening) {
       this.velX = 0;
       this.velZ = 0;
     }
@@ -1206,8 +1229,23 @@ export class GameRuntime {
   }
 
   toggleInventory(): void {
-    if (!this.gs.inventoryOpen) this.codexOpen = false;
-    this.gs.inventoryOpen = !this.gs.inventoryOpen;
+    const opening = !this.gs.inventoryOpen;
+    if (opening) {
+      this.helpOpen = false;
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.vendorOpen = false;
+      this.vendorMessage = '';
+      this.buildingMode = false;
+      this.placement.clear();
+      this.demolishMode = false;
+      this.resetContextMenuState();
+      this.cancelPlayerActions();
+      this.clearShots();
+      this.velX = 0;
+      this.velZ = 0;
+    }
+    this.gs.inventoryOpen = opening;
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1237,10 +1275,6 @@ export class GameRuntime {
     this.pushHud(true);
   }
 
-  private legacyBuildEnabled(): boolean {
-    return new URLSearchParams(window.location.search).has('legacy');
-  }
-
   private availableVendorTabs(): AssetCategory[] {
     return VENDOR_CATEGORIES.filter((category) => shopAssets(category).length > 0);
   }
@@ -1252,6 +1286,9 @@ export class GameRuntime {
     }
     this.vendorOpen = true;
     this.vendorMessage = '';
+    this.helpOpen = false;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
     this.buildingMode = false;
     this.placement.clear();
     this.demolishMode = false;
@@ -1499,6 +1536,12 @@ export class GameRuntime {
   }
 
   closeContextMenu(): void {
+    this.resetContextMenuState();
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  private resetContextMenuState(): void {
     this.contextMenu = {
       open: false,
       x: 0,
@@ -1508,8 +1551,6 @@ export class GameRuntime {
       gate: false,
       gateOpen: false,
     };
-    this.syncActionMenuState();
-    this.pushHud(true);
   }
 
   private placedIndexAtPointer(): number {
@@ -1645,71 +1686,6 @@ export class GameRuntime {
     this.tryBearTrap();
   }
 
-  /** Console helpers — teleport, hand out items, jump the clock. */
-  debug() {
-    return {
-      state: this.gs,
-      world: this.world,
-      economy: () => this.economySnapshot(),
-      teleport: (x: number, z: number) => {
-        this.playerX = x;
-        this.playerZ = z;
-        this.velX = 0;
-        this.velZ = 0;
-        this.world.snapCamera(x, z);
-      },
-      grant: (id: ItemId, n = 1) => {
-        addToInventory(this.gs, id, n);
-        this.pushHud(true);
-      },
-      till: (radius = 3) => {
-        const cx = Math.floor(this.playerX);
-        const cz = Math.floor(this.playerZ);
-        let n = 0;
-        for (let ty = cz - radius; ty <= cz + radius; ty++) {
-          for (let tx = cx - radius; tx <= cx + radius; tx++) {
-            if (this.tileBlockedForTilling(tx, ty)) continue;
-            if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) n++;
-          }
-        }
-        this.world.getFarmTrees()?.rebuildAll();
-        this.syncWorldTiles();
-        return n;
-      },
-      skipDay: () => {
-        this.gs.clock = { ...this.gs.clock, day: this.gs.clock.day + 1 };
-        const res = onNewDay(this.gs);
-        this.refreshCropTargetsFromTiles();
-        this.clearDeathMarkers();
-        this.clearLootMarkers();
-        this.clearFeedbackBursts();
-        this.world.getFarmTrees()?.rebuildAll();
-        this.syncWorldTiles();
-        this.pushHud(true);
-        return { lost: res.lostTilth.length, regrown: res.regrown.length };
-      },
-      raid: () => {
-        this.spawnRaid();
-        for (const w of this.foxes) {
-          w.state = 'seek';
-          w.timer = 0;
-          w.x = this.playerX + (this.gs.rng() - 0.5) * 5;
-          w.z = this.playerZ + (this.gs.rng() - 0.5) * 5;
-          this.setFoxScale(w);
-          w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
-          this.playFoxAction(w, 'walk');
-        }
-        return this.foxes.length;
-      },
-      foxCount: () => this.foxes.length,
-      melee: () => {
-        this.meleeCd = 0;
-        this.meleeSwing(AXE_DAMAGE);
-        return this.foxes.length;
-      },
-    };
-  }
-
   private recordAction(kind: string): void {
     this.runtimeMetrics.recordAction(kind);
   }
@@ -1785,10 +1761,6 @@ export class GameRuntime {
     legacyActionKind: string = kind,
   ): void {
     this.runtimeMetrics.recordOutcome(kind, status, this.gs.simTime, legacyActionKind);
-  }
-
-  private economySnapshot(): RuntimeMetricsSnapshot {
-    return this.runtimeMetrics.snapshot(this.gs.simTime, this.gs.clock.day, performance.now());
   }
 
   // ------------------------------------------------------------------- loop
@@ -1898,12 +1870,6 @@ export class GameRuntime {
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
       if (!muted) this.audio.play('ui');
     }
-    if (this.input.justPressedCode('F12')) {
-      this.debugGrid = !this.debugGrid;
-      this.world.setGridDebug(this.debugGrid);
-      this.equipment.setDebugVisible(this.debugGrid);
-      setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
-    }
     if (this.input.justPressed('demolish')) {
       this.demolishMode = !this.demolishMode;
       this.buildingMode = false;
@@ -1949,8 +1915,8 @@ export class GameRuntime {
     if (this.input.justPressed('pause')) this.cancelActiveState();
 
     const structure: [InputAction, ToolMode, string][] = [
-      ['trench', 'trench', 'Tool: trench dig'],
-      ['breed', 'breed', 'Tool: breeding bed'],
+      ['trench', 'trench', 'Irrigation trench selected'],
+      ['breed', 'breed', 'Breeding bed selected'],
     ];
     for (const [action, mode, label] of structure) {
       if (!this.input.justPressed(action)) continue;
@@ -4485,10 +4451,7 @@ export class GameRuntime {
     seed: ReturnType<typeof selectedSeed>,
     packet: ReturnType<typeof selectedSeedPacket>,
   ): string {
-    const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
-    const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
     const key = (action: InputAction): string => this.inputLabel(action);
-    const controls = `${key('slot1')} shotgun · ${key('slot2')} shovel · ${key('slot3')} axe · ${key('toolSlot')} bucket · ${key('primary')} primary · ${key('secondary')} secondary · ${key('context')} context · ${key('ultimate')} boulder · ${key('bearTrap')} bear trap · ${key('rotateOrCycle')} rotate/weapon · ${key('breed')} breed · ${key('interact')} interact · ${key('build')} build · ${key('demolish')} demolish · ${key('inventory')} inventory · ${key('codex')} Codex · ${key('seedPrevious')} ${key('seedNext')} seed (${seedLabel})${seedEffect} · ${key('zoomIn')} / ${key('zoomOut')} zoom · ${key('reducedMotion')} motion`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · ${key('rotateOrCycle')}/${key('secondary')} rotate · ${key('primary')} or click place · ${key('pause')} exit`;
@@ -4511,7 +4474,9 @@ export class GameRuntime {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
       return this.nearWaterTower ? `${key('interact')} — fill bucket at the water tower` : `${key('interact')} — fill bucket`;
     }
-    if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · ${key('slot2')} back to shovel`;
+    if (this.toolMode === 'trench') return 'Irrigation trench selected · point at a homestead tile';
+    if (this.toolMode === 'breed') return 'Breeding bed selected · choose a prepared plot';
+    if (this.toolMode !== 'farm') return 'Choose a tool and point at the homestead';
 
     const tile = this.pointerTile();
     if (this.gs.toolSlotActive) {
@@ -4551,7 +4516,7 @@ export class GameRuntime {
     }
 
     if (this.gs.toolbarSlot === SLOT_SHOTGUN) return `${key('slot1')} shotgun · ${key('primary')}/click or ${key('secondary')} to fire`;
-    return controls;
+    return `Explore the homestead · ${key('help')} for the field guide`;
   }
 
   // ------------------------------------------------------------------- HUD

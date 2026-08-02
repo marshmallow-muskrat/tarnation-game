@@ -168,7 +168,7 @@ export function rebindInput(
     return { ok: false, bindings: cloneInputBindings(bindings), reason: 'Choose a named keyboard key.' };
   }
   if (trimmed === 'F12') {
-    return { ok: false, bindings: cloneInputBindings(bindings), reason: 'F12 is reserved for development.' };
+    return { ok: false, bindings: cloneInputBindings(bindings), reason: 'F12 is reserved by the browser.' };
   }
 
   const current = bindings[action];

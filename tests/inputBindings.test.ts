@@ -44,7 +44,7 @@ describe('keyboard input contract', () => {
     expect(result.reason).toContain('reserved as an alternate');
   });
 
-  it('keeps Escape as a cancellation alias and reserves the hidden developer key', () => {
+  it('keeps Escape as a cancellation alias and reserves the browser developer key', () => {
     const rebound = rebindInput(DEFAULT_INPUT_BINDINGS, 'pause', 'KeyL');
     expect(rebound.ok).toBe(true);
     if (!rebound.ok) return;
@@ -53,7 +53,7 @@ describe('keyboard input contract', () => {
     const reserved = rebindInput(DEFAULT_INPUT_BINDINGS, 'inventory', 'F12');
     expect(reserved.ok).toBe(false);
     if (reserved.ok) return;
-    expect(reserved.reason).toContain('reserved for development');
+    expect(reserved.reason).toContain('reserved by the browser');
   });
 
   it('round-trips valid bindings and restores defaults for malformed settings', () => {

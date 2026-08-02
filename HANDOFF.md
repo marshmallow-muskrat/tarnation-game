@@ -15,8 +15,8 @@ existing loop.
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
-baseline. `window.tarn`
-exposes the runtime for browser debugging.
+baseline. The production page exposes no runtime debug handle; use deterministic tests and local
+development tooling for inspection.
 
 ## 2. Current implementation
 
@@ -64,11 +64,11 @@ exposes the runtime for browser debugging.
 ## 4. Current quality work
 
 The completed vendor/deed sequence is preserved as
-[`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The runtime
-exposes local-only economy metrics through `window.tarnation.debug().economy()`, including four-way
-attempted/rejected/cancelled/completed outcome counts and first-completion game times for planting,
-harvest, sale, purchase, building, fox defense, and the settlement goal. The 2026-08-01 audit found
-that the vendor/deed foundation exists, but the
+[`docs/history/vendor-deed-system-plan.md`](docs/history/vendor-deed-system-plan.md). The former
+local-only economy metrics console handle was removed in UX-02; economy behavior remains covered by
+deterministic diagnostics and tests, including four-way attempted/rejected/cancelled/completed
+outcome counts and first-completion game times for planting, harvest, sale, purchase, building, fox
+defense, and the settlement goal. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
@@ -90,8 +90,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
   M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is in progress.
-  UX-01 is complete on the task branch `agent/ux-01-input-contract`; UX-02 is the next
-  dependency-ready task.
+  UX-01 and UX-02 are complete on their task branches; UX-03 is the next dependency-ready task.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -172,8 +171,21 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   and recorded no console warnings or errors. The deployment workflow already runs `npm run test:ci`
   before asset validation and build.
 
-- UX-01 intentionally leaves fresh-game inventory open by default for UX-02 to correct, and keeps the
-  hidden developer-only `?legacy` and F12 runtime paths in place until UX-02's full scaffolding cleanup.
+- UX-02 is complete on `agent/ux-02-information-hierarchy`. The deterministic baseline is 294 tests
+  across 42 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the
+  production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
+  pass. Production-preview smoke reached Day 1/daylight, showed the persistent resource/objective HUD,
+  empty occupied-only inventory, focused Help/inventory panels with no simultaneous overlays, title
+  `Tarnation`, and no console warnings/errors. The deployment workflow already runs `npm run test:ci`
+  before asset validation and build. Legacy v3/v4 saves without panel state intentionally retain an
+  open inventory for compatibility; UX-03–UX-05 remain deferred.
+
+- UX-02 closes fresh inventory while preserving explicit saved panel state and the legacy v3/v4
+  missing-field open default for compatibility. It renders occupied inventory stacks only, makes
+  catalog results/cost/footprint/lock/capacity explicit, and enforces one focused panel at a time.
+  The visible `?legacy`, F12 grid toggle, and `window.tarn` runtime paths are removed; full modal
+  semantics/focus restoration, settings/scaling/contrast, and onboarding remain deferred to
+  UX-03–UX-05.
   Alternate arrow, T, comma/period, and numpad bindings remain reserved for their current actions so
   remapping cannot create duplicate routes; this is the explicit UX-01 conflict policy. Full modal
   semantics/focus restoration, settings controls, scaling/contrast coverage, and the first-ten-minutes
@@ -583,15 +595,16 @@ Deployment record:
   passed simulation checks, the 223-test deterministic suite in both local and CI-style modes, asset
   validation, production build, and automatic deployment. Live smoke passed Continue, Day 1/daylight,
   Saved status, the visible four-pillar settlement objective, starter controls, and no console
-  warnings or errors. The current production title remains `Tarnation — Draft 0.3`; the removed
-  `Draft Complete` text is no longer presented as the player-facing ending.
+  warnings or errors. At that release the production title remained `Tarnation — Draft 0.3`; the later
+  UX-02 branch removes the scaffolding suffix. The removed `Draft Complete` text is no longer presented
+  as the player-facing ending.
 - `2cce059` — M6 defense: FOX-01–04 — <https://tarnation.pages.dev/>; GitHub Actions run
   [30737391871](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30737391871)
   passed simulation checks, the deterministic 241-test suite in both local and CI-style modes, asset
   validation, production build, and automatic deployment. Live smoke passed fresh New Adventure,
   Day 1/daylight HUD launch, Saved status, settlement objective, Help modal, and visible Q/B/weapon
   defense controls with no console errors or warnings. Existing legacy/F12 debug copy in the Help
-  modal remains a documented later presentation/UX follow-up.
+  modal remained a documented later presentation/UX follow-up at that release.
 - `76b9efd` — M7 presentation: ART-01–05 — <https://tarnation.pages.dev/>; GitHub Actions run
   [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
   verified the exact merge commit, ran simulation checks, the 284-test deterministic suite, asset

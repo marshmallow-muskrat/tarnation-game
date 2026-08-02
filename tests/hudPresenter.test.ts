@@ -44,7 +44,6 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
 describe('HUD presenter', () => {
   it('maps fresh game state to the existing player-facing toolbar, inventory, build, and vendor contract', () => {
     const state = createGameState(123);
-    state.inventoryOpen = false;
     state.duckettes = 9;
     const context = makeContext(state);
     let received: HudSnapshot | null = null;
@@ -62,6 +61,7 @@ describe('HUD presenter', () => {
       hint: 'Click to work',
       inventoryOpen: false,
       duckettes: 9,
+      wood: 0,
       save: { state: 'saved', message: 'Saved' },
     });
     expect(received!.inventory).toHaveLength(24);
@@ -77,7 +77,12 @@ describe('HUD presenter', () => {
       'Fence Section 2',
       'Field Gate',
     ]);
+    expect(received!.build.options[0]).toMatchObject({
+      description: 'A four-tile field boundary section.',
+      footprint: '4×1',
+    });
     expect(received!.vendor.tabs).toEqual(['Housing', 'Buildings', 'Upgrades']);
+    expect(received!.vendor.items[0]).toMatchObject({ kind: 'Permit' });
     expect(received!.codex.entries).toHaveLength(5);
     expect(received!.codex.entries.every((entry) => entry.kind === 'discovered')).toBe(true);
   });
