@@ -100,6 +100,9 @@ export class FoxNavigation {
     if (startTx === goalTx && startTy === goalTy) {
       return { status: 'ready', path: [] };
     }
+    if (blocked.has(tileKey(goalTx, goalTy))) {
+      return { status: 'unreachable', path: [] };
+    }
 
     const field = this.getOrCreateField(goalTx, goalTy, topologyVersion, blocked);
     let cursor = startTy * GRID_W + startTx;
@@ -154,9 +157,8 @@ export class FoxNavigation {
       tail: 0,
       complete: false,
     };
-    // The current game lets a fox approach its requested target tile even if a
-    // crop or player is technically on a blocked tile. The goal is therefore the
-    // one intentional exception to the obstacle set, matching the old BFS.
+    // Goals are normally reserved approach tiles. `route` rejects a hard
+    // obstacle goal, so water and buildings cannot become accidental targets.
     parent[goalIndex] = ROOT;
     queue[field.tail++] = goalIndex;
     this.fields.set(key, field);

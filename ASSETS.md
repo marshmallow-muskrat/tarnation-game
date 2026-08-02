@@ -2,6 +2,11 @@
 
 The game uses CC0 Quaternius models in a single flat-shaded, stylised low-poly language. The asset
 manifest at `src/content/models.ts` is the source of truth for every model the runtime can load.
+`src/content/assetMetadata.ts` resolves the shared metadata contract for each entry: rig class,
+expected clips, source-space axes and pivot, target height, catalog-derived footprints, load group,
+primitive fallback, held-marker source, icon framing, and CC0 provenance. `scripts/assetcheck.ts`
+opens every unique referenced GLB and validates its scene graph, finite transforms, source bounds,
+textures, binary references, and expected animation clips.
 
 ## Accepted packs and current use
 
@@ -13,6 +18,13 @@ manifest at `src/content/models.ts` is the source of truth for every model the r
 - **Survival Pack:** the current brown shotgun, shovel, and red axe.
 - **RPG Items and Universal Animation libraries:** supporting item and animation assets.
 - **Farm Buildings:** barns, silos, windmills, water tower, well, coop, fences, and related pieces.
+- **Ultimate Monsters:** optional rigged guardian art retained for later authored zones.
+
+The accepted packs do not contain honest meshes for the market stall, merchant caravan, barrel,
+haystack, or bucket. These are intentionally authored low-poly props in
+`src/game/MarketStall.ts` and `src/game/PresentationProps.ts`; they are not substitutions for an
+unrelated pack model and require no new asset license. The crate and coin sack retain their honest
+accepted chest and pouch models.
 
 The accepted tree set is deliberately separate from the Ultimate Nature scatter set. Tree models
 have broad canopies, so the farm currently uses `FARM_TREE_FRACTION = 0.055` and manifest tree
@@ -42,8 +54,8 @@ height `2.5`. Recheck both values whenever the tree source changes.
    size dramatically.
 5. Normalise scale with manifest `height`. Grounding and material treatment belong in the shared
    loader. Keep source proportions intact.
-6. Test models in `picker.html` and the actual game camera. A model that looks fine in isolation
-   can be too large, too dark, or poorly oriented in the farm.
+6. Test active catalog models and authored props in `picker.html` and the actual game camera. A
+   model that looks fine in isolation can be too large, too dark, or poorly oriented in the farm.
 
 ## Runtime safety and performance
 
@@ -60,6 +72,8 @@ Trees use the same batching pattern in `FarmTrees.ts`.
 Keep `public/models/CREDITS.md` current when adding a pack. Before committing an asset change:
 
 - Does the manifest path exist?
+- Does the GLB pass the scene, bounds, transform, texture, and expected-clip checks?
+- Does the metadata resolver provide a source pack, CC0 license record, fallback, and load group?
 - Is the target height visually correct beside the player?
 - Does the model preserve its materials and animation clips?
 - Does it render with the production decoders?

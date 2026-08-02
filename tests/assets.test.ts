@@ -5,6 +5,11 @@ import {
   modelKeysForLoadGroup,
   type AssetLoadGroup,
 } from '../src/content/models';
+import {
+  MODEL_ASSET_METADATA,
+  modelAssetMetadata,
+  validateModelMetadata,
+} from '../src/content/assetMetadata';
 
 const GROUPS: readonly AssetLoadGroup[] = ['boot', 'first_play', 'nearby', 'catalog', 'optional'];
 
@@ -28,7 +33,6 @@ describe('asset loading groups', () => {
         'beet_4',
         'tree_oak',
         'rock_a',
-        'market_stall',
         'house_1',
       ]),
     );
@@ -47,5 +51,49 @@ describe('asset loading groups', () => {
       expect.arrayContaining(['corn_4', 'guardian_a']),
     );
     expect(modelLoadGroup('guardian_a')).toBe('optional');
+  });
+
+  it('does not advertise the procedural market stall or unrelated pack meshes as authored props', () => {
+    expect(MODEL_KEYS).not.toContain('market_stall');
+  });
+});
+
+describe('asset manifest metadata', () => {
+  it('resolves a complete fallback, provenance, scale, axis, footprint, and icon contract for every model', () => {
+    expect(validateModelMetadata()).toEqual([]);
+    expect(Object.keys(MODEL_ASSET_METADATA)).toHaveLength(MODEL_KEYS.length);
+    for (const key of MODEL_KEYS) {
+      const metadata = modelAssetMetadata(key);
+      expect(metadata.targetHeight, `${key} target height`).toBeGreaterThan(0);
+      expect(metadata.fallback, `${key} fallback`).toBe('primitive');
+      expect(metadata.source.license, `${key} license`).toBe('CC0');
+      expect(metadata.source.record, `${key} provenance record`).toContain('CREDITS.md');
+      expect(metadata.collisionFootprint.width, `${key} collision width`).toBeGreaterThan(0);
+      expect(metadata.interactionFootprint.depth, `${key} interaction depth`).toBeGreaterThan(0);
+      expect(metadata.icon.distance, `${key} icon distance`).toBeGreaterThan(0);
+    }
+  });
+
+  it('derives rig classification and the player-visible animation contract from the active GLB packs', () => {
+    expect(modelAssetMetadata('player').kind).toBe('rigged');
+    expect(modelAssetMetadata('player').requiredClips).toEqual(['idle', 'walk', 'run']);
+    expect(modelAssetMetadata('fox').requiredClips).toEqual(['idle', 'walk', 'run', 'attack', 'death']);
+    expect(modelAssetMetadata('tree_oak').kind).toBe('static');
+    expect(modelAssetMetadata('tree_oak').requiredClips).toEqual([]);
+  });
+
+  it('derives placement footprints from the gameplay catalog without changing its ownership', () => {
+    expect(modelAssetMetadata('fence').collisionFootprint).toEqual({ width: 4, depth: 1 });
+    expect(modelAssetMetadata('house_5').collisionFootprint).toEqual({ width: 8, depth: 8 });
+    expect(modelAssetMetadata('shotgun_2').collisionFootprint).toEqual({ width: 1, depth: 1 });
+  });
+
+  it('uses typed equipment records as the source for held-tool markers and icon framing', () => {
+    const shotgun = modelAssetMetadata('shotgun_2');
+    expect(shotgun.markerSource).toBe('equipment-profile');
+    expect(shotgun.rightHandGrip).toEqual([0, -0.28, 0]);
+    expect(shotgun.leftHandSupportGrip).toEqual([1.35, 0.08, 0]);
+    expect(shotgun.icon.orthographicScale).toBe(1.25);
+    expect(modelAssetMetadata('well').markerSource).toBe('none');
   });
 });

@@ -459,3 +459,89 @@ retreat consequence without a reward; only fox defeat enters the existing trophy
 sealed farms, open routes, unreachable routes, ten-fox waves, and dawn cleanup remain pure
 characterization cases. No save schema, migration, economy price, player-health, or production
 debug behavior changes in FOX-04.
+
+## 2026-08-01 — Make the active model manifest inspectable
+
+ART-01 keeps `src/content/models.ts` as the only model path and target-height manifest, then resolves
+the rest of the asset contract through typed metadata: expected rig class and semantic clips, source
+axes and ground pivot, catalog-derived collision and interaction footprints, deterministic load group,
+primitive fallback, held-marker source, icon framing, and CC0 pack/license provenance. Gameplay
+placement and equipment tables remain the authorities for their existing rules; the resolved
+footprints and held markers are validation metadata and do not change runtime behavior.
+
+The asset check opens each unique active binary glTF and validates its container, scene/node/mesh/
+skin/animation references, finite transforms, finite POSITION bounds, texture sources, buffer ranges,
+expected clips, missing files, catalog IDs, and fallback records. This is a pure Node-side check with
+no Three.js or browser dependency, so it does not change the production bundle or the primitive
+fallback path. At the ART-01 boundary the repository contained 12 rigged and 85 static active files,
+160 named clips, 12 intentional manifest aliases, and no external texture files. The market-stall
+placeholder and hardcoded tool-icon views were left for the presentation pass.
+
+## 2026-08-01 — Use authored props instead of unrelated presentation substitutes
+
+ART-02 removes the `market_stall` manifest entry that pointed at the well while the live world already
+used the authored `MarketStall` builder. The catalog now permits a typed `authoredVisual` with a null
+`modelKey` only for the bucket, caravan, barrel, and haystack; this prevents an unrelated backpack,
+tent, or log model from being presented as those objects. Crates and coin sacks continue to use the
+accepted chest and pouch models, and every visible vendor/build row remains backed by an active GLB.
+
+`PresentationProps.ts` owns the bucket, caravan, barrel, and haystack geometry. The runtime records
+whether a rendered root is an authored prop or an asset-cache clone and disposes the correct resource
+owner during camp rebuilds and teardown. The active picker now audits the 16 sold-building, fixture,
+stall, and bucket views under the shared loader and shadowed lighting profile; authored bounds are
+kept within their typed placement footprints. No new external asset or license is introduced, and
+save schema, placement occupancy, economy rules, and deterministic simulation behavior are unchanged.
+
+## 2026-08-01 — Make occupancy classes explicit across actors and decoration
+
+ART-03 defines five shared classes in `src/sim/occupancy.ts`: hard obstacles, soft obstacles,
+decorative content, interaction-only content, and reservations. Physical water, fixed blocking
+fixtures, the homestead footprint, and closed placed structures are hard actor obstacles. Worked
+ground and active traps are soft occupancy: player and wildlife actors may cross them, while clear
+ground tools, placement validation, and scatter avoid them. Trees, boulders, and stumps are
+interaction-only: they remain axe/shovel targets and placement blockers without becoming actor walls.
+The full central camp remains a reservation, so it protects tilling, construction, and decoration
+without trapping the player or changing enclosure topology. Decorative scatter has no gameplay
+authority.
+
+Fox navigation and flee exits use the hard obstacle set plus continuous water/building checks;
+ambient wildlife uses the same point policy and deterministic safe-edge fallback. No released
+asset has an authored exception to the water/building rule. Scatter is rebuilt from the classed
+mask with a one-tile clearance around physical structures and interaction props, plus a future-ready
+path source; no authored path layer exists yet. This changes the previously documented behavior in
+which foxes and ambient animals could cross water or structures, but does not change saves, the
+fixed timestep, seeded simulation, enclosure rules, or the reservation/physical-collision split.
+
+## 2026-08-02 — Keep camera edges targetable and lighting readable
+
+ART-04 keeps the fixed isometric composition and moves the camera’s safety contracts into the pure
+`src/sim/camera.ts` module. Interactive zoom remains bounded from `0.78` through `1.3`; the
+orthographic projection preserves a five-unit vertical half-frustum and treats invalid or minimized
+viewport dimensions as one pixel instead of producing a non-finite matrix. Camera follow and snap
+targets stay four world units inside the existing `[2, 238]` movement bounds, which keeps a player at
+the map corner visible at maximum zoom without changing movement or collision. Shadow anchors retain
+their existing quarter-tile quantization, and the current day/night light and fog values are now
+purely characterized with readable minimum light floors.
+
+The current game has no weather state, so no weather branch was added. The fresh tier-1 world view and
+the active picker views for tiers 2–5 remain readable under the same lighting profile; no transparency
+fade was introduced for a tall building that does not currently occlude the player. Local visual
+evidence covered day framing, zoom bounds, the homestead approach, HUD/status/toolbar focus, and the
+pausing field guide; generated screenshots are review artifacts rather than committed binary files.
+No save schema, simulation timing, asset catalog, or later VFX/UX task is changed.
+
+## 2026-08-01 — Use a bounded semantic VFX grammar
+
+ART-05 maps transient action feedback to eight typed states: valid placement, invalid placement, work
+contact, water, reward, damage, threat, and discovery. The palette is intentionally small and distinct
+so a player can read the state without a per-call color contract. The renderer owns a fixed 24-slot pool
+with one shared procedural geometry and slot-owned materials; it recycles the oldest active slot and
+disposes the owned resources once at runtime teardown. Renderer-only decoration continues to use its
+own deterministic LCG and never consumes the seeded simulation RNG.
+
+Reduced motion suppresses transient particles at spawn, matching the existing camera-shake, crop,
+loot-marker, and ambient-mote policy. Minor boulder and repeated tree-contact shake was removed where
+it duplicated the same small contact cue; major combat, ranged, harvest, and settlement outcomes keep
+their existing audio, popup, hit-pause, and feedback contracts. Invalid placement now gives the same
+red semantic signal as its preview. No save schema, simulation rule, economy value, asset definition,
+fixed timestep, or deployment credential changed.

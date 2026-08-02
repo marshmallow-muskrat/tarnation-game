@@ -23,7 +23,7 @@ export const PLACEABLE_BUILDINGS: readonly {
   cost: number;
 }[] = PLACEABLE_BUILDING_IDS.flatMap((id) => {
   const asset = assetDefinition(id);
-  if (!asset) return [];
+  if (!asset || asset.modelKey === null) return [];
   return [{
     id,
     model: asset.modelKey,

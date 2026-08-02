@@ -603,6 +603,12 @@ textures, missing files, duplicate catalog IDs, fallbacks, and expected clips.
 - Prevent wildlife from walking through water/buildings unless it has an authored exception.
 - Rebuild/mask scatter around tilled land, fixtures, paths, and placed structures.
 
+Status: Complete on the integration branch. The typed policy keeps physical water, fixtures,
+homestead, and closed placed structures as hard actor obstacles; worked ground as soft occupancy;
+trees and rocks as interaction-only; camp reservations separate from actor collision; and scatter
+as renderer-only content with structural and authored-path clearance. No authored wildlife exception
+is currently released.
+
 ### ART-04 — Camera and lighting pass
 
 - Keep isometric composition stable and targetable.
@@ -612,6 +618,15 @@ textures, missing files, duplicate catalog IDs, fallbacks, and expected clips.
 - Add screenshots for dawn/day/dusk/night, each weather state if retained, every building tier, full
   crops, raid peak, and modal overlays.
 
+Status: Complete on the integration branch. The pure camera policy preserves the fixed orthographic
+composition, bounds zoom to `0.78–1.3`, keeps minimized viewports finite, holds edge targets inside a
+four-unit player-readable margin, and quantizes the moving shadow anchor to quarter-tile steps. The
+existing day/night intensity and fog curve is now characterized without Three.js and retains readable
+light floors. Local visual review covered default/day framing, minimum zoom, the authored homestead
+approach, HUD/status/toolbar readability, and the pausing field-guide modal; no weather state exists
+in the current game, and no tall-building fade was needed for the authored homestead tiers and
+approach. The visual capture record intentionally avoids committing generated binary screenshots.
+
 ### ART-05 — VFX grammar
 
 - Define a small palette: valid/invalid placement, work contact, water, reward, damage/threat, and
@@ -619,6 +634,13 @@ textures, missing files, duplicate catalog IDs, fallbacks, and expected clips.
 - Each effect communicates one state, respects reduced motion, pools temporary resources, and cleans
   up deterministically.
 - Avoid stacking shake, flash, particles, scale pulse, and floating text for the same small event.
+
+Status: Complete on the ART-05 task branch. The typed eight-state palette is shared by placement,
+work, water, reward, damage, threat, and discovery feedback. Renderer-only bursts use a fixed pool of
+24 slots with shared geometry, deterministic renderer RNG, reduced-motion suppression, and explicit
+resource disposal. Minor boulder and tree-contact camera shake was removed where it duplicated the
+contact cue; major combat and harvest outcomes retain their existing feedback, audio, toast, popup,
+and hit-pause contracts. No simulation, save, economy, asset, or workflow rules changed.
 
 ## 13. Phase 8 — UI, onboarding, accessibility, and settings
 
@@ -918,8 +940,8 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M3 Runtime health | PERF-01–05 | M0 | Complete: PR #24 merged as `d8a4362`; workflow `30728223190` passed verification/deployment and live smoke passed |
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
-| M6 Defense | FOX-01–04 | M3–M5 | Complete in integration merge `86c9efb` (PR #43); M6 release PR and production smoke pending |
-| M7 Presentation | ART-01–05 | M3–M6 | Not started |
+| M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
+| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–05 integrated; milestone release pending |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |

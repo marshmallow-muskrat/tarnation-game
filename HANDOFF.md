@@ -14,7 +14,8 @@ existing loop.
 
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
-manifest paths, and `npm run economyreport` to print the current tuning baseline. `window.tarn`
+manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
+baseline. `window.tarn`
 exposes the runtime for browser debugging.
 
 ## 2. Current implementation
@@ -72,7 +73,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 [`masterplan-v2.md`](masterplan-v2.md):
 
 - CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
-  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is in progress.
+  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is complete.
 - FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), FOX-03
   as merge `4c0244b` (PR #42), and FOX-04 as merge `86c9efb` (PR #43). Foxes select deterministic
   world targets: haulers can steal stored
@@ -87,8 +88,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   Repeller crops now drive off at most two foxes per raid, while active shotgun/bow/melee/boulder/trap
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
-  asset validation and build in the deployment workflow. The M6 release gate and production smoke are
-  the next release boundary.
+  asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
+  the next dependency-ready milestone is M7 Presentation.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -99,10 +100,84 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
   and build.
 
+- ART-01 and ART-02 are complete on the M7 task branch. The typed model metadata resolver derives
+  rigged or static structure, expected clips, source-space axes and pivot, target heights, catalog
+  footprints, load groups, primitive fallbacks, held-marker source, icon framing, and CC0 provenance.
+  ART-02 removes the well-backed `market_stall` manifest alias, makes authored visuals explicit in
+  the catalog, centralizes the bucket prop, and adds owned procedural caravan, barrel, and haystack
+  silhouettes. Fixed camp rendering now disposes authored props separately from cached GLB clones;
+  every visible vendor/build row remains backed by an active accepted model. The presentation picker
+  now loads 16 active sold-building, camp-fixture, market-stall, and bucket views through the same
+  loader and shadowed lighting profile. The pure GLB validator checks all 97 unique active files;
+  the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
+  `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
+  ART-05 is integrated; the M7 production release and live evidence remain pending.
+
+- ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
+  obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
+  from clear-ground tools, interaction-only trees/rocks remain tool and placement targets without
+  becoming walls, reservations protect camp land without changing actor pathing or enclosure, and
+  decorative content stays non-authoritative. Runtime topology now includes water, fixtures,
+  homestead, closed placed structures, and safe boundary exits for fox routing; ambient animals use
+  continuous water/building checks; placement rejects live tree/rock tiles; and scatter masks worked
+  land, fixtures, interaction props, structures, and future authored paths with deterministic
+  clearance. The deterministic baseline is now 266 tests across 38 files. `npm run test`,
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol
+  TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. A fresh local browser smoke reached
+  Day 1/daylight and Saved status with no console errors. The deployment workflow already runs
+  `npm run test:ci` before asset validation and build.
+
+- ART-04 extracts camera policy into the pure `src/sim/camera.ts` module. The fixed orthographic
+  composition retains a `0.78–1.3` zoom range, a five-unit vertical half-frustum, finite resize
+  fallbacks, a four-unit world-edge target margin that keeps a corner player readable at maximum
+  zoom, and quarter-tile shadow-anchor quantization. The existing day/night light-intensity and fog
+  curve is characterized with readable minimum levels; runtime movement, fixed-step timing, saves,
+  and the production asset path are unchanged. Local visual captures covered default/day framing,
+  minimum zoom, the homestead approach, the full HUD/status/toolbar, and the pausing field guide
+  modal. The fresh tier-1 world view and active picker views for tiers 2–5 were reviewed under the
+  same lighting profile; no player occlusion required a transparency fade. The current game retains
+  no weather state. The deterministic baseline is now 275 tests across 39 files. `npm run test`,
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol
+  TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. The deployment workflow already
+  runs `npm run test:ci` before asset validation and build.
+
+- ART-05 establishes the shared VFX grammar in pure `src/sim/feedback.ts`: valid/invalid placement,
+  work contact, water, reward, damage, threat, and discovery each have a bounded typed profile with
+  distinct colors. `FeedbackEffectPool` owns 24 reusable renderer-only slots, one shared octahedron
+  geometry, and slot-owned materials; it recycles the oldest active slot, never consumes simulation
+  RNG, suppresses transient particles under reduced motion, and disposes resources exactly once.
+  Existing feedback call sites now use semantic kinds, invalid placement gets an explicit red contact
+  cue, and minor boulder/tree-contact shake no longer stacks with the same small event. The current
+  deterministic baseline is 284 tests across 41 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`, and
+  `npm audit --omit=dev` pass. Local visual smoke reached Day 1/daylight with HUD, player, homestead,
+  grounded shadows, and controls visible; no console warnings or errors were observed. The existing
+  Help copy still exposes legacy `?legacy` and F12 grid-debug instructions, which remains deferred to
+  the later UX/presentation cleanup rather than being changed in ART-05. The deployment workflow
+  already runs `npm run test:ci` before asset validation and build.
+
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
+- ART-02 intentionally does not introduce new external art: accepted packs have no honest mesh for
+  the market stall, caravan, barrel, haystack, or bucket, so the authored props remain the source of
+  truth. The current held-tool GLBs have no embedded grip/support marker nodes, so the typed
+  equipment profiles remain the honest marker source; hardcoded tool-icon framing and broader
+  presentation cleanup remain later M7 work.
+- Before ART-03, the actor obstacle set excluded water and ambient animals selected unconstrained
+  headings, so fox routes/flee exits and friendly wildlife could cross water or physical structures.
+  This was a genuine collision-policy defect and is now corrected without adding a save field. Soft
+  worked ground remains intentionally traversable by actors, interaction-only trees/rocks do not
+  become walls, and the empty central camp reservation remains walkable; those are deliberate policy
+  contracts rather than unfinished collision.
+- Before ART-04, camera follow used the player position directly even at the authored world edges,
+  and projection/shadow/lighting math lived only in `WorldRenderer`. The edge target now stops just
+  far enough inside the `[2, 238]` movement bounds to keep a corner player in frame at maximum zoom;
+  the player’s movement bounds are unchanged. No weather variant or tall-building fade was invented
+  because neither is present or required by the current authored content. Generated visual captures
+  remain review evidence rather than committed binary assets.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
@@ -426,6 +501,11 @@ The characterization baseline intentionally preserves current behavior for later
 - The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
   not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
   follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.
+- M6 production smoke passed fresh New Adventure, Day 1/daylight HUD launch, Saved status, the
+  settlement objective, Help modal, and visible Q/B/weapon defense controls with no console errors
+  or warnings. The production Help copy still exposes legacy `?legacy` build and F12 grid-debug
+  instructions; this pre-existing presentation/UX defect is deferred to the appropriate later task
+  and was not changed in M6.
 
 ## 5. Release procedure
 
@@ -483,3 +563,10 @@ Deployment record:
   Saved status, the visible four-pillar settlement objective, starter controls, and no console
   warnings or errors. The current production title remains `Tarnation — Draft 0.3`; the removed
   `Draft Complete` text is no longer presented as the player-facing ending.
+- `2cce059` — M6 defense: FOX-01–04 — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30737391871](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30737391871)
+  passed simulation checks, the deterministic 241-test suite in both local and CI-style modes, asset
+  validation, production build, and automatic deployment. Live smoke passed fresh New Adventure,
+  Day 1/daylight HUD launch, Saved status, settlement objective, Help modal, and visible Q/B/weapon
+  defense controls with no console errors or warnings. Existing legacy/F12 debug copy in the Help
+  modal remains a documented later presentation/UX follow-up.
