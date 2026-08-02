@@ -4,8 +4,8 @@ import { SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from '../src/game/InteractionSyst
 import { chooseLocomotionAction } from '../src/game/PlayerActionController';
 
 describe('equipment selection and player action characterization', () => {
-  it('hides held tools while the bucket slot is active', () => {
-    expect(equippedToolKeyFor({ toolbarSlot: SLOT_SHOTGUN, toolSlotActive: true, weapon: 'shotgun' })).toBeNull();
+  it('shows the authored stylized bucket prop while the bucket slot is active', () => {
+    expect(equippedToolKeyFor({ toolbarSlot: SLOT_SHOTGUN, toolSlotActive: true, weapon: 'shotgun' })).toBe('bucket');
   });
 
   it('maps the selected toolbar and weapon to the existing held model', () => {

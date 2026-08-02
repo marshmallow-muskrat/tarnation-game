@@ -1,3 +1,4 @@
+import { BEAR_TRAP_PLACE_RANGE, TOOL_RANGE } from '../content';
 import { MODEL_KEYS, type ModelKey } from './models';
 
 export type Axis = readonly [number, number, number];
@@ -19,6 +20,13 @@ export type EquipmentActionKind = 'tool' | 'ranged' | 'interact';
 export type EquipmentActionClip = 'pickUp' | 'shoot' | 'swordSlash' | 'punch';
 export type EquipmentAudioCue = 'tool' | 'shot' | 'water' | 'trap' | 'build';
 export type EquipmentVfxCue = 'chop' | 'soil' | 'water' | 'muzzle' | 'trap' | 'build';
+export type EquipmentTargetClass =
+  | 'tree_or_boulder'
+  | 'farm_tile'
+  | 'water_or_crop'
+  | 'ranged'
+  | 'trap_ground'
+  | 'placement';
 
 export type EquipmentActionTiming = Readonly<{
   windup: number;
@@ -26,8 +34,17 @@ export type EquipmentActionTiming = Readonly<{
   recover: number;
 }>;
 
+export type EquipmentInteraction = Readonly<{
+  kind: EquipmentActionKind;
+  clip: EquipmentActionClip;
+  target: EquipmentTargetClass;
+  /** Null means the action is aimed, not constrained by a world target range. */
+  range: number | null;
+  facingHalfAngle: number;
+}>;
+
 export type EquipmentProfile = Readonly<{
-  /** Null means the player-facing item remains a glyph or placement preview. */
+  /** Null means there is no external model; the renderer may use a glyph, authored primitive, or preview. */
   modelKey: ModelKey | null;
   /** Measured source axes before the socket rotation is applied. */
   modelForwardAxis: Axis;
@@ -54,6 +71,7 @@ export type EquipmentProfile = Readonly<{
     idleTime: number;
   }>;
   actionClips: readonly EquipmentActionClip[];
+  interaction: EquipmentInteraction;
   timings: Partial<Record<EquipmentActionKind, EquipmentActionTiming>>;
   feedback: Readonly<{
     audio: EquipmentAudioCue;
@@ -124,6 +142,10 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'runCarry', idleTime: 0.36 },
     actionClips: ['swordSlash'],
+    interaction: {
+      kind: 'tool', clip: 'swordSlash', target: 'tree_or_boulder', range: TOOL_RANGE + 0.6,
+      facingHalfAngle: Math.PI * 0.55,
+    },
     timings: { tool: TOOL_TIMING },
     feedback: { audio: 'tool', vfx: 'chop' },
     icon: { yaw: 0.55, pitch: 0.32, roll: -0.12, distance: 2.4, targetY: 0.3, orthographicScale: 1.35 },
@@ -153,6 +175,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'walkCarry', idleTime: 0.3 },
     actionClips: ['shoot'],
+    interaction: {
+      kind: 'ranged', clip: 'shoot', target: 'ranged', range: null, facingHalfAngle: Math.PI,
+    },
     timings: { ranged: RANGED_TIMING },
     feedback: { audio: 'shot', vfx: 'muzzle' },
     icon: { yaw: 0.4, pitch: 0.22, roll: 0.08, distance: 2.1, targetY: 0.34, orthographicScale: 1.2 },
@@ -184,6 +209,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'runCarry', idleTime: 0.32 },
     actionClips: ['shoot'],
+    interaction: {
+      kind: 'ranged', clip: 'shoot', target: 'ranged', range: null, facingHalfAngle: Math.PI,
+    },
     timings: { ranged: RANGED_TIMING },
     feedback: { audio: 'shot', vfx: 'muzzle' },
     icon: { yaw: 0.6, pitch: 0.26, roll: 0.04, distance: 2.6, targetY: 0.3, orthographicScale: 1.25 },
@@ -216,6 +244,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'runCarry', idleTime: 0.3 },
     actionClips: ['pickUp'],
+    interaction: {
+      kind: 'tool', clip: 'pickUp', target: 'farm_tile', range: TOOL_RANGE, facingHalfAngle: Math.PI * 0.7,
+    },
     timings: { tool: TOOL_TIMING },
     feedback: { audio: 'tool', vfx: 'soil' },
     icon: { yaw: 0.5, pitch: 0.28, roll: -0.08, distance: 2.45, targetY: 0.35, orthographicScale: 1.35 },
@@ -229,7 +260,7 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     scale: 1,
     sockets: {
       carry: { position: [0, 0, 0], rotation: [0, 0, 0] },
-      action: { position: [0, 0, 0], rotation: [0, 0, 0] },
+      action: { position: [0.02, -0.02, 0.02], rotation: [0.65, 0.15, -0.12] },
     },
     readability: {
       minScale: 0.8,
@@ -239,6 +270,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'walkCarry', idleTime: 0.3 },
     actionClips: ['pickUp'],
+    interaction: {
+      kind: 'tool', clip: 'pickUp', target: 'water_or_crop', range: TOOL_RANGE, facingHalfAngle: Math.PI * 0.75,
+    },
     timings: { tool: TOOL_TIMING },
     feedback: { audio: 'water', vfx: 'water' },
     icon: { yaw: 0.3, pitch: 0.2, roll: 0, distance: 2, targetY: 0.25, orthographicScale: 1 },
@@ -262,6 +296,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'walkCarry', idleTime: 0.3 },
     actionClips: ['pickUp'],
+    interaction: {
+      kind: 'interact', clip: 'pickUp', target: 'trap_ground', range: BEAR_TRAP_PLACE_RANGE, facingHalfAngle: Math.PI * 0.75,
+    },
     timings: { interact: INTERACT_TIMING },
     feedback: { audio: 'trap', vfx: 'trap' },
     icon: { yaw: 0.65, pitch: 0.4, roll: 0, distance: 2, targetY: 0.1, orthographicScale: 0.8 },
@@ -285,6 +322,9 @@ export const EQUIPMENT_PROFILES: Readonly<Record<EquipmentKey, EquipmentProfile>
     },
     locomotion: { runClip: 'walkCarry', idleTime: 0.3 },
     actionClips: ['pickUp'],
+    interaction: {
+      kind: 'interact', clip: 'pickUp', target: 'placement', range: BEAR_TRAP_PLACE_RANGE, facingHalfAngle: Math.PI * 0.75,
+    },
     timings: { interact: INTERACT_TIMING },
     feedback: { audio: 'build', vfx: 'build' },
     icon: { yaw: 0.45, pitch: 0.3, roll: 0, distance: 2.5, targetY: 0.35, orthographicScale: 1.4 },
@@ -359,6 +399,16 @@ export function validateEquipmentProfiles(
       profile.locomotion.idleTime > 1
     ) problems.push(`${key}: idleTime must be in the 0..1 clip range`);
     if (profile.actionClips.length === 0) problems.push(`${key}: no compatible action clip`);
+    if (!profile.actionClips.includes(profile.interaction.clip)) {
+      problems.push(`${key}: interaction clip is not listed in actionClips`);
+    }
+    if (
+      (profile.interaction.range !== null &&
+        (!Number.isFinite(profile.interaction.range) || profile.interaction.range <= 0)) ||
+      !Number.isFinite(profile.interaction.facingHalfAngle) ||
+      profile.interaction.facingHalfAngle <= 0 ||
+      profile.interaction.facingHalfAngle > Math.PI
+    ) problems.push(`${key}: invalid interaction targeting bounds`);
     for (const [kind, timing] of Object.entries(profile.timings)) {
       if (!timing) {
         problems.push(`${key}: ${kind} timing is missing`);
@@ -386,4 +436,8 @@ export function equipmentTimingFor(
   action: EquipmentActionKind,
 ): EquipmentActionTiming | null {
   return EQUIPMENT_PROFILES[key].timings[action] ?? null;
+}
+
+export function equipmentActionClipFor(key: EquipmentKey): EquipmentActionClip {
+  return EQUIPMENT_PROFILES[key].interaction.clip;
 }

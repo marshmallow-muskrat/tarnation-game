@@ -104,7 +104,12 @@ import {
   generateWave,
   nearestEdgePoint,
 } from '../sim/raid';
-import { equipmentTimingFor, type EquipmentKey } from '../content/equipment';
+import {
+  EQUIPMENT_PROFILES,
+  equipmentActionClipFor,
+  equipmentTimingFor,
+  type EquipmentKey,
+} from '../content/equipment';
 import {
   cloneModel,
   initAssetLoaders,
@@ -140,6 +145,7 @@ import { CropBatches } from './CropBatches';
 import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
 import { approachHeading, LOCOMOTION_GAIT } from './Locomotion';
+import { classifyAxeTarget, headingToTarget, isWithinFacingArc } from './ToolInteraction';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
@@ -2060,8 +2066,13 @@ export class GameRuntime {
       return;
     }
     const deedPlacement = this.placement.activeDeedAssetId !== null;
-    if (!this.beginInteractAction('pickUp', () => {
-      const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
+    const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
+    if (deedPlacement && !this.gs.inventory.some((slot) => slot?.id === deedItemId(selected.id))) {
+      this.recordOutcome('building', 'rejected');
+      setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
+      return;
+    }
+    if (!this.beginInteractAction(() => {
       if (!deedPlacement) {
         if (!takeFromInventory(this.gs, ITEM_WOOD, legacyCost)) {
           this.recordOutcome('building', 'rejected');
@@ -2086,12 +2097,12 @@ export class GameRuntime {
       this.buildingMode = false;
       this.placement.clear();
       this.pushHud(true);
-    })) this.recordOutcome('building', 'rejected');
+    }, 'build_preview')) this.recordOutcome('building', 'rejected');
   }
 
   private useBucket(): void {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
-      this.beginMeleeAction('pickUp', () => {
+      this.beginProfiledToolAction('bucket', () => {
         fillBucket(this.gs);
         this.recordAction('fill_bucket');
         this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
@@ -2102,31 +2113,70 @@ export class GameRuntime {
       return;
     }
     const tilePos = this.pointerTile();
-    if (!tilePos) return;
+    if (!tilePos) {
+      setToast(this.gs, 'Point the bucket at a thirsty crop', 1.4);
+      return;
+    }
     const { tx, ty } = tilePos;
     const tile = getTile(this.gs.tiles, tx, ty);
     const wc = this.farmTileWorld(tx, ty);
-    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return;
-    this.beginMeleeAction('pickUp', () => {
-      this.waterWithBucket(tx, ty, tile?.state === 'planted' && !tile.watered);
+    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
+      setToast(this.gs, 'Move closer to use the bucket', 1.4);
+      return;
+    }
+    if (tile?.state !== 'planted' || tile.watered) {
+      setToast(this.gs, tile?.state === 'mature' ? 'Harvest is ready — switch to the shovel' : 'Point at a thirsty crop', 1.4);
+      return;
+    }
+    if (this.gs.irrigationTier < 3 && this.gs.bucketFill <= 0) {
+      setToast(this.gs, 'Bucket empty — fill at the river or a creek', 2);
+      return;
+    }
+    this.beginFacingToolAction('bucket', wc.x, wc.z, () => {
+      this.waterWithBucket(tx, ty, true);
     });
   }
 
   private useAxe(): void {
-    // A tree is a direct click target. Ground aiming remains a fallback for
-    // ordinary melee, but the player never has to line up a reticle with timber.
     const tilePos = this.pointerTreeTile() ?? this.pointerTile();
-    this.beginMeleeAction('swordSlash', () => {
-      if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
-      // Nothing to chop — swing at whatever is in front of you instead.
-      this.applyMeleeDamage(AXE_DAMAGE);
+    const trees = this.world.getFarmTrees();
+    if (!tilePos || !trees) {
+      setToast(this.gs, 'Point at a tree, stump, or boulder', 1.4);
+      return;
+    }
+    const target = classifyAxeTarget({
+      tree: trees.hasTree(tilePos.tx, tilePos.ty),
+      stump: trees.hasStump(tilePos.tx, tilePos.ty),
+      boulder: trees.rockSlot(tilePos.tx, tilePos.ty),
+    });
+    if (target === 'none') {
+      setToast(this.gs, 'Point at a tree, stump, or boulder', 1.4);
+      return;
+    }
+    const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
+    const range = EQUIPMENT_PROFILES.axe.interaction.range ?? TOOL_RANGE;
+    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > range) {
+      setToast(this.gs, 'Move closer to use the axe', 1.4);
+      return;
+    }
+    this.beginFacingToolAction('axe', wc.x, wc.z, () => {
+      if (target === 'boulder') {
+        this.world.shake(0.03, 0.03);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0x77736b, 4, 0.16);
+        this.audio.play('hit');
+        setToast(this.gs, 'The axe clangs off the boulder', 1.4);
+        return;
+      }
+      if (!this.chopFarmTree(tilePos.tx, tilePos.ty)) {
+        setToast(this.gs, 'That tree is no longer in reach', 1.4);
+      }
     });
   }
 
   private useShovel(): void {
     const tilePos = this.pointerTile();
     if (!tilePos) {
-      this.meleeSwing(FIST_DAMAGE, 'pickUp');
+      setToast(this.gs, 'Point the shovel at a farm tile', 1.4);
       return;
     }
     const { tx, ty } = tilePos;
@@ -2134,7 +2184,7 @@ export class GameRuntime {
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
-      this.meleeSwing(FIST_DAMAGE, 'pickUp');
+      setToast(this.gs, 'Move closer to work this tile', 1.4);
       return;
     }
 
@@ -2154,7 +2204,7 @@ export class GameRuntime {
 
     if (this.toolMode === 'trench') {
       if (tile.state === 'planted' || tile.state === 'mature' || tile.state === 'breeding') return;
-      this.beginMeleeAction('pickUp', () => {
+      this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
         if (!digTrench(this.gs.tiles, tx, ty)) return;
         for (const [dx, dy] of [
           [0, 0],
@@ -2184,7 +2234,7 @@ export class GameRuntime {
 
     if (this.toolMode === 'breed') {
       if (tile.state === 'tilled') {
-        this.beginMeleeAction('pickUp', () => {
+        this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
           if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
           this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
@@ -2193,7 +2243,7 @@ export class GameRuntime {
           this.persist();
         });
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
-        this.beginMeleeAction('pickUp', () => {
+        this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
           const parents = clearBreedingParents(this.gs.tiles, tx, ty);
           if (!parents) return;
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
@@ -2214,7 +2264,7 @@ export class GameRuntime {
         setToast(this.gs, "This ground can't be worked", 1.4);
         return;
       }
-      this.beginMeleeAction('pickUp', () => {
+      this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
         if (!tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) return;
         this.recordAction('till');
         this.syncWorldTiles([{ tx, ty }]);
@@ -2230,7 +2280,7 @@ export class GameRuntime {
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
-      if (!this.beginMeleeAction('pickUp', () => {
+      if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
         if (!plantTile(this.gs.tiles, tx, ty, seed)) {
           this.recordOutcome('plant', 'rejected');
           return;
@@ -2244,14 +2294,14 @@ export class GameRuntime {
         this.persist();
       })) this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
-      this.beginMeleeAction('pickUp', () => this.waterWithBucket(tx, ty, true));
+      setToast(this.gs, 'Use the bucket to water this crop', 1.4);
     } else if (tile.state === 'mature') {
       this.recordOutcome('harvest', 'attempted');
       if (!tile.seed) {
         this.recordOutcome('harvest', 'rejected');
         return;
       }
-      if (!this.beginMeleeAction('pickUp', () => {
+      if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
         const res = harvestTile(this.gs.tiles, tx, ty);
         if (res.ok && res.seed) {
           const id = cropItem(res.seed.displayName);
@@ -2400,7 +2450,7 @@ export class GameRuntime {
     const { dx, dz } = this.aimDirection();
     const sideX = dz;
     const sideZ = -dx;
-    this.beginRangedAction(() => {
+    this.beginRangedAction('shotgun_2', () => {
       const pelletMaterial = new THREE.MeshStandardMaterial({
         color: 0x4b4b45,
         metalness: 0.65,
@@ -2437,6 +2487,7 @@ export class GameRuntime {
         });
       }
       this.shotCd = SHOTGUN_COOLDOWN;
+      this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 0xffd07a, 5, 0.12);
       this.audio.play('shot');
       this.world.shake(0.06, 0.05);
     });
@@ -2464,7 +2515,7 @@ export class GameRuntime {
   private fireBow(): void {
     if (this.shotCd > 0) return;
     const { dx, dz } = this.aimDirection();
-    this.beginRangedAction(() => {
+    this.beginRangedAction('bow_wooden', () => {
       const { root } = cloneModel('arrow');
       root.scale.multiplyScalar(0.85);
       root.position.set(
@@ -2487,7 +2538,47 @@ export class GameRuntime {
         dmg: 2,
       });
       this.shotCd = BOW_COOLDOWN;
+      this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 0xd79358, 4, 0.1);
       this.audio.play('shot');
+      this.world.shake(0.025, 0.02);
+    });
+  }
+
+  private beginProfiledToolAction(profileKey: EquipmentKey, onContact: () => void): boolean {
+    const profile = EQUIPMENT_PROFILES[profileKey];
+    if (profile.interaction.kind !== 'tool') return false;
+    if (!this.actionState.isBusy && this.meleeCd > 0) return false;
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'tool',
+      timing: equipmentTimingFor(profileKey, 'tool') ?? DEFAULT_TOOL_ACTION_TIMING,
+      payload: null,
+      bufferable: true,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onContact,
+    });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private beginFacingToolAction(
+    profileKey: EquipmentKey,
+    targetX: number,
+    targetZ: number,
+    onContact: () => void,
+  ): boolean {
+    const targetHeading = headingToTarget(this.playerX, this.playerZ, targetX, targetZ);
+    this.headingTarget = targetHeading;
+    const halfAngle = EQUIPMENT_PROFILES[profileKey].interaction.facingHalfAngle;
+    return this.beginProfiledToolAction(profileKey, () => {
+      if (!isWithinFacingArc(this.playerHeading, targetHeading, halfAngle)) {
+        setToast(this.gs, 'Turn toward the target before making contact', 1.4);
+        return;
+      }
+      onContact();
     });
   }
 
@@ -2509,22 +2600,24 @@ export class GameRuntime {
     return true;
   }
 
-  private beginRangedAction(onFire: () => void): boolean {
+  private beginRangedAction(profileKey: EquipmentKey, onFire: () => void): boolean {
     if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
     const admission = this.actionState.request({
       kind: 'ranged',
-      timing: this.equipment.actionTimingFor('ranged') ?? DEFAULT_RANGED_ACTION_TIMING,
+      timing: equipmentTimingFor(profileKey, 'ranged') ?? DEFAULT_RANGED_ACTION_TIMING,
       payload: null,
       bufferable: false,
     });
     if (admission.disposition === 'rejected' || admission.actionId === null) return false;
-    this.pendingPlayerActions.set(admission.actionId, { clip: 'shoot', onFire });
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onFire,
+    });
     this.flushActionEvents();
     return true;
   }
 
   private beginInteractAction(
-    clip: PlayerClip,
     onContact: () => void,
     profileKey: EquipmentKey = 'build_preview',
   ): boolean {
@@ -2536,7 +2629,10 @@ export class GameRuntime {
       bufferable: false,
     });
     if (admission.disposition === 'rejected' || admission.actionId === null) return false;
-    this.pendingPlayerActions.set(admission.actionId, { clip, onContact });
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onContact,
+    });
     this.flushActionEvents();
     return true;
   }
@@ -2673,7 +2769,7 @@ export class GameRuntime {
       setToast(this.gs, 'Place the bear trap on clear ground nearby', 1.5);
       return false;
     }
-    return this.beginInteractAction('pickUp', () => {
+    return this.beginInteractAction(() => {
       if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
         setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
         return;

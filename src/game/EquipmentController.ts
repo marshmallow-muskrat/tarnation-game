@@ -13,7 +13,7 @@ import type {
 } from './PlayerActionController';
 import { SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from './InteractionSystem';
 
-export type EquippedToolKey = Extract<EquipmentKey, 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel'>;
+export type EquippedToolKey = Extract<EquipmentKey, 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | 'bucket'>;
 
 export type EquipmentSelection = {
   toolbarSlot: number;
@@ -27,7 +27,7 @@ export function equipmentProfileKeyFor(selection: EquipmentSelection): Equipment
 }
 
 export function equippedToolKeyFor(selection: EquipmentSelection): EquippedToolKey | null {
-  if (selection.toolSlotActive) return null;
+  if (selection.toolSlotActive) return 'bucket';
   if (selection.toolbarSlot === SLOT_AXE) return 'axe';
   if (selection.toolbarSlot === SLOT_SHOVEL) return 'shovel';
   if (selection.toolbarSlot === SLOT_SHOTGUN && selection.weapon === 'bow') return 'bow_wooden';
@@ -106,8 +106,9 @@ export class EquipmentController {
     if (!desired || !this.handBone) return;
 
     const profile = EQUIPMENT_PROFILES[desired];
-    if (!profile.modelKey) return;
-    const { root } = cloneModel(profile.modelKey);
+    const { root } = profile.modelKey
+      ? cloneModel(profile.modelKey)
+      : { root: createStylizedBucket() };
     root.name = `equipped_${desired}`;
     const sourceScale = root.scale.x;
     // Held props pivot around a measured model-space grip. Keeping the
@@ -310,4 +311,37 @@ export class EquipmentController {
     joint.quaternion.copy(this.supportLocalQuaternion);
     joint.updateMatrixWorld(true);
   }
+}
+
+/** The accepted packs have no bucket mesh, so the bucket is intentionally a small authored prop. */
+function createStylizedBucket(): THREE.Group {
+  const root = new THREE.Group();
+  root.name = 'bucket_stylized_prop';
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.2, 0.24, 8, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x57717a, roughness: 0.72, metalness: 0.12 }),
+  );
+  body.position.y = -0.12;
+  body.castShadow = true;
+  root.add(body);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.18, 0.018, 6, 16),
+    new THREE.MeshStandardMaterial({ color: 0xb9c8c0, roughness: 0.42, metalness: 0.3 }),
+  );
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.01;
+  rim.castShadow = true;
+  root.add(rim);
+
+  const handle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.17, 0.014, 5, 14, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0xc4a36a, roughness: 0.6, metalness: 0.05 }),
+  );
+  handle.rotation.x = Math.PI / 2;
+  handle.rotation.z = Math.PI;
+  handle.position.y = 0.04;
+  handle.castShadow = true;
+  root.add(handle);
+  return root;
 }

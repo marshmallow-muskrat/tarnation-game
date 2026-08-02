@@ -244,3 +244,20 @@ so cadence is normalized with measured gait ratios rather than invented root mot
 authored start/stop clips. Reduced motion freezes nonessential renderer bob, motes, and shake while
 leaving fixed-step timing and gameplay outcomes unchanged. No save, simulation, input binding, or
 economy rule changes in ACT-03.
+
+## 2026-08-01 — Give each tool a typed contact contract
+
+ACT-04 adds an interaction record to every held or placement profile: action kind, authored player
+clip, target class, range, and facing arc. Fixed-step callbacks remain the only place that changes
+the world. The shovel now faces a valid farm tile and applies soil/plant/harvest/breeding contact
+effects only at its contact event. The selected axe path accepts trees, stumps, and boulders only;
+tree work uses a bounded facing arc, while a boulder produces a distinct clang response instead of
+falling through to generic radial damage. The bucket uses a small authored low-poly prop because the
+accepted packs contain no bucket mesh; its action socket tilts for fill/use, and fill/water feedback
+still occurs at the fixed contact event. Shotgun and bow readiness still aim before the action, while
+projectiles, release bursts, audio, and recoil occur at the fixed fire event. Trap and building
+placement keep their valid preview/confirmation path and use the existing non-melee `PickUp` clip
+because the player asset has no authored placement clip. Invalid shovel/bucket targets now explain
+range or target requirements without playing a false action, and the selected shovel no longer calls
+bucket watering on a thirsty crop despite the HUD saying to equip the bucket. No save, simulation,
+economy, timestep, or seeded-RNG rule changes in ACT-04.
