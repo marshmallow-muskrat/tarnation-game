@@ -126,6 +126,7 @@ import {
   type OutcomeKind,
   type OutcomeStatus,
 } from '../sim/outcomes';
+import type { FeedbackKind } from '../sim/feedback';
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
@@ -192,6 +193,7 @@ import {
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
+import { FeedbackEffectPool } from './FeedbackEffects';
 import { HudPresenter, TOOLBAR, type HudContextMenu, type HudPopup, type HudSnapshot } from './HudPresenter';
 import {
   InteractionSystem,
@@ -331,22 +333,6 @@ type LootMarker = {
   z: number;
 };
 
-type FeedbackParticle = {
-  mesh: THREE.Mesh;
-  velocity: THREE.Vector3;
-  spin: THREE.Vector3;
-  size: number;
-};
-
-type FeedbackBurst = {
-  root: THREE.Group;
-  age: number;
-  lifetime: number;
-  geometry: THREE.BufferGeometry;
-  material: THREE.MeshBasicMaterial;
-  particles: FeedbackParticle[];
-};
-
 type DirtyTile = { tx: number; ty: number };
 
 type ToolMode = 'farm' | 'trench' | 'breed';
@@ -468,7 +454,7 @@ export class GameRuntime {
   private raidRepelUses = 0;
   private deathMarkers: DeathMarker[] = [];
   private lootMarkers: LootMarker[] = [];
-  private feedbackBursts: FeedbackBurst[] = [];
+  private feedbackEffects: FeedbackEffectPool | null = null;
   private shots: Shot[] = [];
   private boulders: Boulder[] = [];
   private shotCd = 0;
@@ -559,6 +545,7 @@ export class GameRuntime {
 
     // Renderer must exist before preloading: KTX2Loader.detectSupport() needs it.
     this.world = new WorldRenderer(canvas);
+    this.feedbackEffects = new FeedbackEffectPool();
     this.reducedMotion = localStorage.getItem('tarnation.reducedMotion') === '1';
     this.world.setReducedMotion(this.reducedMotion);
     initAssetLoaders(this.world.renderer);
@@ -677,6 +664,8 @@ export class GameRuntime {
     this.clearDeathMarkers();
     this.clearLootMarkers();
     this.clearFeedbackBursts();
+    this.feedbackEffects?.dispose();
+    this.feedbackEffects = null;
 
     this.equipment?.dispose();
     this.playerActions?.dispose();
@@ -1320,7 +1309,7 @@ export class GameRuntime {
             : `Homestead tier ${this.gs.homesteadTier}`,
           2.4,
         );
-        this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
+        this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 'reward');
         this.audio.play('build');
       }
       this.persist();
@@ -2082,7 +2071,7 @@ export class GameRuntime {
     this.settlementCelebrated = true;
     this.winShownLocal = false;
     setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
-    this.spawnFeedbackBurst(this.playerX, this.playerZ, 0xf2c266, 14, 0.34);
+    this.spawnFeedbackBurst(this.playerX, this.playerZ, 'reward');
     this.audio.play('reward');
     this.persist();
   }
@@ -2427,6 +2416,7 @@ export class GameRuntime {
     const selected = placement.asset;
     if (!selected || !placement.valid || !placement.tile) {
       this.recordOutcome('building', 'rejected');
+      this.spawnFeedbackBurst(placement.x, placement.z, 'placement-invalid');
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
@@ -2459,7 +2449,7 @@ export class GameRuntime {
       this.syncWorldTiles();
       this.recalculateEnclosure();
       this.persist();
-      this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
+      this.spawnFeedbackBurst(placement.x, placement.z, 'placement-valid');
       this.audio.play('build');
       const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
       const functionNote = selected.id === 'silo'
@@ -2479,7 +2469,7 @@ export class GameRuntime {
       this.beginProfiledToolAction('bucket', () => {
         fillBucket(this.gs);
         this.recordAction('fill_bucket');
-        this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
+        this.spawnFeedbackBurst(this.playerX, this.playerZ, 'water');
         this.audio.play('water');
         setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
         this.persist();
@@ -2539,8 +2529,7 @@ export class GameRuntime {
     }
     this.beginFacingToolAction('axe', wc.x, wc.z, () => {
       if (target === 'boulder') {
-        this.world.shake(0.03, 0.03);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0x77736b, 4, 0.16);
+        this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
         this.audio.play('hit');
         setToast(this.gs, 'The axe clangs off the boulder', 1.4);
         return;
@@ -2590,7 +2579,7 @@ export class GameRuntime {
         if (!digTrench(this.gs.tiles, tx, ty)) return;
         const watered = this.refreshTrenchWater();
         this.syncWorldTiles();
-        this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
+        this.spawnFeedbackBurst(wc.x, wc.z, 'water');
         this.audio.play('tool');
         setToast(
           this.gs,
@@ -2609,7 +2598,7 @@ export class GameRuntime {
         this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
           if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
           this.syncWorldTiles([{ tx, ty }]);
-          this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
+          this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
           this.audio.play('build');
           setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
           this.persist();
@@ -2641,7 +2630,7 @@ export class GameRuntime {
           }
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.syncWorldTiles([{ tx, ty }]);
-          this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
+          this.spawnFeedbackBurst(wc.x, wc.z, wasKnown ? 'reward' : 'discovery');
           this.audio.play('reward');
           setToast(
             this.gs,
@@ -2663,7 +2652,7 @@ export class GameRuntime {
         if (!tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) return;
         this.recordAction('till');
         this.syncWorldTiles([{ tx, ty }]);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
+        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
         this.audio.play('tool');
         this.persist();
       });
@@ -2686,7 +2675,7 @@ export class GameRuntime {
         this.refreshTrenchWater();
         this.syncCropTile(tx, ty);
         this.syncWorldTiles();
-        this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
+        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
         this.audio.play('tool');
         this.persist();
       })) this.recordOutcome('plant', 'rejected');
@@ -2738,7 +2727,7 @@ export class GameRuntime {
           this.syncCropTile(tx, ty);
           this.syncWorldTiles([{ tx, ty }]);
           this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
-          this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+          this.spawnFeedbackBurst(wc.x, wc.z, wasKnown ? 'reward' : 'discovery');
           this.audio.play('reward');
           if (!wasKnown) setToast(this.gs, `New Codex entry: ${res.seed.displayName}!`, 3.5);
           this.persist();
@@ -2764,7 +2753,7 @@ export class GameRuntime {
       this.recordAction('water');
       this.syncWorldTiles([{ tx, ty }]);
       const wc = this.farmTileWorld(tx, ty);
-      this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 4, 0.2);
+      this.spawnFeedbackBurst(wc.x, wc.z, 'water');
       this.audio.play('water');
       this.persist();
     }
@@ -2787,7 +2776,7 @@ export class GameRuntime {
       if (swings < STUMP_CHOPS) {
         this.treeChops.set(key, swings);
         this.recordAction('chop');
-        this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
+        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
         this.audio.play('tool');
         return true;
       }
@@ -2801,7 +2790,7 @@ export class GameRuntime {
       trees.invalidateTile(tx, ty);
       this.refreshInteractionOnlyTile(tx, ty);
       this.world.markShadowsDirty();
-      this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+      this.spawnFeedbackBurst(wc.x, wc.z, 'reward');
       this.audio.play('tool');
       this.popup('+1 Wood', wc.x, wc.z);
       setToast(this.gs, 'Stump cleared · +1 Wood', 1.2);
@@ -2814,8 +2803,7 @@ export class GameRuntime {
     const chops = (this.treeChops.get(key) ?? 0) + 1;
     this.recordAction('chop');
     this.treeChops.set(key, chops);
-    this.world.shake(0.05, 0.04);
-    this.spawnFeedbackBurst(wc.x, wc.z, 0xc9854a, 4, 0.2);
+    this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
     this.audio.play('tool');
 
     if (chops < FARM_TREE_CHOPS) {
@@ -2832,7 +2820,7 @@ export class GameRuntime {
     this.gs.stats.woodGathered += FARM_TREE_WOOD;
     this.runtimeMetrics.recordTreeFelled();
     this.world.shake(0.14, 0.12);
-    this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 8, 0.32);
+    this.spawnFeedbackBurst(wc.x, wc.z, 'reward');
     this.audio.play('reward');
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
     this.persist();
@@ -2921,7 +2909,7 @@ export class GameRuntime {
         setToast(this.gs, 'Ricochet crop armed · each projectile bounces once', 1.5);
       }
       this.shotCd = SHOTGUN_COOLDOWN;
-      this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 0xffd07a, 5, 0.12);
+      this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 'damage');
       this.audio.play('shot');
       this.world.shake(0.06, 0.05);
     });
@@ -2976,7 +2964,7 @@ export class GameRuntime {
         setToast(this.gs, 'Ricochet crop armed · the arrow bounces once', 1.5);
       }
       this.shotCd = BOW_COOLDOWN;
-      this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 0xd79358, 4, 0.1);
+      this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 'damage');
       this.audio.play('shot');
       this.world.shake(0.025, 0.02);
     });
@@ -3276,7 +3264,7 @@ export class GameRuntime {
       onPlaced?.();
       this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
       this.syncBearTrapModels();
-      this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
+      this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
       this.audio.play('trap');
       setToast(this.gs, 'Bear trap set', 1.4);
       this.persist();
@@ -3343,7 +3331,7 @@ export class GameRuntime {
       this.setFoxScale(w, 1.25, 0.64);
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
-      this.spawnFeedbackBurst(w.x, w.z, 0xffb45c, 4, 0.2);
+      this.spawnFeedbackBurst(w.x, w.z, 'damage');
       this.audio.play('hit');
       return;
     }
@@ -3355,7 +3343,7 @@ export class GameRuntime {
     this.runtimeMetrics.recordFoxFelled();
     this.world.shake(0.09, 0.08);
     this.hitPause = 0.05;
-    this.spawnFeedbackBurst(w.x, w.z, 0xef7561, 8, 0.32);
+    this.spawnFeedbackBurst(w.x, w.z, 'threat');
     this.audio.play('defeat');
     this.stopMixer(w.actions.mixer, w.root);
     this.spawnDeathMarker(
@@ -3380,7 +3368,7 @@ export class GameRuntime {
     a.state = 'hurt';
     a.timer = 1.2;
     a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
-    this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
+    this.spawnFeedbackBurst(a.x, a.z, 'damage');
     this.audio.play('hit');
     setToast(this.gs, `${a.name} is dazed — wildlife is unharmed`, 1.8);
   }
@@ -3545,90 +3533,29 @@ export class GameRuntime {
     return this.feedbackSeed / 0x1_0000_0000;
   }
 
-  /** Small, shared low-poly contact feedback for actions that changed the world. */
+  /** Small, shared semantic feedback for actions that changed the world. */
   private spawnFeedbackBurst(
     x: number,
     z: number,
-    color: number,
-    count = 5,
-    spread = 0.16,
+    kind: FeedbackKind,
   ): void {
-    const root = new THREE.Group();
-    root.name = 'action_feedback_burst';
-    root.position.set(x, this.world.heightAt(x, z) + 0.22, z);
-    const geometry = new THREE.OctahedronGeometry(0.07, 0);
-    const material = new THREE.MeshBasicMaterial({
-      color,
-      transparent: true,
-      opacity: 0.95,
-      depthWrite: false,
-    });
-    const particles: FeedbackParticle[] = [];
-    for (let i = 0; i < count; i++) {
-      const mesh = new THREE.Mesh(geometry, material);
-      const size = 0.65 + this.nextFeedbackRandom() * 0.65;
-      mesh.position.set(
-        (this.nextFeedbackRandom() - 0.5) * spread,
-        this.nextFeedbackRandom() * 0.12,
-        (this.nextFeedbackRandom() - 0.5) * spread,
-      );
-      mesh.scale.setScalar(size);
-      mesh.renderOrder = 6;
-      root.add(mesh);
-      particles.push({
-        mesh,
-        size,
-        velocity: new THREE.Vector3(
-          (this.nextFeedbackRandom() - 0.5) * 1.45,
-          0.72 + this.nextFeedbackRandom() * 1.15,
-          (this.nextFeedbackRandom() - 0.5) * 1.45,
-        ),
-        spin: new THREE.Vector3(
-          (this.nextFeedbackRandom() - 0.5) * 8,
-          (this.nextFeedbackRandom() - 0.5) * 8,
-          (this.nextFeedbackRandom() - 0.5) * 8,
-        ),
-      });
-    }
-    this.world.getFarmActors().add(root);
-    this.feedbackBursts.push({ root, age: 0, lifetime: 0.46, geometry, material, particles });
-    while (this.feedbackBursts.length > 24) {
-      this.removeFeedbackBurst(this.feedbackBursts[0]!);
-      this.feedbackBursts.shift();
-    }
-  }
-
-  private removeFeedbackBurst(burst: FeedbackBurst): void {
-    burst.root.removeFromParent();
-    burst.geometry.dispose();
-    burst.material.dispose();
+    this.feedbackEffects?.spawn(
+      this.world.getFarmActors(),
+      (worldX, worldZ) => this.world.heightAt(worldX, worldZ),
+      x,
+      z,
+      kind,
+      () => this.nextFeedbackRandom(),
+      this.reducedMotion,
+    );
   }
 
   private clearFeedbackBursts(): void {
-    for (const burst of this.feedbackBursts) this.removeFeedbackBurst(burst);
-    this.feedbackBursts = [];
+    this.feedbackEffects?.clear();
   }
 
   private stepFeedbackBursts(dt: number): void {
-    for (let i = this.feedbackBursts.length - 1; i >= 0; i--) {
-      const burst = this.feedbackBursts[i]!;
-      burst.age += dt;
-      if (burst.age >= burst.lifetime) {
-        this.removeFeedbackBurst(burst);
-        this.feedbackBursts.splice(i, 1);
-        continue;
-      }
-      const progress = burst.age / burst.lifetime;
-      burst.material.opacity = 0.95 * (1 - progress);
-      for (const particle of burst.particles) {
-        particle.velocity.y -= 4.1 * dt;
-        particle.mesh.position.addScaledVector(particle.velocity, dt);
-        particle.mesh.rotation.x += particle.spin.x * dt;
-        particle.mesh.rotation.y += particle.spin.y * dt;
-        particle.mesh.rotation.z += particle.spin.z * dt;
-        particle.mesh.scale.setScalar(particle.size * (1 - progress * 0.55));
-      }
-    }
+    this.feedbackEffects?.update(dt);
   }
 
   /**
@@ -3903,7 +3830,7 @@ export class GameRuntime {
     const profile = foxRoleProfile(w.kind);
     this.raidTelegraphedRoles.add(w.kind);
     setToast(this.gs, `${profile.label}: ${profile.telegraph} · Counter: ${profile.counter}`, 3);
-    this.spawnFeedbackBurst(w.x, w.z, profile.tint, 5, 0.24);
+    this.spawnFeedbackBurst(w.x, w.z, 'threat');
     this.audio.play(profile.audioCue);
   }
 
@@ -4013,7 +3940,7 @@ export class GameRuntime {
           this.playFoxAction(w, 'idle');
           this.syncWorldTiles([{ tx: bearTrap.tx, ty: bearTrap.ty }]);
           this.syncBearTrapModels();
-          this.spawnFeedbackBurst(w.x, w.z, 0xd2a86a, 8, 0.3);
+          this.spawnFeedbackBurst(w.x, w.z, 'damage');
           this.audio.play('trap');
           setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
           continue;
@@ -4032,7 +3959,7 @@ export class GameRuntime {
         this.clearFoxTarget(w);
         w.state = 'flee';
         this.playFoxAction(w, 'walk');
-        this.spawnFeedbackBurst(w.x, w.z, 0xb9e06b, 6, 0.22);
+        this.spawnFeedbackBurst(w.x, w.z, 'threat');
         const remaining = repellerUsesRemaining(this.raidRepelUses);
         setToast(
           this.gs,
@@ -4116,7 +4043,7 @@ export class GameRuntime {
                 this.refreshObstacleTopology();
                 this.syncBuildings();
                 this.recalculateEnclosure();
-                this.spawnFeedbackBurst(w.x, w.z, 0xe8b15c, 8, 0.3);
+                this.spawnFeedbackBurst(w.x, w.z, 'threat');
                 this.audio.play('build');
                 setToast(this.gs, 'A sapper forced the gate open', 2.2);
                 this.persist();
@@ -4164,7 +4091,7 @@ export class GameRuntime {
               );
             } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
               const wc = this.farmTileWorld(w.targetTx, w.targetTy);
-              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
               setToast(this.gs, 'Ironroot resisted the fox bite', 1.5);
             }
             this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
@@ -4181,7 +4108,7 @@ export class GameRuntime {
               this.persist();
             } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
               const wc = this.farmTileWorld(w.targetTx, w.targetTy);
-              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
               setToast(this.gs, 'Ironroot held against the fox', 1.5);
             }
             this.clearFoxTarget(w);
@@ -4209,7 +4136,7 @@ export class GameRuntime {
             this.persist();
           } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
             const wc = this.farmTileWorld(w.targetTx, w.targetTy);
-            this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+            this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
             setToast(this.gs, 'Ironroot held against the fox', 1.5);
           }
           this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);

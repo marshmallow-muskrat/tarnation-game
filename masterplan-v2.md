@@ -635,6 +635,13 @@ approach. The visual capture record intentionally avoids committing generated bi
   up deterministically.
 - Avoid stacking shake, flash, particles, scale pulse, and floating text for the same small event.
 
+Status: Complete on the ART-05 task branch. The typed eight-state palette is shared by placement,
+work, water, reward, damage, threat, and discovery feedback. Renderer-only bursts use a fixed pool of
+24 slots with shared geometry, deterministic renderer RNG, reduced-motion suppression, and explicit
+resource disposal. Minor boulder and tree-contact camera shake was removed where it duplicated the
+contact cue; major combat and harvest outcomes retain their existing feedback, audio, toast, popup,
+and hit-pause contracts. No simulation, save, economy, asset, or workflow rules changed.
+
 ## 13. Phase 8 — UI, onboarding, accessibility, and settings
 
 ### UX-01 — Declare and test the input contract
@@ -934,7 +941,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
-| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–04 complete; ART-05 pending |
+| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–05 complete on the task branch; milestone release pending |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
