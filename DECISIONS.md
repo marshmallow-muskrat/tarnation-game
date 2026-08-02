@@ -145,3 +145,13 @@ rebuilds only affected live chunks. Renderer scratch objects are reused, shadow 
 player/light anchors, and asset cloning selects native `Object3D.clone()` for static scenes while
 reserving `SkeletonUtils.clone()` for rigged scenes. No `src/sim` behavior, save format, timestep, or
 seeded RNG behavior changes in this task.
+
+## 2026-08-01 — Keep player animation and equipment ownership out of the composition root
+
+The first PERF-05 extraction slice gives player animation transitions and held-tool scene ownership
+to separate renderer-facing controllers. `PlayerActionController` owns the player mixer, one-shot
+actions, locomotion crossfades, and the existing stationary carry pose. `EquipmentController` owns
+slot-to-model selection, measured grip profiles, the hand socket, support-hand solve, and clone
+disposal. `GameRuntime` remains the composition root and still owns fixed-step movement and gameplay
+effects. No simulation rule, save field, input binding, clip name, asset fallback, or timing contract
+changes; remaining PERF-05 responsibility extractions stay separate.
