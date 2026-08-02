@@ -676,7 +676,8 @@ focused-panel priority prevents simultaneous inventory, merchant, build, Help, C
 market overlays. Build and merchant detail shows authored result/benefit, cost, footprint,
 capacity/ownership, and lock reason. Visible debug/scaffolding paths and implementation terms were
 removed. The deterministic baseline is 294 tests across 42 files; required checks and
-production-preview smoke pass. UX-03 and UX-04 are complete; UX-05 implementation is present and its external study is pending.
+production-preview smoke pass. UX-03 and UX-04 are complete; UX-05 implementation is complete by
+explicit product-owner waiver of the five-person study, with M8 release verification pending.
 
 ### UX-03 — Make overlays real modals
 
@@ -694,7 +695,8 @@ placement commit boundary. Toasts and vendor messages expose nonvisual status te
 overlay pauses simulation until dismissed. The deterministic baseline is 299 tests across 43 files;
 the required test, simulation, asset, build, strict TypeScript, diff, and production audit checks
 pass. Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics,
-and no browser warnings or errors. UX-04 is complete; UX-05 implementation is present and its external study is pending.
+and no browser warnings or errors. UX-04 is complete; UX-05 implementation is complete by explicit
+product-owner waiver of the five-person study, with M8 release verification pending.
 
 ### UX-04 — Settings and accessibility baseline
 
@@ -718,7 +720,8 @@ The current fallback has no authored music or ambience sources, so synthesized c
 effects bus until AUD-01. The deterministic baseline is 303 tests across 44 files. Full test,
 simulation, asset, build, strict TypeScript, diff, and production-audit checks pass. Production
 preview smoke verified the pausing Settings dialog, accessible labels, focus trap/restoration,
-contrast toggle, and no browser warnings/errors. UX-05 implementation is present and its external study is pending.
+contrast toggle, and no browser warnings/errors. UX-05 implementation is complete by explicit
+product-owner waiver of the five-person study, with M8 release verification pending.
 
 ### UX-05 — Author the first ten minutes
 
@@ -737,12 +740,13 @@ Storyboard and test:
 Measure completion, confusion, rejected actions, and time per beat with at least five people who did
 not build the game. Revise before adding later content.
 
-Status: The authored first-session implementation is present in `src/sim/onboarding.ts` as a
+Status: Complete by explicit product-owner waiver of the five-person external study for this
+release. The authored first-session implementation is present in `src/sim/onboarding.ts` as a
 derived, non-saved eight-beat guide from movement through the first merchant visit. Launch copy,
 starter-plot transitions, active-binding prompt copy, fox-risk guidance, market/merchant next goals,
-Save status, and concise Help/Settings discovery are covered by 315 deterministic tests across 45 files and a production-
-preview smoke. The five-person external study and any resulting revision are still required before
-UX-05 or M8 can be declared release-complete.
+Save status, and concise Help/Settings discovery are covered by 315 deterministic tests across 45
+files and a production-preview smoke. The study protocol remains documented for future validation;
+no participant findings are claimed. M8 remains pending its integrated release verification.
 
 ## 14. Animation and asset QA matrix
 

@@ -36,5 +36,6 @@ reinterpret either as success.
 | P5 | — | — | — | — | — | — |
 
 This repository contains deterministic transition coverage and a browser smoke procedure, but no
-fabricated participant findings. The five-person external study remains required evidence before
-the UX-05 acceptance criterion and the Core Release Gate can be declared complete.
+fabricated participant findings. The product owner explicitly waived the five-person external study
+for this release. The protocol and blank participant table remain for future validation; no
+participant findings are claimed.

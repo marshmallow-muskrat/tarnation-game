@@ -614,6 +614,8 @@ while launch copy names only the immediate movement control and starter-plot des
 beat explicitly explains that foxes raid after dusk and names harvesting or a bear trap as the next
 counter. Existing first-plot prompt copy now receives the active remappable binding labels, keeping
 the lower contextual prompt consistent with the onboarding card without changing any input route.
-The implementation is covered by deterministic transition tests and a documented five-
-participant study protocol; no participant findings are fabricated, so the external study and any
-resulting revision remain required before UX-05/M8 release completion.
+The implementation is covered by deterministic transition tests and a documented five-participant
+study protocol. The product owner explicitly waived the study for this release; the protocol remains
+available for future validation and no participant findings are fabricated. UX-05 can therefore
+close on implementation and deterministic/browser evidence, with M8 release verification still
+pending.
