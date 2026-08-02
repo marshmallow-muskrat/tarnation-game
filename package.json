@@ -7,14 +7,18 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "preview:qa": "npm run build && vite preview --host 127.0.0.1 --port 4173",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=dot",
     "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:ci": "playwright test --reporter=line",
     "check": "tsx scripts/simcheck.ts",
     "assetcheck": "tsx scripts/assetcheck.ts",
     "audiocheck": "tsx scripts/audiocheck.ts",
     "feelcheck": "tsx scripts/feelcheck.ts",
+    "perfcheck": "tsx scripts/perfcheck.ts",
     "economyreport": "tsx scripts/economyreport.ts"
   },
   "dependencies": {
@@ -23,6 +27,8 @@
     "three": "^0.185.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.185.0",

@@ -651,3 +651,17 @@ study protocol. The product owner explicitly waived the study for this release; 
 available for future validation and no participant findings are fabricated. UX-05 can therefore
 close on implementation and deterministic/browser evidence, with M8 release verification still
 pending.
+
+## 2026-08-02 — Make the production build the QA-01 browser contract
+
+QA-01 uses Vitest for deterministic simulation/codecs and small runtime-controller seams, and Playwright
+against `vite preview` for the player-visible journeys that depend on React, canvas input, assets, and
+modal semantics. The browser suite uses compact typed save builders, a reviewed platform-neutral launch
+baseline, one worker, and fixed viewport/timeout settings; it does not inspect browser storage or depend
+on network state. Three scripted performance scenarios enforce named budgets for dense farming, raid route
+fields, and a seeded economy cohort while writing only ignored QA artifacts. The deployment workflow runs
+the performance and production-build browser gates before the final build and deployment. Chromium's
+headless SwiftShader `GL_CLOSE_PATH_NV` thumbnail-readback message is a browser-driver warning rather
+than an application warning, so the harness filters only that exact message and continues to fail on all
+other console warnings/errors and page errors. No production code, save schema, fixed timestep, seeded
+simulation behavior, or bundle asset changed.
