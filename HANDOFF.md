@@ -190,8 +190,15 @@ The characterization baseline intentionally preserves current behavior for later
   coordinator has no DOM, Three.js, or simulation mutation dependency. Five focused tests cover
   heading/deed orientation, cancellation state, distance/reservation/terrain/player-footprint
   rejection, occupied assets, and the legacy wood-versus-deed payment boundary. The deterministic
-  baseline is now 130 tests across 20 files. Remaining PERF-05 slices are metrics and HUD
+  baseline is now 130 tests across 20 files. The remaining PERF-05 slices are metrics and HUD
   responsibility extraction.
+
+- PERF-05's fifth extraction slice moves local economy/action counters and debug snapshot copying into
+  `RuntimeMetrics`. `GameRuntime` remains the owner of when gameplay events occur, while the metrics
+  object owns aggregation, first-completion timing, progression totals, and isolated snapshots. Four
+  focused tests cover outcome/action separation, progression aggregation, deterministic session-time
+  snapshots, and settlement completion. The deterministic baseline is now 134 tests across 21 files;
+  the remaining PERF-05 slice is HUD responsibility extraction.
 
 - Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
   exactly the same position, the existing separation fallback treats them as one unit apart before

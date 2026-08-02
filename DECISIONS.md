@@ -183,3 +183,12 @@ transactions, demolition, gate state, and presentation side effects. The coordin
 read-only reservation and simulation views, so the `src/sim` placement rules remain pure and the
 legacy heading orientation, deed rotation, homestead clearance, and wood-cost behavior are preserved
 without gameplay changes.
+
+## 2026-08-01 — Keep runtime metrics local and outside the game state
+
+The fifth PERF-05 extraction slice gives `RuntimeMetrics` ownership of the existing local economy
+and action counters, first-completion timing, progression totals, and cloned debug snapshots.
+`GameRuntime` remains responsible for recording the event at the existing gameplay boundary and for
+providing current simulation time/day values. Metrics are not serialized, do not consume seeded
+simulation randomness, and accept explicit clock values in tests so characterization remains
+deterministic.
