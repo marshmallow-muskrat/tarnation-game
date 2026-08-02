@@ -25,7 +25,9 @@ export default defineConfig({
   },
   use: {
     baseURL: 'http://127.0.0.1:4173',
-    viewport: { width: 1440, height: 900 },
+    // Keep the desktop-first contract while bounding the software-WebGL workload
+    // on hosted runners; the launch-card baseline is element-scoped.
+    viewport: { width: 1280, height: 720 },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',

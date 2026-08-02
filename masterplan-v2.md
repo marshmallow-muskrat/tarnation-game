@@ -849,13 +849,14 @@ feel, build, strict TypeScript, diff, production-audit, and production-preview s
 
 Status: Complete on `agent/qa-01-automated-test-pyramid`. Vitest now runs 328 deterministic unit and
 controller-integration tests across 48 files, with compact typed fresh, midgame, dense-farm, corrupt-save,
-and prior-version fixtures. Playwright runs four production-build journeys covering fresh movement and
-starter-plot work, mature-crop harvest/Codex discovery, merchant purchase/deed placement, save reload,
-raid, settings, and the authored ending; the launch-card screenshot uses a reviewed platform-neutral
-baseline. `npm run perfcheck` enforces fixed budgets for dense farming, raid route fields, and a seeded
-economy cohort and writes an ignored QA report. The deployment workflow runs the deterministic performance
-and browser gates before the final production build/deployment. No production behavior, save schema,
-fixed-step rule, seeded simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
+and prior-version fixtures. Playwright runs six focused production-build journeys covering fresh movement
+and starter-plot work with settings, mature-crop harvest/Codex discovery, merchant purchase, deed placement
+and save reload, deterministic raid, and the authored ending; the launch-card screenshot uses reviewed
+Darwin and Linux baselines and a bounded desktop viewport for hosted software-WebGL runners. `npm run
+perfcheck` enforces fixed budgets for dense farming, raid route fields, and a seeded economy cohort and
+writes an ignored QA report. The deployment workflow runs the deterministic performance and browser gates
+before the final production build/deployment. No production behavior, save schema, fixed-step rule, seeded
+simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
 `GL_CLOSE_PATH_NV` thumbnail-readback warning is filtered as browser-driver noise; all other browser
 warnings, errors, page errors, and failed assertions remain fatal.
 

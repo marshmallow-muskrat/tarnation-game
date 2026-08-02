@@ -8,6 +8,25 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await expect(page.locator('.launch-card')).toHaveScreenshot('launch-card.png');
 
   await startAdventure(page, 'New Adventure');
+  await page.keyboard.press('Escape');
+  // Pause focus starts on Resume; keyboard navigation opens Settings without
+  // waiting for a pointer actionability pass while the WebGL loop is busy.
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  const settings = page.getByRole('dialog', { name: 'Settings' });
+  await expect(settings).toBeVisible();
+  const reducedMotion = settings.getByLabel('Reduced motion');
+  const highContrast = settings.getByLabel('High-contrast UI');
+  await expect(reducedMotion).toBeVisible();
+  await expect(highContrast).toBeVisible();
+  await reducedMotion.check({ force: true });
+  await expect(reducedMotion).toBeChecked();
+  await highContrast.check({ force: true });
+  await expect(highContrast).toBeChecked();
+  await page.keyboard.press('Escape');
+  await expect(settings).toBeHidden();
+  await page.keyboard.press('Escape');
+
   const canvas = page.getByLabel('Tarnation game canvas');
   await canvas.focus();
   await page.keyboard.press('Digit2');
@@ -33,23 +52,6 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await page.waitForTimeout(350);
   await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
 
-  await page.keyboard.press('Escape');
-  // Pause focus starts on Resume; keyboard navigation opens Settings without
-  // waiting for a pointer actionability pass while the WebGL loop is busy.
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Enter');
-  const settings = page.getByRole('dialog', { name: 'Settings' });
-  await expect(settings).toBeVisible();
-  const reducedMotion = settings.getByLabel('Reduced motion');
-  const highContrast = settings.getByLabel('High-contrast UI');
-  await expect(reducedMotion).toBeVisible();
-  await expect(highContrast).toBeVisible();
-  await reducedMotion.check({ force: true });
-  await expect(reducedMotion).toBeChecked();
-  await highContrast.check({ force: true });
-  await expect(highContrast).toBeChecked();
-  await page.keyboard.press('Escape');
-  await expect(settings).toBeHidden();
   await expectNoBrowserErrors(page, errors);
 });
 
@@ -79,7 +81,7 @@ test('farm fixture harvests a mature crop and records its Codex discovery in the
   await expectNoBrowserErrors(page, errors);
 });
 
-test('midgame fixture covers merchant purchase, building preview, and save reload', async ({ page }) => {
+test('midgame fixture lets the merchant sell a fence deed with its production cost shown', async ({ page }) => {
   const errors = captureBrowserErrors(page);
   await page.goto('/');
   await importSave(page, e2eSave((save) => {
@@ -106,10 +108,24 @@ test('midgame fixture covers merchant purchase, building preview, and save reloa
   await buyButtons.first().click();
   await expect(merchant.getByRole('status')).toContainText(/added to inventory|Purchased|Bought|owned/i);
   await expect(merchant.getByRole('button', { name: 'Close' })).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(merchant).toBeHidden();
+  await expectNoBrowserErrors(page, errors);
+});
 
-  // Escape restores focus to the canvas that opened the merchant.
+test('midgame fixture opens a purchased deed, previews a building, and survives reload', async ({ page }) => {
+  const errors = captureBrowserErrors(page);
+  await page.goto('/');
+  await importSave(page, e2eSave((save) => {
+    save.playerX = 121.5;
+    save.playerZ = 113.5;
+    save.day = 1;
+    save.phase = 'day';
+    save.elapsed = 0;
+    save.inventoryOpen = false;
+  }));
+  await startAdventure(page, 'Continue');
+
+  const canvas = page.getByLabel('Tarnation game canvas');
+  await canvas.focus();
   await page.keyboard.press('KeyI');
   const inventory = page.getByRole('dialog', { name: /Inventory/ });
   await expect(inventory).toBeVisible();
@@ -127,7 +143,7 @@ test('midgame fixture covers merchant purchase, building preview, and save reloa
   await expectNoBrowserErrors(page, errors);
 });
 
-test('night raid and completed objective remain visible through import and dismissal', async ({ page }) => {
+test('night fixture shows a deterministic fox raid in the production build', async ({ page }) => {
   const errors = captureBrowserErrors(page);
   await page.goto('/');
   await importSave(page, e2eSave((save) => {
@@ -140,7 +156,11 @@ test('night raid and completed objective remain visible through import and dismi
   await startAdventure(page, 'Continue');
   await page.waitForTimeout(4_000);
   await expect(page.locator('.toast')).toContainText(/Diggler|Nibbler|Sapper|Hauler|fox/i, { timeout: 15_000 });
+  await expectNoBrowserErrors(page, errors);
+});
 
+test('completed fixture shows and dismisses the authored settlement objective', async ({ page }) => {
+  const errors = captureBrowserErrors(page);
   await page.goto('/');
   const endingSave = completedE2eSave((save) => {
     save.day = 5;
