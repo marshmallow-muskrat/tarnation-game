@@ -112,7 +112,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
-  ART-05 is complete on its task branch; M7 integration and release evidence remain pending.
+  ART-05 is integrated; the M7 production release and live evidence remain pending.
 
 - ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
   obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
