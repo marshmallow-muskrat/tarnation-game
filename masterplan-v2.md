@@ -1021,7 +1021,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01–02 and FEEL-01 implementation complete; M9 release pending |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Release candidate: AUD-01–02 and FEEL-01 complete on `agent/m9-release`; integrated verification and live smoke pending |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 

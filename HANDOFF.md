@@ -96,8 +96,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
   product owner explicitly waived UX-05's five-person external study for this release; its protocol
   remains documented for future validation without fabricated participant findings.
-  M9 Audio/feel implementation is now complete in the task sequence: AUD-01, AUD-02, and FEEL-01
-  pass their task gates; the M9 milestone release remains pending.
+  M9 Audio/feel is now a release candidate on `agent/m9-release`: AUD-01, AUD-02, and FEEL-01 pass
+  their task gates; the `main` workflow and live smoke verification remain pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -252,7 +252,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   uses a fixed renderer-only jitter stream, while reduced motion and camera-shake settings remain
   respected. `npm run feelcheck` runs 216,000 fixed steps (one simulated hour) twice and compares the
   bounded result. The deterministic baseline is 326 tests across 47 files; all required checks and
-  production-preview fresh-run/audio-bootstrap smoke pass. M9 release verification remains.
+  production-preview fresh-run/audio-bootstrap smoke pass. The M9 release candidate is awaiting the
+  normal `main` workflow and live smoke verification.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
