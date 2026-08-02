@@ -341,3 +341,20 @@ for screen readers. Discovery feedback is brief: a first-time recovered or bred 
 comparison state is transient UI state and is not persisted. The catalog defensively deduplicates
 duplicate IDs without mutating the save; all discovery, duplicate, migration, round-trip, and HUD
 status contracts are covered by deterministic tests.
+
+## 2026-08-02 — Make irrigation and homestead progression authored merchant paths
+
+CORE-05 keeps the existing tile and save fields but gives them one player-facing authority. A trench
+touching authored open water is a deterministic source; water traverses connected trenches only
+downhill or across flat tiles, marks the connected trench visibly wet, and waters adjacent planted
+crops. Flow is recomputed after trench, planting, load, and trench destruction so stale wet trench
+states cannot survive a topology change. Bucket watering remains available everywhere in the bounded
+homestead, and irrigation tier 3 removes bucket consumption; the upgrade does not claim to replace
+the visible trench rule with automatic watering.
+
+The Traveling Merchant sells one-time apply permits for homestead tiers 2–5 and irrigation tier 3.
+Homestead permits are sequentially locked, consume on application, preserve the existing tier field,
+show the existing tier models, and retain the current bow/axe unlock thresholds. The direct `U`
+shortcut is removed from production. Legacy placeable homestead deed IDs stay in the catalog for old
+save rendering and use, but remain unreleased so old inventory cannot be silently discarded and new
+players do not see a second progression path. No save schema or migration rule changes in CORE-05.

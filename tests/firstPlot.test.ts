@@ -42,6 +42,7 @@ describe('first plot guide', () => {
     expect(firstPlotStage(createEmptyGrid(), 1, 0)).toBe('sell');
     expect(firstPlotHint('sell')).toContain('Market stall');
     expect(firstPlotStage(createEmptyGrid(), 1, 7)).toBe('complete');
+    expect(firstPlotHint('complete')).toContain('Traveling Merchant');
   });
 
   it('ignores worked tiles outside the starter plot when deriving onboarding progress', () => {

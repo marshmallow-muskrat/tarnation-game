@@ -25,7 +25,6 @@ import {
   HOMESTEAD_SPAWN_X,
   HOMESTEAD_SPAWN_Z,
   HOMESTEAD_SIZE,
-  HOMESTEAD_UPGRADE_WOOD,
   MARKET_RANGE,
   MELEE_COOLDOWN,
   MELEE_RANGE,
@@ -84,6 +83,7 @@ import {
   clearBreedingParents,
   destroyCrop,
   digTrench,
+  flowTrenchWater,
   getTile,
   hasPortableLightNearby,
   hasRepelNearby,
@@ -93,6 +93,7 @@ import {
   placeBearTrap,
   tillTile,
   tileCenter,
+  trenchSourceTiles,
   triggerBearTrap,
   waterTile,
   worldToTile,
@@ -111,6 +112,7 @@ import { hasRoomFor } from '../sim/inventory';
 import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
 import { buildCodexCatalog } from '../sim/codex';
 import { purchaseAsset } from '../sim/economy';
+import { progressionLockReason } from '../sim/progression';
 import {
   type OutcomeKind,
   type OutcomeStatus,
@@ -572,6 +574,7 @@ export class GameRuntime {
     this.syncBearTrapModels();
     this.seedPlainsAnimals();
     this.refreshObstacleTopology();
+    this.refreshTrenchWater();
     this.syncWorldTiles();
     this.rebuildCrops();
     this.recalculateEnclosure();
@@ -1205,7 +1208,7 @@ export class GameRuntime {
       : this.economyCapability.allowFreePurchases
         ? ' · no currency cost in this sandbox'
         : ' · no duckette or material cost';
-    this.vendorMessage = `${asset.displayName} deed added to inventory${spentSummary}`;
+    this.vendorMessage = `${asset.displayName} ${asset.progression ? 'permit' : 'deed'} added to inventory${spentSummary}`;
     this.recordOutcome('purchase', 'completed');
     this.persist();
     this.pushHud(true);
@@ -1218,6 +1221,41 @@ export class GameRuntime {
     if (!asset || !this.gs.inventory.some((slot) => slot?.id === id)) return;
     this.gs.inventoryOpen = false;
     this.syncActionMenuState();
+    if (asset.progression) {
+      const progressionReason = progressionLockReason(asset.progression, this.gs);
+      if (progressionReason) {
+        setToast(this.gs, progressionReason, 1.8);
+        this.pushHud(true);
+        return;
+      }
+      if (!takeFromInventory(this.gs, id, 1)) return;
+      if (asset.progression.kind === 'irrigation') {
+        this.gs.irrigationTier = asset.progression.targetTier;
+        this.recordAction('upgrade_irrigation');
+        setToast(this.gs, 'Irrigation upgraded · bucket water is no longer consumed', 2.2);
+      } else {
+        this.gs.homesteadTier = asset.progression.targetTier;
+        this.runtimeMetrics.recordUpgrade(this.gs.simTime);
+        const unlocked = asset.progression.targetTier === 2
+          ? unlockWeapon(this.gs, 'bow')
+          : asset.progression.targetTier === 3
+            ? unlockWeapon(this.gs, 'axe')
+            : false;
+        this.syncBuildings();
+        setToast(
+          this.gs,
+          unlocked
+            ? `Homestead tier ${this.gs.homesteadTier} · new weapon: ${this.gs.unlockedWeapons[this.gs.unlockedWeapons.length - 1]}`
+            : `Homestead tier ${this.gs.homesteadTier}`,
+          2.4,
+        );
+        this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
+        this.audio.play('build');
+      }
+      this.persist();
+      this.pushHud(true);
+      return;
+    }
     if (asset.id === 'utility:bear-trap') {
       this.gs.bearTrapCooldown = 0;
       this.tryBearTrap(() => takeFromInventory(this.gs, id, 1));
@@ -1234,19 +1272,6 @@ export class GameRuntime {
         takeFromInventory(this.gs, id, 1);
         this.persist();
       }
-      this.pushHud(true);
-      return;
-    }
-    if (asset.id === 'upgrade:irrigation') {
-      if (this.gs.irrigationTier >= 3) {
-        setToast(this.gs, 'Irrigation is already fully upgraded', 1.6);
-        return;
-      }
-      this.gs.irrigationTier = 3;
-      takeFromInventory(this.gs, id, 1);
-      setToast(this.gs, 'Irrigation upgraded · crops no longer need bucket water', 2.2);
-      this.recordAction('upgrade_irrigation');
-      this.persist();
       this.pushHud(true);
       return;
     }
@@ -1754,7 +1779,6 @@ export class GameRuntime {
       this.equipment.refresh(this.gs);
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
-    if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
     if (this.input.justPressed('KeyV')) {
       const muted = this.audio.toggleMuted();
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
@@ -2035,6 +2059,16 @@ export class GameRuntime {
     return { x: c.x, z: c.y };
   }
 
+  /** Recompute visible trench flow from the live world water boundary. */
+  private refreshTrenchWater(): number {
+    const sources = trenchSourceTiles(this.gs.tiles, (x, z) => this.world.distToWater(x, z));
+    return flowTrenchWater(
+      this.gs.tiles,
+      (x, z) => this.world.heightAt(x, z),
+      sources,
+    );
+  }
+
   /** Rock, tree, stump or open water — all of them stop a shovel. */
   private tileBlockedForTilling(tx: number, ty: number): boolean {
     if (!isFarmableTile(tx, ty)) return true;
@@ -2225,39 +2259,6 @@ export class GameRuntime {
     return this.world.raycastTree(ndc.x, ndc.y);
   }
 
-  private tryUpgradeHomestead(): void {
-    const distance = Math.hypot(this.playerX - HOMESTEAD_X, this.playerZ - HOMESTEAD_Z);
-    if (distance > 8) {
-      setToast(this.gs, 'Stand by the homestead to upgrade it', 1.8);
-      return;
-    }
-    if (this.gs.homesteadTier >= HOMESTEAD_MODEL_KEYS.length) {
-      setToast(this.gs, 'The homestead is fully upgraded', 1.8);
-      return;
-    }
-    const nextTier = this.gs.homesteadTier + 1;
-    const cost = HOMESTEAD_UPGRADE_WOOD[nextTier - 1] ?? 0;
-    if (woodCount(this.gs) < cost) {
-      setToast(this.gs, `Homestead tier ${nextTier}: need ${cost} Wood`, 2);
-      return;
-    }
-    if (cost > 0) takeFromInventory(this.gs, ITEM_WOOD, cost);
-    this.gs.homesteadTier = nextTier;
-    this.runtimeMetrics.recordUpgrade(this.gs.simTime);
-    const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
-    this.syncBuildings();
-    this.persist();
-    this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
-    this.audio.play('build');
-    setToast(
-      this.gs,
-      unlocked
-        ? `Homestead tier ${nextTier} · new weapon: ${this.gs.unlockedWeapons[this.gs.unlockedWeapons.length - 1]}`
-        : `Homestead tier ${nextTier}`,
-      2.4,
-    );
-  }
-
   private placeSelectedBuilding(): void {
     this.recordOutcome('building', 'attempted');
     const placement = this.placement.status();
@@ -2416,27 +2417,17 @@ export class GameRuntime {
       if (tile.state === 'planted' || tile.state === 'mature' || tile.state === 'breeding') return;
       this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
         if (!digTrench(this.gs.tiles, tx, ty)) return;
-        for (const [dx, dy] of [
-          [0, 0],
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ] as const) {
-          const t2 = getTile(this.gs.tiles, tx + dx, ty + dy);
-          if (t2?.state === 'planted' && !t2.watered && this.world.distToWater(wc.x, wc.z) < 3) {
-            t2.watered = true;
-          }
-        }
-        this.syncWorldTiles([
-          { tx, ty },
-          { tx: tx + 1, ty },
-          { tx: tx - 1, ty },
-          { tx, ty: ty + 1 },
-          { tx, ty: ty - 1 },
-        ]);
+        const watered = this.refreshTrenchWater();
+        this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
         this.audio.play('tool');
+        setToast(
+          this.gs,
+          watered > 0
+            ? `Irrigation flow reached ${watered} crop${watered === 1 ? '' : 's'}`
+            : 'Dry trench · extend it to open water',
+          1.8,
+        );
         this.persist();
       });
       return;
@@ -2521,8 +2512,9 @@ export class GameRuntime {
         }
         this.recordOutcome('plant', 'completed');
         this.runtimeMetrics.recordCropPlanted();
+        this.refreshTrenchWater();
         this.syncCropTile(tx, ty);
-        this.syncWorldTiles([{ tx, ty }]);
+        this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
@@ -3743,6 +3735,7 @@ export class GameRuntime {
               t.structureHp -= 1;
               if (t.structureHp <= 0) {
                 t.state = 'grass';
+                this.refreshTrenchWater();
                 this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
               }
             }
@@ -4061,7 +4054,7 @@ export class GameRuntime {
   ): string {
     const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
     const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
@@ -4079,9 +4072,10 @@ export class GameRuntime {
 
     const tile = this.pointerTile();
     if (this.gs.toolSlotActive) {
-      if (!tile) return '6 bucket · point at a planted tile to water';
+      const irrigationNote = this.gs.irrigationTier >= 3 ? ' · irrigation active' : '';
+      if (!tile) return `6 bucket · point at a planted tile to water${irrigationNote}`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
-      if (target?.state === 'planted' && !target.watered) return '6 bucket · click to water';
+      if (target?.state === 'planted' && !target.watered) return `6 bucket · click to water${irrigationNote}`;
       if (target?.state === 'mature') return 'Harvest is ready · switch to the shovel';
       return '6 bucket · point at a thirsty crop';
     }

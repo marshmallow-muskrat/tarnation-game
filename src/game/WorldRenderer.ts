@@ -515,7 +515,7 @@ export class WorldRenderer {
 
         if (si >= maxT) continue;
         if (t.state === 'trench') {
-          _color.copy(this.trenchStructureColor).lerp(this.waterStructureColor, 0.45);
+          _color.copy(this.trenchStructureColor).lerp(this.waterStructureColor, t.watered ? 0.9 : 0.45);
         } else if (t.state === 'breeding') {
           _color.set(0x8a5ab0);
         } else {

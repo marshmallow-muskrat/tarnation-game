@@ -88,7 +88,15 @@ describe('economy values and current purchasing inputs', () => {
     expect(shop.some((asset) => asset.availability === 'starter')).toBe(false);
     expect(shop.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(shop.some((asset) => asset.id === 'housing:homestead:1')).toBe(false);
-    expect(shop.map((asset) => asset.id)).toEqual(['upgrade:irrigation', 'fence', 'gate']);
+    expect(shop.map((asset) => asset.id)).toEqual([
+      'upgrade:irrigation',
+      'upgrade:homestead:2',
+      'upgrade:homestead:3',
+      'upgrade:homestead:4',
+      'upgrade:homestead:5',
+      'fence',
+      'gate',
+    ]);
     expect(placeable.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(TOOLBAR_SLOTS).toBe(3);
     expect(placeable.some((asset) => asset.id === 'gate')).toBe(true);
@@ -138,6 +146,41 @@ describe('economy values and current purchasing inputs', () => {
     addItem(inventory, deedItemId('fence'), 1);
     expect(hasRoomFor(inventory, deedItemId('fence'))).toBe(true);
     expect(itemInfo(deedItemId('fence')).price).toBe(0);
+  });
+
+  it('offers sequential merchant homestead permits and blocks duplicate or skipped tiers', () => {
+    const game = createGameState(0x7070);
+    game.inventory = createInventory();
+    game.duckettes = 0;
+    addItem(game.inventory, ITEM_WOOD, 48);
+    const tier2 = assetDefinition('upgrade:homestead:2');
+    const tier3 = assetDefinition('upgrade:homestead:3');
+    if (!tier2 || !tier3) throw new Error('homestead permit fixture is missing');
+
+    expect(quotePurchase(game, tier2, { allowFreePurchases: false })).toMatchObject({ canBuy: true, price: 0 });
+    expect(quotePurchase(game, tier3, { allowFreePurchases: false }).reasons).toEqual([
+      'Requires Homestead Tier 2',
+    ]);
+
+    addItem(game.inventory, 'deed:upgrade:homestead:2');
+    expect(quotePurchase(game, tier2, { allowFreePurchases: false }).reasons).toEqual([
+      'Already own this progression permit',
+    ]);
+  });
+
+  it('treats irrigation as a one-time bucket-consumption upgrade', () => {
+    const game = createGameState(0x8080);
+    game.inventory = createInventory();
+    game.duckettes = 20;
+    addItem(game.inventory, ITEM_WOOD, 20);
+    const irrigation = assetDefinition('upgrade:irrigation');
+    if (!irrigation) throw new Error('irrigation fixture is missing');
+
+    expect(quotePurchase(game, irrigation, { allowFreePurchases: false })).toMatchObject({ canBuy: true });
+    game.irrigationTier = 3;
+    expect(quotePurchase(game, irrigation, { allowFreePurchases: false }).reasons).toEqual([
+      'Irrigation is already fully upgraded',
+    ]);
   });
 
   it('deducts a paid purchase exactly once and adds one deed after all costs pass', () => {

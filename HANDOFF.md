@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01, CORE-02, CORE-03, and CORE-04 are complete on the current integration branch after the
-  ACT-01/02/03/04/05 and PERF-05 responsibility extractions; CORE-05 is next.
+- CORE-01 through CORE-05 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; CORE-06 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -326,6 +326,26 @@ The characterization baseline intentionally preserves current behavior for later
   Pre-Codex saves intentionally do not invent discovery history: their empty Codex remains rendered
   as undiscovered silhouettes until a seed is recovered or otherwise discovered.
 
+- CORE-05 makes irrigation flow an authored, deterministic rule. Trench tiles touching open water
+  become wet sources, flow only across connected downhill/flat trench topology, water adjacent
+  planted crops, and are recomputed so disconnected trenches visibly return to a dry state. The
+  renderer distinguishes dry and wet trenches, while bucket watering remains the simple fallback;
+  tier-three irrigation removes bucket consumption rather than promising an unimplemented automatic
+  crop effect. The merchant is now the sole player-facing homestead progression authority: sequential
+  tier 2–5 permits are typed apply assets, consume on use, unlock the existing bow/axe thresholds,
+  persist through the existing `homesteadTier` field, and replace the production `U` shortcut. Legacy
+  placeable homestead deed IDs remain loadable for compatibility but are not new merchant choices.
+  The first-plot completion hint, help guide, merchant copy, inventory labels, and purchase locks all
+  describe the same permit path. The compact save schema is unchanged; a permit round-trip and
+  progression quote coverage were added. The deterministic baseline is now 205 tests across 31 files.
+  `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build,
+  strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. Production
+  preview smoke reached a saved Day 6 session, opened the field guide, verified the Z trench and E
+  merchant-permit controls, and recorded no console warnings or errors. The economy diagnostic now
+  reports 112 completed purchases across 16 seeds, no dead or malformed rows, first irrigation by
+  day 5 in 16/16 runs, 16/16 resource-starvation runs, and one existing long-horizon runaway boundary
+  hit; that calibration follow-up remains separate from CORE-05.
+
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
 - Continue fox/trap telegraphs and audio hooks, then calibrate the first-session economy against
@@ -340,12 +360,11 @@ The characterization baseline intentionally preserves current behavior for later
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
 - Keep the active code and documentation vocabulary aligned with the accepted crop, wildlife, and
   building assets; obsolete prototype entries have been removed while save loading remains safe.
-- ECON-04 intentionally leaves the parallel `U` homestead shortcut in place until CORE-05 makes
-  merchant/deeds the single progression authority. Homestead deed rows now have finite legacy costs
-  but remain unreleased, so existing saves can render/use them without presenting a duplicate or
-  nonfunctional progression purchase to new players. The 30-day diagnostic still shows one rare
-  runaway boundary hit because current released sinks are intentionally small; functional buildings
-  are a later CORE-06 dependency, not silently invented here.
+- CORE-05 has removed the parallel `U` homestead shortcut from production and moved new progression
+  purchases to sequential merchant permits. Legacy homestead deed rows remain loadable with their
+  finite historical costs, while the 30-day diagnostic still shows one rare runaway boundary hit
+  because current released sinks are intentionally small; functional buildings are a later CORE-06
+  dependency, not silently invented here.
 - The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
   not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
   follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.
