@@ -89,10 +89,13 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is a release
-  candidate on `agent/m8-release`. UX-01 through UX-05 are complete on the integration branch.
-  The product owner explicitly waived UX-05's five-person external study for this release; the
-  `main` workflow and live smoke verification remain pending.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is released as
+  PR #56 merge `20a0c26`. Workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417)
+  passed simulation, `test:ci`, asset validation, build, and automatic deployment of the exact
+  merge SHA. Fresh live smoke at <https://tarnation.pages.dev/> passed Day 1/daylight, the First
+  steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
+  product owner explicitly waived UX-05's five-person external study for this release; its protocol
+  remains documented for future validation without fabricated participant findings.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -212,7 +215,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   44 files. npm run test, npm run test:ci, npm run check, npm run assetcheck, the production build,
   strict unused-symbol TypeScript, git diff --check, and npm audit --omit=dev pass. Production-preview
   smoke verified the labeled Settings dialog, focus trap/restoration, scale and contrast controls,
-  and no browser warnings/errors. UX-05's implementation is ready for M8 release; its five-person study is explicitly waived for this release.
+  and no browser warnings/errors. UX-05's implementation is included in released M8; its five-person study is explicitly waived for this release.
 
 - UX-05 authors the first ten minutes as a derived, non-saved eight-beat guide: launch copy and
   immediate movement, starter-plot shovel/plant/water/grow/harvest transitions with active-binding
@@ -225,8 +228,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   daylight, showed the non-modal First steps card and Saved status, opened Help, and reached Settings
   through the pause menu with no browser warnings/errors. The five-person external study is explicitly
   waived for this release; its protocol remains documented for future validation. UX-05 is complete
-  and M8 release evidence is pending. The M8 release candidate contains no production gameplay
-  changes beyond the reviewed UX-01–05 integration and is awaiting the normal `main` workflow.
+  and M8 is released as PR #56 merge `20a0c26`; the exact workflow and live smoke evidence are
+  recorded above.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
