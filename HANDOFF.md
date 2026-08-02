@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 through CORE-06 are complete on the current integration branch after the ACT-01/02/03/04/05
-  and PERF-05 responsibility extractions; CORE-07 is next.
+- CORE-01 through CORE-07 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; CORE-08 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -359,6 +359,19 @@ The characterization baseline intentionally preserves current behavior for later
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. The existing deployment workflow already runs
   `npm run test:ci` before asset validation and build; no deployment was performed for this task.
+
+- CORE-07 makes the existing first-plot onboarding and market route an explicit multi-day arc. Day 2
+  now surfaces a deliberate Silo/Water Tower, crop-strategy, or fence/gate choice; dusk warns once
+  before the first and later fox raids; after the first sale, the guide names the missing genetics or
+  functional-building pillar. Dawn restores one deterministic Grass packet when seed storage is empty,
+  preventing a poor purchase or crop loss from permanently removing the planting route without adding
+  a save field. The existing wood sale keeps the Day 1 market route available; the economy diagnostic
+  intentionally still models generic two-day crops and reports the first crop sale on day 3, which is
+  deferred as an opening-pacing calibration rather than changed here. The deterministic baseline is
+  now 214 tests across 33 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`,
+  the production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
+  pass. Production-preview smoke reached fresh Day 1/daylight with Saved status and no console
+  warnings or errors. No save schema, raid damage, economy price, or ending behavior changed.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
