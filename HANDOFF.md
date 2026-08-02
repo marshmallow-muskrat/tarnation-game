@@ -12,7 +12,7 @@ defends crops from foxes, upgrades the homestead, and places buildings. The desi
 non-linear progression and future maps/challenge spaces, but the current work is refinement of the
 existing loop.
 
-Run locally with `npm install && npm run dev`; open `http://localhost:5183/picker.html` for the
+Run locally with Node 24 and `npm ci && npm run dev`; open `http://localhost:5183/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
 baseline. The production page exposes no runtime debug handle; use deterministic tests and local
@@ -68,11 +68,11 @@ The completed vendor/deed sequence is preserved as
 local-only economy metrics console handle was removed in UX-02; economy behavior remains covered by
 deterministic diagnostics and tests, including four-way attempted/rejected/cancelled/completed
 outcome counts and first-completion game times for planting, harvest, sale, purchase, building, fox
-defense, and the settlement goal. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
-game is not release-ready. The active priorities are the P0 blockers and dependency order in
-[`masterplan-v2.md`](masterplan-v2.md):
+defense, and the settlement goal. The 2026-08-01 audit's M0–M10 implementation and release-hardening
+work is complete on main. The Core Release Gate is conditional only on the explicitly deferred human
+validation summarized in [`docs/masterplan-v2-completion-review.md`](docs/masterplan-v2-completion-review.md):
 
-- CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
+- CORE-01 through CORE-08 and the M5 release gate are released on main
   after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is complete.
 - FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), FOX-03
   as merge `4c0244b` (PR #42), and FOX-04 as merge `86c9efb` (PR #43). Foxes select deterministic
@@ -130,10 +130,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   passed for commit `b4d4c9b`. A prior hosted run failed only because a transient UI hint appeared just
   after a 5-second wait under slow software WebGL; the artifact showed the real plantable state, so the
   final assertion uses the persisted save contract instead of increasing a timing guess. No production or
-  save behavior changed. No formatter/linter is configured yet; the six full-audit dev-tool advisories
-  remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
-  rule; release PRs remain the enforced process, with protection and the single final human review to be
-  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
+  save behavior changed. No formatter/linter is configured yet. REL-01 subsequently cleared the former
+  Wrangler-era dev-tool advisories. The repository currently has no GitHub branch-protection rule; green
+  release PRs remain the documented process, while required human approval remains intentionally disabled
+  under the owner's autonomous-PR decision.
 - QA-03 is complete on `agent/qa-03-production-diagnostics`: the pausing Help panel exports a sanitized,
   deterministic diagnostics JSON containing exact build identity, browser/GPU capabilities, save version and
   bounded metadata, fixed seed, at most 32 recent action/outcome/transition events, at most 32 unique asset
@@ -150,8 +150,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   full and production-only audits reported zero vulnerabilities; and contribution, changelog, license,
   and asset/audio provenance guidance were added. The task changed no Vite/React/Three.js, save,
   simulation, economy, or gameplay behavior.
-- REL-02 implementation is complete on `agent/rel-02-release-checklist`, pending the exact reviewed M10
-  merge and live smoke. The top-left HUD objective is bounded to a compact readable panel with a scroll
+- REL-02 is complete in M10 release merge `7568e1d` (PR #68). The top-left HUD objective is bounded to a compact readable panel with a scroll
   cap; `J` toggles the settlement objective and `G` toggles the market guide, and both bindings are exposed
   through Help, Settings, and README controls. The release E2E covers those controls, panel width, and the
   recoverable unsupported-WebGL launch path. Integrated local evidence is 334 Vitest tests across 49 files,
@@ -161,9 +160,16 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   remains green. The stale asset-picker documentation link was corrected from port 5173 to the configured
   Vite port 5183. Human animation/accessibility signoff and external playtesting: **Deferred by owner until
   after completion of this update; not performed and not claimed.**
-- Add unit, migration, browser E2E, visual, performance, and CI release gates.
-- Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
-  and ending loops before expanding content.
+- M10 release verification passed on exact main commit `7568e1d`: [deployment workflow 30765350012](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30765350012)
+  ran the complete quality matrix and automatically deployed the verified bundle to <https://tarnation.pages.dev/>
+  (release preview <https://fbe1db1f.tarnation.pages.dev/>). Direct live smoke verified the 390px bounded HUD,
+  `J` objective hide/show, `G` market-guide hide/show, diagnostics export identifying commit
+  `7568e1db5ba2feb5bc98ac84055495e670b42828` and save v9, persisted movement displacement `0.550676`, and
+  persisted `grass → tilled` farming. The smoke test recorded zero browser warnings/errors and zero failed
+  network requests. The independent completion review records the Core Release Gate as **conditional**:
+  automated and production criteria pass, while owner-deferred human/external validation remains unperformed
+  and is not claimed. No post-gate expansion work was started. See
+  [`docs/masterplan-v2-completion-review.md`](docs/masterplan-v2-completion-review.md).
 - BASE-02 characterization is integrated with Vitest: the original baseline had 109 deterministic
   tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
   migration fixtures for released save versions 3 through 7. PR #3 merged into the integration
@@ -742,3 +748,10 @@ Deployment record:
   validation, and production build, then deployed automatically. Fresh production smoke passed
   Continue, Day 1/daylight, Saved status, settlement objective, starter defense controls, and Help
   modal open/close with no console warnings or errors.
+- `7568e1d` — M10 release hardening: QA-01–03 and REL-01–02 — <https://tarnation.pages.dev/>; GitHub Actions
+  run [30765350012](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30765350012) verified the
+  exact main merge, ran the complete quality matrix, and automatically deployed the release preview at
+  <https://fbe1db1f.tarnation.pages.dev/>. Direct live smoke against the canonical URL passed the compact
+  objective/market-guide controls, exact diagnostics identity, movement persistence, deterministic farming
+  persistence, and browser/network error checks. Human-only animation/accessibility signoff and external
+  playtesting remain **Deferred by owner until after completion of this update; not performed and not claimed.**

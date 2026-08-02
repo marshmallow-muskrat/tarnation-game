@@ -13,9 +13,11 @@ Do not commit `node_modules/`, generated `dist/`, or QA artifacts.
 
 ## Changes and verification
 
-Create one focused task branch from `agent/masterplan-v2-implementation` and target task pull
-requests at that integration branch. Keep `src/sim/` pure, preserve fixed-timestep and seeded
-determinism, and add characterization coverage before changing an existing gameplay contract.
+Create one focused task branch from current `main` unless `HANDOFF.md` explicitly names an active
+milestone integration branch. Target ordinary pull requests at the branch they were created from,
+and merge a milestone branch to `main` only after its complete gate is green. Keep `src/sim/` pure,
+preserve fixed-timestep and seeded determinism, and add characterization coverage before changing an
+existing gameplay contract.
 
 Before opening a pull request, run the relevant task checks and at minimum:
 

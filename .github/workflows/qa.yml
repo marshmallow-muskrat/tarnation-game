@@ -54,8 +54,8 @@ jobs:
         run: npm run perfcheck
 
       - name: Audit production dependencies
-        # Dev-tool advisories remain the explicitly reviewed REL-01 follow-up;
-        # the shipped dependency tree must stay clean on every PR and main push.
+        # REL-01 cleared the former Wrangler-era advisories. Shipped dependencies
+        # must remain clean on every PR and main push.
         run: npm audit --omit=dev
 
       - name: Build production bundle
