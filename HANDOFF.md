@@ -205,8 +205,8 @@ The characterization baseline intentionally preserves current behavior for later
   remains the composition root and supplies live placement, world, save, economy, and interaction
   callbacks; React continues to render the same snapshot shape. Four focused tests cover fresh HUD
   mapping, item/market totals, tab normalization with pause/ending state, and deduplication. The
-  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete; M3 release evidence
-  still requires the integrated milestone release workflow and live smoke test.
+  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete, and M3 release
+  evidence is recorded below.
 
 - Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
   exactly the same position, the existing separation fallback treats them as one unit apart before
@@ -276,3 +276,10 @@ Deployment record:
   passed simulation checks, the deterministic unit suite, asset validation, build, and deployment.
   Fresh live smoke passed New Adventure, Day 1/daylight HUD launch, Saved status, starter controls,
   and produced no console warnings or errors.
+- `d8a4362` — M3 runtime health: staged loading, shared icon rendering, disposal ownership, incremental
+  world updates, and all PERF-05 responsibility extractions — <https://836e92f3.tarnation.pages.dev>
+  (canonical <https://tarnation.pages.dev/>); GitHub Actions run
+  [30728223190](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30728223190)
+  passed simulation checks, the deterministic 138-test suite, asset validation, build, and automatic
+  deployment. Live smoke passed launch, Continue, Day 1/daylight, Saved status, market cue, and
+  starter controls with no observed console errors or warnings.
