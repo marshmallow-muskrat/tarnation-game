@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01, CORE-02, and CORE-03 are complete on the current integration branch after the
-  ACT-01/02/03/04/05 and PERF-05 responsibility extractions; CORE-04 is next.
+- CORE-01, CORE-02, CORE-03, and CORE-04 are complete on the current integration branch after the
+  ACT-01/02/03/04/05 and PERF-05 responsibility extractions; CORE-05 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -88,7 +88,7 @@ The characterization baseline intentionally preserves current behavior for later
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
-  fresh fixture is 1,084 bytes, the representative midgame fixture is about 1.5 KB, and the dense
+  fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
   warning threshold; v8 full-grid saves remain readable and migrate explicitly. PR #5 is integrated
   on `agent/masterplan-v2-implementation`. SAVE-02 now routes runtime persistence through a checksummed
@@ -307,7 +307,24 @@ The characterization baseline intentionally preserves current behavior for later
   rule, cap, non-stacking boolean, and deterministic crop/raid outcome. The baseline is now 196
   deterministic tests across 30 files. `npm run test`, `npm run test:ci`, `npm run check`,
   `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
-  and `npm audit --omit=dev` pass. CORE-04 is next.
+  and `npm audit --omit=dev` pass. CORE-04 followed as the separate Codex task.
+
+- CORE-04 completes the Seed Codex without changing the v9 save schema. Fresh game state seeds the
+  five authored base species as day-1 discoveries; the pure catalog deduplicates saved IDs, keeps
+  discovered hybrids with their parentage, all five numeric traits, and mechanism explanation, and
+  supplies stable undiscovered silhouettes for absent base species. First-time hybrid recovery and
+  harvest discoveries produce brief player-facing toasts. The modal is a pausing screen with
+  explicit keyboard/focusable select and compare buttons, a two-entry comparison limit, and a
+  polite live status sentence for screen readers. Codex selection/comparison is transient UI state;
+  discovery data continues to use the existing compact v9 representation. Duplicate discovery,
+  deterministic catalog ordering, v8 migration preservation, round-trip data, and presenter status
+  are covered by the new characterization tests. The baseline is now 201 deterministic tests across
+  31 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production
+  build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass.
+  Production-preview smoke reached Day 1/daylight, opened the Codex, verified the accessible dialog
+  status and `K` toggle, and showed stable unknown silhouettes when continuing a pre-Codex save.
+  Pre-Codex saves intentionally do not invent discovery history: their empty Codex remains rendered
+  as undiscovered silhouettes until a seed is recovered or otherwise discovered.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

@@ -99,6 +99,7 @@ describe('genetics, inheritance, mutation, and Codex behavior', () => {
   it('adds counted seed packets while keeping selection cycling deterministic and wrapping at both ends', () => {
     const game = createGameState(0xdef456);
     game.seedInventory = [];
+    game.codex = [];
     game.selectedSeedIndex = 0;
     const beet = makeSeed('beet');
     const carrot = makeSeed('carrot');

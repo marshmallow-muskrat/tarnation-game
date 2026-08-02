@@ -104,10 +104,12 @@ import {
   PORTABLE_LIGHT_RADIUS,
   REPEL_FOX_RADIUS,
   RICOCHET_RADIUS,
+  seedId,
   seedTraitDescription,
 } from '../sim/genetics';
 import { hasRoomFor } from '../sim/inventory';
 import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
+import { buildCodexCatalog } from '../sim/codex';
 import { purchaseAsset } from '../sim/economy';
 import {
   type OutcomeKind,
@@ -407,6 +409,9 @@ export class GameRuntime {
   private demolishMode = false;
   private pauseOpen = false;
   private helpOpen = false;
+  private codexOpen = false;
+  private codexSelectedKey: string | null = null;
+  private codexCompareKeys: string[] = [];
   private reducedMotion = false;
   private debugGrid = false;
   private vendorOpen = false;
@@ -529,6 +534,9 @@ export class GameRuntime {
       this.gs = loaded.state;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
+    this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
     this.world.setStarterPlotVisible(this.firstPlotGuideActive);
     this.syncActionMenuState();
     this.input.attach(canvas);
@@ -1060,6 +1068,7 @@ export class GameRuntime {
   }
 
   toggleHelp(): void {
+    if (!this.helpOpen) this.codexOpen = false;
     this.helpOpen = !this.helpOpen;
     if (this.helpOpen) {
       this.velX = 0;
@@ -1069,7 +1078,60 @@ export class GameRuntime {
     this.pushHud(true);
   }
 
+  toggleCodex(): void {
+    if (this.codexOpen) {
+      this.codexOpen = false;
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
+    this.codexOpen = true;
+    this.helpOpen = false;
+    this.vendorOpen = false;
+    this.vendorMessage = '';
+    this.buildingMode = false;
+    this.placement.clear();
+    this.demolishMode = false;
+    this.gs.inventoryOpen = false;
+    this.closeContextMenu();
+    this.cancelPlayerActions();
+    this.clearShots();
+    this.velX = 0;
+    this.velZ = 0;
+    const catalog = buildCodexCatalog(this.gs.codex);
+    const first = catalog[0];
+    if (!this.codexSelectedKey || !catalog.some((entry) => entry.key === this.codexSelectedKey)) {
+      this.codexSelectedKey = first?.key ?? null;
+    }
+    this.codexCompareKeys = [];
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  selectCodexEntry(key: string): void {
+    const catalog = buildCodexCatalog(this.gs.codex);
+    if (!this.codexOpen || !catalog.some((entry) => entry.key === key)) return;
+    this.codexSelectedKey = key;
+    this.pushHud(true);
+  }
+
+  toggleCodexCompare(key: string): void {
+    if (!this.codexOpen) return;
+    const entry = buildCodexCatalog(this.gs.codex).find((candidate) => candidate.key === key);
+    if (!entry || entry.kind !== 'discovered') return;
+    const index = this.codexCompareKeys.indexOf(key);
+    if (index >= 0) {
+      this.codexCompareKeys.splice(index, 1);
+    } else if (this.codexCompareKeys.length >= 2) {
+      setToast(this.gs, 'Compare up to two discovered seeds', 1.6);
+    } else {
+      this.codexCompareKeys.push(key);
+    }
+    this.pushHud(true);
+  }
+
   toggleInventory(): void {
+    if (!this.gs.inventoryOpen) this.codexOpen = false;
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
     this.syncActionMenuState();
     this.pushHud(true);
@@ -1274,6 +1336,13 @@ export class GameRuntime {
     }
     if (this.vendorOpen) {
       this.closeVendor();
+      return;
+    }
+    if (this.codexOpen) {
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.syncActionMenuState();
+      this.pushHud(true);
       return;
     }
     if (this.helpOpen) {
@@ -1536,6 +1605,7 @@ export class GameRuntime {
     const menuOpen =
       this.pauseOpen ||
       this.helpOpen ||
+      this.codexOpen ||
       this.vendorOpen ||
       this.contextMenu.open ||
       this.gs.inventoryOpen;
@@ -1654,6 +1724,14 @@ export class GameRuntime {
       if (this.input.justPressed('Escape')) this.cancelActiveState();
       return;
     }
+    if (this.input.justPressed('KeyK')) {
+      this.toggleCodex();
+      return;
+    }
+    if (this.codexOpen) {
+      if (this.input.justPressed('Escape')) this.cancelActiveState();
+      return;
+    }
     for (let i = 0; i < TOOLBAR_SLOTS; i++) {
       if (this.input.justPressed(`Digit${i + 1}`)) {
         this.selectSlot(i);
@@ -1753,6 +1831,12 @@ export class GameRuntime {
       return;
     }
     if (this.helpOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+    if (this.codexOpen) {
       this.velX = 0;
       this.velZ = 0;
       this.movementIntent = false;
@@ -2380,6 +2464,7 @@ export class GameRuntime {
           const parents = clearBreedingParents(this.gs.tiles, tx, ty);
           if (!parents) return;
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
+          const wasKnown = this.gs.codex.some((entry) => entry.id === seedId(child));
           if (!addSeedToInventory(this.gs, child)) {
             // The preflight above should make this unreachable, but retain the
             // breeding parents if a future capacity rule changes underneath it.
@@ -2396,7 +2481,11 @@ export class GameRuntime {
           this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
           this.audio.play('reward');
-          setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
+          setToast(
+            this.gs,
+            wasKnown ? `Hybrid: ${child.displayName}!` : `New Codex entry: ${child.displayName}!`,
+            3.5,
+          );
           this.persist();
         });
       }
@@ -2477,6 +2566,7 @@ export class GameRuntime {
           setToast(this.gs, 'Harvest storage is full', 1.8);
           return;
         }
+        const wasKnown = this.gs.codex.some((entry) => entry.id === seedId(currentSeed));
         const res = harvestCropTransaction(this.gs, tx, ty);
         if (res.ok && res.seed) {
           this.recordOutcome('harvest', 'completed');
@@ -2487,6 +2577,7 @@ export class GameRuntime {
           this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
           this.audio.play('reward');
+          if (!wasKnown) setToast(this.gs, `New Codex entry: ${res.seed.displayName}!`, 3.5);
           this.persist();
         } else this.recordOutcome('harvest', 'rejected');
       })) this.recordOutcome('harvest', 'rejected');
@@ -4040,6 +4131,9 @@ export class GameRuntime {
         return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
+      codexOpen: this.codexOpen,
+      codexSelectedKey: this.codexSelectedKey,
+      codexCompareKeys: this.codexCompareKeys,
       toolSlotModel: null,
       marketOpen: this.nearMarket,
       vendorOpen: this.vendorOpen,

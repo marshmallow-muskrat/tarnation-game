@@ -226,16 +226,20 @@ export function raidAttractionForSeed(seed: Seed): number {
   return seed.mech === 'greed_crop' ? GREED_RAID_SCORE : 0;
 }
 
-/** Compact player-facing description used by the planting HUD. */
-export function seedTraitDescription(seed: Seed): string {
-  const traits = `Vigor ${seed.traits.vigor} · Thirst ${seed.traits.thirst} · Hardiness ${seed.traits.hardiness} · Yield ${seed.traits.yield}`;
-  const mechanism = {
+/** Player-facing explanation for the released hybrid mechanism. */
+export function seedMechanismDescription(mech: HybridMech): string {
+  return {
     repel_foxes: 'Repels foxes within 3 tiles',
     portable_light: 'Brightens night travel nearby',
     ironroot: 'Resists fox bites and mature destruction',
     ricochet: 'Nearby projectiles bounce once',
     greed_crop: '+1 produce and attracts more foxes',
     none: 'No hybrid mechanism',
-  }[seed.mech];
-  return `${traits} · ${mechanism}`;
+  }[mech];
+}
+
+/** Compact player-facing description used by the planting HUD. */
+export function seedTraitDescription(seed: Seed): string {
+  const traits = `Vigor ${seed.traits.vigor} · Thirst ${seed.traits.thirst} · Hardiness ${seed.traits.hardiness} · Yield ${seed.traits.yield}`;
+  return `${traits} · ${seedMechanismDescription(seed.mech)}`;
 }

@@ -146,7 +146,7 @@ export function createGameState(seed?: number): GameState {
     boulderCooldown: 0,
     bearTrapCooldown: 0,
     seedInventory: starter,
-    codex: [],
+    codex: starterCodexEntries(starter.map((packet) => packet.seed)),
     stats: defaultStats(),
     simTime: 0,
     winShown: false,
@@ -159,6 +159,18 @@ export function createGameState(seed?: number): GameState {
 
 function gridMatches(tiles: Tile[][]): boolean {
   return tiles.length === GRID_H && tiles.every((row) => row.length === GRID_W);
+}
+
+function starterCodexEntries(starter: readonly Seed[]): CodexEntry[] {
+  return starter.map((seed) => ({
+    id: seedId(seed),
+    seed: {
+      ...seed,
+      traits: { ...seed.traits },
+      lineage: seed.lineage ? [...seed.lineage] : undefined,
+    },
+    discoveredDay: 1,
+  }));
 }
 
 export function loadFromSaveData(data: SaveData): GameState {

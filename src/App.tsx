@@ -251,6 +251,9 @@ export function App() {
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
         onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onToggleHelp={() => runtimeRef.current?.toggleHelp()}
+        onToggleCodex={() => runtimeRef.current?.toggleCodex()}
+        onSelectCodex={(key) => runtimeRef.current?.selectCodexEntry(key)}
+        onToggleCodexCompare={(key) => runtimeRef.current?.toggleCodexCompare(key)}
         onUltimate={() => runtimeRef.current?.useUltimate()}
         onBearTrap={() => runtimeRef.current?.useBearTrap()}
         onToggleInventory={() => runtimeRef.current?.toggleInventory()}

@@ -17,6 +17,9 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
     selectedBuildIndex: 0,
     placement: () => ({ valid: false, reason: 'Open build mode to preview a structure' }),
     helpOpen: false,
+    codexOpen: false,
+    codexSelectedKey: null,
+    codexCompareKeys: [],
     toolSlotModel: null,
     marketOpen: false,
     vendorOpen: false,
@@ -68,6 +71,8 @@ describe('HUD presenter', () => {
       'Field Gate',
     ]);
     expect(received!.vendor.tabs).toEqual(['Housing', 'Buildings', 'Upgrades']);
+    expect(received!.codex.entries).toHaveLength(5);
+    expect(received!.codex.entries.every((entry) => entry.kind === 'discovered')).toBe(true);
   });
 
   it('presents inventory item models and market totals from the live stack state', () => {
@@ -138,5 +143,28 @@ describe('HUD presenter', () => {
     expect(received).toHaveLength(2);
     received[0]!.popups[0]!.life = 0;
     expect(popup.life).toBe(1);
+  });
+
+  it('publishes keyboard-selectable Codex comparison entries with a screen-reader status sentence', () => {
+    const context = makeContext();
+    context.codexOpen = true;
+    context.codexSelectedKey = 'known:Grass|grass|0|none';
+    context.codexCompareKeys = ['known:Grass|grass|0|none', 'known:Beet|beet|8|none'];
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.codex.open).toBe(true);
+    expect(received!.codex.selectedKey).toBe('known:Grass|grass|0|none');
+    expect(received!.codex.compareKeys).toEqual([
+      'known:Grass|grass|0|none',
+      'known:Beet|beet|8|none',
+    ]);
+    expect(received!.codex.status).toContain('Grass selected');
+    expect(received!.codex.entries.find((entry) => entry.key === 'known:Grass|grass|0|none')?.compareSelected).toBe(true);
   });
 });
