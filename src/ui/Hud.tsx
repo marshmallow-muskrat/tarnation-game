@@ -5,6 +5,10 @@ import type { HudSlot, HudSnapshot } from '../game/HudPresenter';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
 import type { InputAction } from '../game/InputBindings';
+import { useModalFocusScope } from './modal';
+
+type FocusedPanel = 'help' | 'codex' | 'vendor' | 'build' | 'inventory' | 'context';
+type ModalKey = FocusedPanel | 'pause' | 'win';
 
 type Props = {
   hud: HudSnapshot | null;
@@ -121,16 +125,8 @@ export function Hud({
     return () => window.removeEventListener('keydown', onKeyDown, true);
   }, [bindingCapture, onRebindInput]);
 
-  if (!hud) return null;
-
-  const phasePct = Math.round(hud.phaseT * 100);
-  const filled = hud.inventory.filter((s) => s.id).length;
-  const occupiedInventory = hud.inventory.flatMap((slot, index) =>
-    slot.id ? [{ slot, index }] : [],
-  );
-  const focusedPanel = hud.paused
-    ? null
-    : hud.helpOpen
+  const focusedPanel: FocusedPanel | null = hud && !hud.paused && !hud.win
+    ? hud.helpOpen
       ? 'help'
       : hud.codex.open
         ? 'codex'
@@ -142,7 +138,48 @@ export function Hud({
               ? 'inventory'
               : hud.contextMenu.open
                 ? 'context'
-                : null;
+                : null
+    : null;
+  const modalKey: ModalKey | null = hud?.win ? 'win' : hud?.paused ? 'pause' : focusedPanel;
+  const closeModal = () => {
+    switch (modalKey) {
+      case 'help':
+        onToggleHelp();
+        return;
+      case 'codex':
+        onToggleCodex();
+        return;
+      case 'vendor':
+        onVendorClose();
+        return;
+      case 'build':
+        onToggleBuild();
+        return;
+      case 'inventory':
+        onToggleInventory();
+        return;
+      case 'context':
+        onContextClose();
+        return;
+      case 'pause':
+        onResume();
+        return;
+      case 'win':
+        onDismissWin();
+        return;
+      default:
+        return;
+    }
+  };
+  const modalScope = useModalFocusScope(modalKey, modalKey ? closeModal : null);
+
+  if (!hud) return null;
+
+  const phasePct = Math.round(hud.phaseT * 100);
+  const filled = hud.inventory.filter((s) => s.id).length;
+  const occupiedInventory = hud.inventory.flatMap((slot, index) =>
+    slot.id ? [{ slot, index }] : [],
+  );
   const showHelp = focusedPanel === 'help';
   const showCodex = focusedPanel === 'codex';
   const showVendor = focusedPanel === 'vendor';
@@ -156,6 +193,12 @@ export function Hud({
 
   return (
     <div className="hud">
+      {modalKey && modalKey !== 'pause' && modalKey !== 'win' && (
+        <div
+          className={`modal-scrim ${modalKey === 'build' ? 'placement-pass-through' : ''}`}
+          aria-hidden="true"
+        />
+      )}
       <div className="panel hud-top-left">
         <h1 className="panel-title">Tarnation</h1>
         <p className="label">Day</p>
@@ -249,8 +292,16 @@ export function Hud({
       </button>
 
       {showInventory && (
-        <div className="panel hud-inventory">
-          <p className="label">
+        <div
+          ref={modalScope.ref}
+          className="panel hud-inventory"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="inventory-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
+          <p className="label" id="inventory-title">
             Inventory · {filled}/{hud.inventory.length}
           </p>
           <p className="label">
@@ -372,11 +423,19 @@ export function Hud({
       )}
 
       {showVendor && (
-        <div className="panel vendor-panel">
+        <div
+          ref={modalScope.ref}
+          className="panel vendor-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="vendor-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="vendor-heading">
             <div>
               <p className="label">Stationary trading post</p>
-              <h2>Traveling Merchant</h2>
+              <h2 id="vendor-title">Traveling Merchant</h2>
             </div>
             <button type="button" className="build-close" onClick={onVendorClose}>
               Close
@@ -431,26 +490,39 @@ export function Hud({
 
       {showContext && (
         <div
+          ref={modalScope.ref}
           className="context-menu"
+          role="menu"
+          aria-label={`${hud.contextMenu.name} actions`}
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
           style={{ left: `${Math.max(8, hud.contextMenu.x)}px`, top: `${Math.max(8, hud.contextMenu.y)}px` }}
         >
           <p>{hud.contextMenu.name}</p>
-          <button type="button" onClick={onContextRotate}>Rotate</button>
+          <button type="button" role="menuitem" onClick={onContextRotate}>Rotate</button>
           {hud.contextMenu.gate && (
-            <button type="button" onClick={onContextToggleGate}>
+            <button type="button" role="menuitem" onClick={onContextToggleGate}>
               {hud.contextMenu.gateOpen ? 'Close gate' : 'Open gate'}
             </button>
           )}
-          <button type="button" className="danger" onClick={onContextDestroy}>Destroy</button>
-          <button type="button" className="context-cancel" onClick={onContextClose}>Esc · Close</button>
+          <button type="button" role="menuitem" className="danger" onClick={onContextDestroy}>Destroy</button>
+          <button type="button" role="menuitem" className="context-cancel" onClick={onContextClose}>Esc · Close</button>
         </div>
       )}
 
-      {hud.paused && (
+      {hud.paused && !hud.win && (
         <div className="pause-overlay">
-          <div className="panel pause-card">
+          <div
+            ref={modalScope.ref}
+            className="panel pause-card"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pause-title"
+            tabIndex={-1}
+            onKeyDown={modalScope.onKeyDown}
+          >
             <p className="label">Adventure paused</p>
-            <h2>Take a breath</h2>
+            <h2 id="pause-title">Take a breath</h2>
             <p>Nothing advances while the pause menu is open.</p>
             <button type="button" onClick={onResume}>Resume</button>
             <p className="pause-help">Esc resumes</p>
@@ -459,11 +531,19 @@ export function Hud({
       )}
 
       {showBuild && (
-        <div className="panel build-panel">
+        <div
+          ref={modalScope.ref}
+          className="panel build-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="build-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="build-panel-heading">
             <div>
               <p className="label">Town building</p>
-              <h2>Choose a structure</h2>
+              <h2 id="build-title">Choose a structure</h2>
             </div>
             <button type="button" className="build-close" onClick={onToggleBuild}>
               Close
@@ -511,11 +591,19 @@ export function Hud({
       )}
 
       {showHelp && (
-        <div className="panel help-panel">
+        <div
+          ref={modalScope.ref}
+          className="panel help-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="help-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
+        >
           <div className="help-heading">
             <div>
               <p className="label">Field guide</p>
-              <h2>How to work the homestead</h2>
+              <h2 id="help-title">How to work the homestead</h2>
             </div>
             <button type="button" className="build-close" onClick={onToggleHelp}>
               Close
@@ -591,10 +679,13 @@ export function Hud({
 
       {showCodex && (
         <div
+          ref={modalScope.ref}
           className="panel codex-panel"
           role="dialog"
           aria-modal="true"
           aria-labelledby="codex-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
         >
           <div className="codex-heading">
             <div>
@@ -733,7 +824,7 @@ export function Hud({
       <div className="hud-bottom-center">
         {hud.demolishMode && <div className="demolish-badge">Demolish mode · {bindingLabel('primary')} or click placed assets · {bindingLabel('pause')} exits</div>}
         {hud.toast && (
-          <div className="toast">
+          <div className="toast" role="status" aria-live="polite" aria-atomic="true">
             <span>{hud.toast}</span>
           </div>
         )}
@@ -811,10 +902,13 @@ export function Hud({
 
       {hud.win && (
         <div
+          ref={modalScope.ref}
           className="win-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="settlement-title"
+          tabIndex={-1}
+          onKeyDown={modalScope.onKeyDown}
         >
           <div className="panel win-card settlement-card">
             <p className="label">The homestead stands</p>

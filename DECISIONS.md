@@ -559,8 +559,9 @@ their current actions.
 `Enter` provides the primary work/place/demolish route and `O` provides placed-asset context; focused
 inventory controls provide explicit use and delete actions so double-click and right-click are never
 the only route. Pointer input remains available, and the fixed timestep, seeded simulation, save
-schema, `src/sim/` purity, and production asset path are unchanged. Full modal semantics, focus
-trapping/restoration, settings coverage, and onboarding remain the scoped UX-02–UX-05 follow-ups.
+schema, `src/sim/` purity, and production asset path are unchanged. Modal semantics and focus
+trapping/restoration are implemented in UX-03; settings coverage and onboarding remain the scoped
+UX-04–UX-05 follow-ups.
 
 ## 2026-08-01 — Rebuild information hierarchy without changing simulation or save rules
 
@@ -573,4 +574,16 @@ and authored result/benefit, cost, footprint, capacity/ownership, and lock reaso
 purchase or placement. Visible implementation/debug scaffolding (`?legacy`, F12 grid toggle,
 `window.tarn`, Draft title, all-controls hint, and `place/apply/equip` labels) is removed. No
 simulation rule, fixed timestep, seeded RNG, save schema, or migration data is changed; modal
-semantics and focus restoration remain UX-03.
+semantics and focus restoration are implemented in UX-03.
+
+## 2026-08-01 — Make every active overlay a real modal boundary
+
+UX-03 gives launch, pause, Help, Codex, inventory, merchant, build, context, and settlement overlays
+explicit dialog/menu semantics, labels, focus entry, wraparound Tab trapping, Escape behavior, and
+focus restoration. Toasts and purchase messages use nonvisual status regions. Modal transitions clear
+held keyboard state and release active pointer capture so a key or click used to open/close a panel
+cannot leak into the world. The build catalog is a deliberate exception to a blocking scrim: the
+catalog pauses the fixed-step world, but pointer placement still reaches the canvas and commits only
+at its normal fixed-step action boundary. Settlement presentation also pauses until the player
+dismisses it. No save schema, migration, economy, seeded RNG, `src/sim/` rule, or asset path changed;
+settings/scaling/contrast and onboarding remain UX-04–UX-05.

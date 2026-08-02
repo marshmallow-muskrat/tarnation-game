@@ -90,7 +90,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
   M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is in progress.
-  UX-01 and UX-02 are complete on their task branches; UX-03 is the next dependency-ready task.
+  UX-01, UX-02, and UX-03 are complete on their task branches; UX-04 is the next dependency-ready task.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -178,18 +178,28 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   empty occupied-only inventory, focused Help/inventory panels with no simultaneous overlays, title
   `Tarnation`, and no console warnings/errors. The deployment workflow already runs `npm run test:ci`
   before asset validation and build. Legacy v3/v4 saves without panel state intentionally retain an
-  open inventory for compatibility; UX-03–UX-05 remain deferred.
+  open inventory for compatibility; UX-04–UX-05 remain deferred.
 
 - UX-02 closes fresh inventory while preserving explicit saved panel state and the legacy v3/v4
   missing-field open default for compatibility. It renders occupied inventory stacks only, makes
   catalog results/cost/footprint/lock/capacity explicit, and enforces one focused panel at a time.
-  The visible `?legacy`, F12 grid toggle, and `window.tarn` runtime paths are removed; full modal
-  semantics/focus restoration, settings/scaling/contrast, and onboarding remain deferred to
-  UX-03–UX-05.
+  The visible `?legacy`, F12 grid toggle, and `window.tarn` runtime paths are removed. Settings,
+  scaling/contrast, and onboarding remain deferred to UX-04–UX-05.
   Alternate arrow, T, comma/period, and numpad bindings remain reserved for their current actions so
-  remapping cannot create duplicate routes; this is the explicit UX-01 conflict policy. Full modal
-  semantics/focus restoration, settings controls, scaling/contrast coverage, and the first-ten-minutes
-  onboarding study remain deferred to UX-03–UX-05.
+  remapping cannot create duplicate routes; this is the explicit UX-01 conflict policy. Settings
+  controls, scaling/contrast coverage, and the first-ten-minutes onboarding study remain deferred to
+  UX-04–UX-05.
+
+- UX-03 is complete on `agent/ux-03-modal-accessibility`. Launch, pause, Help, Codex, inventory,
+  merchant, build, context, and settlement overlays now use labeled dialog/menu semantics with
+  deterministic focus entry, wraparound trapping, Escape close behavior, and opener restoration.
+  Toasts and vendor messages expose status text; modal transitions clear held keyboard/pointer state;
+  and build mode pauses the world while preserving a single fixed-step placement commit boundary.
+  Settlement presentation now pauses until dismissal. The deterministic baseline is 299 tests across
+  43 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production
+  build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass.
+  Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics, and
+  no browser warnings/errors. UX-04–UX-05 remain deferred.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

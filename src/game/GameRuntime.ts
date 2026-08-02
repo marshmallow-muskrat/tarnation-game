@@ -636,8 +636,6 @@ export class GameRuntime {
     this.pushHud(true);
     this.loadBackgroundAssets(options.onAssetProgress);
 
-    // Dev handle: lets the browser console drive the game for spot checks.
-    (window as unknown as { tarnation?: GameRuntime }).tarnation = this;
   }
 
   private loadBackgroundAssets(onProgress?: (progress: AssetLoadProgress) => void): void {
@@ -724,14 +722,13 @@ export class GameRuntime {
     this.persist();
     this.hudPresenter.setListener(null);
     this.world?.dispose();
-    const handles = window as unknown as {
-      tarnation?: GameRuntime;
-    };
-    if (handles.tarnation === this) delete handles.tarnation;
   }
 
   dismissWin(): void {
     this.winShownLocal = true;
+    this.pauseOpen = false;
+    this.clearInputState();
+    this.syncActionMenuState();
     markWinShown(this.gs);
     this.persist();
     this.pushHud(true);
@@ -1129,6 +1126,8 @@ export class GameRuntime {
       this.resetContextMenuState();
     }
     this.buildingMode = opening;
+    this.clearInputState();
+    this.syncActionMenuState();
     this.toolMode = 'farm';
     this.cancelPlayerActions();
     this.clearShots();
@@ -1146,7 +1145,11 @@ export class GameRuntime {
 
   selectBuild(index: number): void {
     if (!this.placement.select(index)) return;
-    if (!this.buildingMode) this.buildingMode = true;
+    if (!this.buildingMode) {
+      this.buildingMode = true;
+      this.clearInputState();
+      this.syncActionMenuState();
+    }
     this.toolMode = 'farm';
     setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[index]!.name}`, 1.2);
     this.pushHud(true);
@@ -1168,6 +1171,7 @@ export class GameRuntime {
       this.clearShots();
     }
     this.helpOpen = opening;
+    this.clearInputState();
     if (opening) {
       this.velX = 0;
       this.velZ = 0;
@@ -1179,6 +1183,7 @@ export class GameRuntime {
   toggleCodex(): void {
     if (this.codexOpen) {
       this.codexOpen = false;
+      this.clearInputState();
       this.syncActionMenuState();
       this.pushHud(true);
       return;
@@ -1202,6 +1207,7 @@ export class GameRuntime {
       this.codexSelectedKey = first?.key ?? null;
     }
     this.codexCompareKeys = [];
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1246,6 +1252,7 @@ export class GameRuntime {
       this.velZ = 0;
     }
     this.gs.inventoryOpen = opening;
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1293,6 +1300,7 @@ export class GameRuntime {
     this.placement.clear();
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
+    this.clearInputState();
     this.closeContextMenu();
     this.cancelPlayerActions();
     this.velX = 0;
@@ -1304,6 +1312,7 @@ export class GameRuntime {
   closeVendor(): void {
     this.vendorOpen = false;
     this.vendorMessage = '';
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1456,6 +1465,8 @@ export class GameRuntime {
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
+    this.clearInputState();
+    this.syncActionMenuState();
     this.cancelPlayerActions();
     this.clearShots();
     setToast(this.gs, `${asset.displayName} placement · ${this.inputLabel('rotateOrCycle')}/${this.inputLabel('secondary')} rotates · ${this.inputLabel('primary')} or click places · ${this.inputLabel('pause')} cancels`, 2);
@@ -1469,6 +1480,7 @@ export class GameRuntime {
   }
 
   private cancelActiveState(): void {
+    this.clearInputState();
     if (this.contextMenu.open) {
       this.closeContextMenu();
       return;
@@ -1479,6 +1491,7 @@ export class GameRuntime {
       this.buildingMode = false;
       this.placement.clear();
       this.world.setBuildPreview(null);
+      this.syncActionMenuState();
       setToast(this.gs, 'Placement cancelled', 1.2);
       this.pushHud(true);
       return;
@@ -1506,6 +1519,7 @@ export class GameRuntime {
     }
     if (this.helpOpen) {
       this.helpOpen = false;
+      this.syncActionMenuState();
       this.pushHud(true);
       return;
     }
@@ -1531,12 +1545,14 @@ export class GameRuntime {
   resumeGame(): void {
     if (!this.pauseOpen) return;
     this.pauseOpen = false;
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
 
   closeContextMenu(): void {
     this.resetContextMenuState();
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
   }
@@ -1581,6 +1597,7 @@ export class GameRuntime {
       gate: asset.gate,
       gateOpen: this.gs.placedBuildings[index]!.gateOpen === true,
     };
+    this.clearInputState();
     this.syncActionMenuState();
     this.pushHud(true);
     return true;
@@ -1709,7 +1726,13 @@ export class GameRuntime {
     this.playerActions?.cancel();
   }
 
+  private clearInputState(): void {
+    this.input.clearInteractionState();
+  }
+
   private syncActionMenuState(): void {
+    // Placement remains outside the menu state so the fixed-step action boundary
+    // can commit a clicked building while the world itself is paused.
     const menuOpen =
       this.pauseOpen ||
       this.helpOpen ||
@@ -1823,18 +1846,51 @@ export class GameRuntime {
     this.pushHud(false);
   };
 
-  private handleHotkeys(): void {
+  private handleHotkeys(): boolean {
+    if (this.settlementCelebrated && !this.winShownLocal) {
+      if (this.input.justPressed('pause')) this.dismissWin();
+      return true;
+    }
     if (this.pauseOpen) {
       if (this.input.justPressed('pause')) this.cancelActiveState();
-      return;
+      return true;
+    }
+    if (this.helpOpen) {
+      if (this.input.justPressed('pause') || this.input.justPressed('help')) this.cancelActiveState();
+      return true;
+    }
+    if (this.codexOpen) {
+      if (this.input.justPressed('pause') || this.input.justPressed('codex')) this.cancelActiveState();
+      return true;
+    }
+    if (this.vendorOpen) {
+      if (this.input.justPressed('pause')) this.cancelActiveState();
+      return true;
+    }
+    if (this.gs.inventoryOpen) {
+      if (this.input.justPressed('pause') || this.input.justPressed('inventory')) this.cancelActiveState();
+      return true;
+    }
+    if (this.contextMenu.open) {
+      if (this.input.justPressed('pause') || this.input.justPressed('context')) this.cancelActiveState();
+      return true;
+    }
+    if (this.buildingMode) {
+      if (this.input.justPressed('pause') || this.input.justPressed('build')) {
+        this.cancelActiveState();
+        return true;
+      }
+      if (this.input.justPressed('rotateOrCycle')) this.rotatePlacement();
+      if (this.input.justPressed('nextBuild')) {
+        const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
+        this.placement.select(nextIndex);
+        setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
+      }
+      return false;
     }
     if (this.input.justPressed('codex')) {
       this.toggleCodex();
-      return;
-    }
-    if (this.codexOpen) {
-      if (this.input.justPressed('pause')) this.cancelActiveState();
-      return;
+      return true;
     }
     const slotActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
     for (const [i, action] of slotActions.entries()) {
@@ -1849,21 +1905,23 @@ export class GameRuntime {
     }
     if (this.input.justPressed('ultimate')) this.useUltimate();
     if (this.input.justPressed('bearTrap')) this.useBearTrap();
-    if (this.input.justPressed('inventory')) this.toggleInventory();
-    if (this.input.justPressed('help')) this.toggleHelp();
+    if (this.input.justPressed('inventory')) {
+      this.toggleInventory();
+      return true;
+    }
+    if (this.input.justPressed('help')) {
+      this.toggleHelp();
+      return true;
+    }
     if (this.input.justPressed('context') && !this.buildingMode && !this.demolishMode) {
       if (!this.openPlacedContext()) setToast(this.gs, 'Point at a placed asset to open its context', 1.4);
     }
     if (this.input.justPressed('rotateOrCycle')) {
-      if (this.buildingMode) {
-        this.rotatePlacement();
-      } else {
-        cycleWeapon(this.gs);
-        this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
-        this.gs.toolSlotActive = false;
-        this.equipment.refresh(this.gs);
-        setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
-      }
+      cycleWeapon(this.gs);
+      this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
+      this.gs.toolSlotActive = false;
+      this.equipment.refresh(this.gs);
+      setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
     if (this.input.justPressed('mute')) {
       const muted = this.audio.toggleMuted();
@@ -1892,11 +1950,9 @@ export class GameRuntime {
       localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
       setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
-    if (this.input.justPressed('build')) this.toggleBuildMode();
-    if (this.buildingMode && this.input.justPressed('nextBuild')) {
-      const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
-      this.placement.select(nextIndex);
-      setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
+    if (this.input.justPressed('build')) {
+      this.toggleBuildMode();
+      return true;
     }
 
     if (this.input.justPressed('seedPrevious')) {
@@ -1912,7 +1968,10 @@ export class GameRuntime {
       if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
 
-    if (this.input.justPressed('pause')) this.cancelActiveState();
+    if (this.input.justPressed('pause')) {
+      this.cancelActiveState();
+      return true;
+    }
 
     const structure: [InputAction, ToolMode, string][] = [
       ['trench', 'trench', 'Irrigation trench selected'],
@@ -1924,10 +1983,16 @@ export class GameRuntime {
       this.toolMode = mode;
       setToast(this.gs, label, 1.2);
     }
+    return false;
   }
 
   private update(dt: number): void {
-    this.handleHotkeys();
+    if (this.handleHotkeys()) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
     if (this.actionState.currentState === 'disabled') {
       this.velX = 0;
       this.velZ = 0;
@@ -1999,6 +2064,23 @@ export class GameRuntime {
       setToast(this.gs, 'You walked away from the Traveling Merchant', 1.5);
     }
     if (this.vendorOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+
+    // The build catalog pauses the world, but placement confirmation still
+    // needs one fixed-step action boundary for its commit callback.
+    if (this.buildingMode) {
+      this.interaction.process({
+        buildingMode: true,
+        demolishMode: false,
+        toolSlotActive: this.gs.toolSlotActive,
+        toolbarSlot: this.gs.toolbarSlot,
+      });
+      this.actionState.advance(dt);
+      this.flushActionEvents();
       this.velX = 0;
       this.velZ = 0;
       this.movementIntent = false;
@@ -2080,6 +2162,9 @@ export class GameRuntime {
     if (this.settlementCelebrated) return;
     this.settlementCelebrated = true;
     this.winShownLocal = false;
+    this.pauseOpen = true;
+    this.clearInputState();
+    this.syncActionMenuState();
     setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
     this.spawnFeedbackBurst(this.playerX, this.playerZ, 'reward');
     this.audio.play('reward');

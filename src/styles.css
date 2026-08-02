@@ -24,7 +24,9 @@
 
 button:focus-visible,
 summary:focus-visible,
-canvas:focus-visible {
+canvas:focus-visible,
+[role="dialog"]:focus-visible,
+[role="menu"]:focus-visible {
   outline: 2px solid var(--teal);
   outline-offset: 2px;
 }
@@ -67,6 +69,18 @@ body,
   inset: 0;
   pointer-events: none;
   z-index: 10;
+}
+
+.modal-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 16;
+  background: rgba(3, 8, 7, 0.28);
+  pointer-events: auto;
+}
+
+.modal-scrim.placement-pass-through {
+  pointer-events: none;
 }
 
 .panel {
@@ -235,6 +249,7 @@ body,
   top: 18px;
   right: 18px;
   width: 268px;
+  z-index: 18;
 }
 
 .inv-grid {
@@ -473,7 +488,7 @@ body,
   max-height: min(620px, calc(100vh - 150px));
   overflow-y: auto;
   pointer-events: auto;
-  z-index: 11;
+  z-index: 18;
   padding: 15px;
   box-shadow: 0 10px 34px rgba(0, 0, 0, 0.3);
 }

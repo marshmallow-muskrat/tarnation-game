@@ -5,6 +5,7 @@ import { disposeAssetCache, resetFailedAssets, type AssetLoadProgress } from './
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
 import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
+import { useModalFocusScope } from './ui/modal';
 
 const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
   boot: 'boot assets',
@@ -30,6 +31,7 @@ export function App() {
   const [retryChoice, setRetryChoice] = useState<null | 'continue' | 'new'>(null);
   const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
   const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
+  const launchModalScope = useModalFocusScope(!launchChoice ? 'launch' : null, null);
 
   useEffect(() => () => {
     disposeModelIconRenderer();
@@ -74,8 +76,6 @@ export function App() {
       cancelled = true;
       runtime.dispose();
       runtimeRef.current = null;
-      const handles = window as unknown as { tarn?: unknown };
-      if (handles.tarn === runtime) delete handles.tarn;
     };
   }, [launchChoice, mountAttempt]);
 
@@ -148,10 +148,18 @@ export function App() {
         <canvas ref={canvasRef} tabIndex={0} aria-label="Tarnation game canvas" />
       </div>
       {!launchChoice && (
-        <div className="launch-overlay">
+        <div
+          ref={launchModalScope.ref}
+          className="launch-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="launch-title"
+          tabIndex={-1}
+          onKeyDown={launchModalScope.onKeyDown}
+        >
           <div className="panel launch-card">
             <p className="label">A fixed-camera farming adventure</p>
-            <h1>Tarnation</h1>
+            <h1 id="launch-title">Tarnation</h1>
             <p className="launch-copy">
               Grow a homestead, protect the harvest, and build a town one deliberate piece at a time.
             </p>

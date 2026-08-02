@@ -676,7 +676,7 @@ focused-panel priority prevents simultaneous inventory, merchant, build, Help, C
 market overlays. Build and merchant detail shows authored result/benefit, cost, footprint,
 capacity/ownership, and lock reason. Visible debug/scaffolding paths and implementation terms were
 removed. The deterministic baseline is 294 tests across 42 files; required checks and
-production-preview smoke pass. UX-03–05 remain pending.
+production-preview smoke pass. UX-03 is complete; UX-04–05 remain pending.
 
 ### UX-03 — Make overlays real modals
 
@@ -685,6 +685,16 @@ production-preview smoke pass. UX-03–05 remain pending.
 - Pause simulation according to the decision in Section 4.
 - Announce important save, purchase, error, discovery, and raid states through nonvisual status text.
 - Ensure pointer capture and keyboard state are cleared on modal/focus transitions.
+
+Status: Complete on `agent/ux-03-modal-accessibility`. Launch, pause, Help, Codex, inventory,
+merchant, build, context, and settlement overlays now expose labeled dialog/menu semantics with
+focus entry, wraparound focus trapping, Escape handling, and opener restoration. Modal transitions
+clear held keyboard and pointer state; build mode pauses the world while preserving one fixed-step
+placement commit boundary. Toasts and vendor messages expose nonvisual status text, and the ending
+overlay pauses simulation until dismissed. The deterministic baseline is 299 tests across 43 files;
+the required test, simulation, asset, build, strict TypeScript, diff, and production audit checks
+pass. Production-preview smoke verified fresh launch, Help focus restoration, inventory semantics,
+and no browser warnings or errors. UX-04–05 remain pending.
 
 ### UX-04 — Settings and accessibility baseline
 
@@ -959,7 +969,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01–02 complete on their task branches; UX-03–05 pending |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01–03 complete on their task branches; UX-04–05 pending |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
