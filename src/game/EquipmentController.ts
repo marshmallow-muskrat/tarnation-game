@@ -7,6 +7,7 @@ import {
 } from '../content/equipment';
 import { cloneModel } from './Assets';
 import { disposeModelClone, disposeObjectResources } from './ResourceDisposal';
+import { buildAuthoredVisual } from './PresentationProps';
 import type {
   CarryAnimationProfile,
   PlayerActionController,
@@ -108,7 +109,7 @@ export class EquipmentController {
     const profile = EQUIPMENT_PROFILES[desired];
     const { root } = profile.modelKey
       ? cloneModel(profile.modelKey)
-      : { root: createStylizedBucket() };
+      : { root: buildAuthoredVisual('bucket') };
     root.name = `equipped_${desired}`;
     const sourceScale = root.scale.x;
     // Held props pivot around a measured model-space grip. Keeping the
@@ -311,37 +312,4 @@ export class EquipmentController {
     joint.quaternion.copy(this.supportLocalQuaternion);
     joint.updateMatrixWorld(true);
   }
-}
-
-/** The accepted packs have no bucket mesh, so the bucket is intentionally a small authored prop. */
-function createStylizedBucket(): THREE.Group {
-  const root = new THREE.Group();
-  root.name = 'bucket_stylized_prop';
-  const body = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.2, 0.24, 8, 1, true),
-    new THREE.MeshStandardMaterial({ color: 0x57717a, roughness: 0.72, metalness: 0.12 }),
-  );
-  body.position.y = -0.12;
-  body.castShadow = true;
-  root.add(body);
-
-  const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(0.18, 0.018, 6, 16),
-    new THREE.MeshStandardMaterial({ color: 0xb9c8c0, roughness: 0.42, metalness: 0.3 }),
-  );
-  rim.rotation.x = Math.PI / 2;
-  rim.position.y = 0.01;
-  rim.castShadow = true;
-  root.add(rim);
-
-  const handle = new THREE.Mesh(
-    new THREE.TorusGeometry(0.17, 0.014, 5, 14, Math.PI),
-    new THREE.MeshStandardMaterial({ color: 0xc4a36a, roughness: 0.6, metalness: 0.05 }),
-  );
-  handle.rotation.x = Math.PI / 2;
-  handle.rotation.z = Math.PI;
-  handle.position.y = 0.04;
-  handle.castShadow = true;
-  root.add(handle);
-  return root;
 }

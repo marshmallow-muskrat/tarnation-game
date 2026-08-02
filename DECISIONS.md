@@ -473,6 +473,21 @@ The asset check opens each unique active binary glTF and validates its container
 skin/animation references, finite transforms, finite POSITION bounds, texture sources, buffer ranges,
 expected clips, missing files, catalog IDs, and fallback records. This is a pure Node-side check with
 no Three.js or browser dependency, so it does not change the production bundle or the primitive
-fallback path. The current repository contains 12 rigged and 85 static active files, 160 named clips,
-12 intentional manifest aliases, and no external texture files. The market-stall well placeholder and
-hardcoded tool-icon views remain intentionally deferred to ART-02 and the later presentation pass.
+fallback path. At the ART-01 boundary the repository contained 12 rigged and 85 static active files,
+160 named clips, 12 intentional manifest aliases, and no external texture files. The market-stall
+placeholder and hardcoded tool-icon views were left for the presentation pass.
+
+## 2026-08-01 — Use authored props instead of unrelated presentation substitutes
+
+ART-02 removes the `market_stall` manifest entry that pointed at the well while the live world already
+used the authored `MarketStall` builder. The catalog now permits a typed `authoredVisual` with a null
+`modelKey` only for the bucket, caravan, barrel, and haystack; this prevents an unrelated backpack,
+tent, or log model from being presented as those objects. Crates and coin sacks continue to use the
+accepted chest and pouch models, and every visible vendor/build row remains backed by an active GLB.
+
+`PresentationProps.ts` owns the bucket, caravan, barrel, and haystack geometry. The runtime records
+whether a rendered root is an authored prop or an asset-cache clone and disposes the correct resource
+owner during camp rebuilds and teardown. The active picker now audits the 16 sold-building, fixture,
+stall, and bucket views under the shared loader and shadowed lighting profile; authored bounds are
+kept within their typed placement footprints. No new external asset or license is introduced, and
+save schema, placement occupancy, economy rules, and deterministic simulation behavior are unchanged.

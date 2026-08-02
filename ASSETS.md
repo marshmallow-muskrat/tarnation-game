@@ -20,6 +20,12 @@ textures, binary references, and expected animation clips.
 - **Farm Buildings:** barns, silos, windmills, water tower, well, coop, fences, and related pieces.
 - **Ultimate Monsters:** optional rigged guardian art retained for later authored zones.
 
+The accepted packs do not contain honest meshes for the market stall, merchant caravan, barrel,
+haystack, or bucket. These are intentionally authored low-poly props in
+`src/game/MarketStall.ts` and `src/game/PresentationProps.ts`; they are not substitutions for an
+unrelated pack model and require no new asset license. The crate and coin sack retain their honest
+accepted chest and pouch models.
+
 The accepted tree set is deliberately separate from the Ultimate Nature scatter set. Tree models
 have broad canopies, so the farm currently uses `FARM_TREE_FRACTION = 0.055` and manifest tree
 height `2.5`. Recheck both values whenever the tree source changes.
@@ -48,8 +54,8 @@ height `2.5`. Recheck both values whenever the tree source changes.
    size dramatically.
 5. Normalise scale with manifest `height`. Grounding and material treatment belong in the shared
    loader. Keep source proportions intact.
-6. Test models in `picker.html` and the actual game camera. A model that looks fine in isolation
-   can be too large, too dark, or poorly oriented in the farm.
+6. Test active catalog models and authored props in `picker.html` and the actual game camera. A
+   model that looks fine in isolation can be too large, too dark, or poorly oriented in the farm.
 
 ## Runtime safety and performance
 

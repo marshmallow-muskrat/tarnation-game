@@ -100,23 +100,28 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
   and build.
 
-- ART-01 is complete on the M7 task branch: the typed model metadata resolver now derives rigged or
-  static structure, expected clips, source-space axes and pivot, target heights, catalog footprints,
-  load groups, primitive fallbacks, held-marker source, icon framing, and CC0 provenance. The pure
-  GLB validator checks all 97 unique active files for scene references, finite transforms, source
-  bounds, textures, binary ranges, and expected clips. The deterministic baseline is now 252 tests
-  across 36 files; `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the
-  production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
-  pass. ART-02 is next.
+- ART-01 and ART-02 are complete on the M7 task branch. The typed model metadata resolver derives
+  rigged or static structure, expected clips, source-space axes and pivot, target heights, catalog
+  footprints, load groups, primitive fallbacks, held-marker source, icon framing, and CC0 provenance.
+  ART-02 removes the well-backed `market_stall` manifest alias, makes authored visuals explicit in
+  the catalog, centralizes the bucket prop, and adds owned procedural caravan, barrel, and haystack
+  silhouettes. Fixed camp rendering now disposes authored props separately from cached GLB clones;
+  every visible vendor/build row remains backed by an active accepted model. The presentation picker
+  now loads 16 active sold-building, camp-fixture, market-stall, and bucket views through the same
+  loader and shadowed lighting profile. The pure GLB validator checks all 97 unique active files;
+  the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
+  `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 is next.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
-- ART-01 intentionally does not change the existing `market_stall` model placeholder, the four
-  hardcoded tool icon views, or the equipment profiles' measured grips. The current held-tool GLBs
-  have no embedded grip/support marker nodes, so the typed equipment profiles remain the honest
-  marker source; placeholder and presentation cleanup remain ART-02 and later M7 work.
+- ART-02 intentionally does not introduce new external art: accepted packs have no honest mesh for
+  the market stall, caravan, barrel, haystack, or bucket, so the authored props remain the source of
+  truth. The current held-tool GLBs have no embedded grip/support marker nodes, so the typed
+  equipment profiles remain the honest marker source; hardcoded tool-icon framing and broader
+  presentation cleanup remain later M7 work.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB

@@ -11,6 +11,7 @@ export type AssetCategory =
   | 'Utilities'
   | 'Fixtures';
 export type AssetAvailability = 'starter' | 'merchant' | 'upgrade' | 'debug' | 'unreleased' | 'fixture';
+export type AuthoredVisual = 'bucket' | 'caravan' | 'barrel' | 'haystack';
 
 export type MaterialCost = Readonly<Record<string, number>>;
 
@@ -23,7 +24,13 @@ export type PurchasableAsset = {
   displayName: string;
   category: AssetCategory;
   useType: AssetUseType;
-  modelKey: ModelKey;
+  /**
+   * Null is deliberate for a small set of authored props. Their visuals are
+   * built by the renderer instead of pretending that an unrelated pack model
+   * is the correct presentation.
+   */
+  modelKey: ModelKey | null;
+  authoredVisual?: AuthoredVisual;
   footprint: { width: number; height: number };
   facings: 1 | 2 | 4;
   blocksMovement: boolean;
@@ -121,7 +128,8 @@ export const PURCHASABLE_ASSETS = [
     id: 'tool:bucket',
     displayName: 'Bucket',
     category: 'Utilities',
-    modelKey: 'backpack',
+    modelKey: null,
+    authoredVisual: 'bucket',
     footprint: { width: 1, height: 1 },
     facings: 1,
     blocksMovement: false,
@@ -416,7 +424,8 @@ export const PURCHASABLE_ASSETS = [
     id: 'fixture:caravan',
     displayName: 'Merchant Caravan',
     category: 'Fixtures',
-    modelKey: 'tent',
+    modelKey: null,
+    authoredVisual: 'caravan',
     footprint: { width: 3, height: 2 },
     facings: 4,
     blocksMovement: true,
@@ -446,7 +455,8 @@ export const PURCHASABLE_ASSETS = [
     id: 'fixture:barrel',
     displayName: 'Whiskey Barrel',
     category: 'Fixtures',
-    modelKey: 'wood_log',
+    modelKey: null,
+    authoredVisual: 'barrel',
     footprint: { width: 1, height: 1 },
     facings: 4,
     blocksMovement: true,
@@ -461,7 +471,8 @@ export const PURCHASABLE_ASSETS = [
     id: 'fixture:haystack',
     displayName: 'Haystack',
     category: 'Fixtures',
-    modelKey: 'wood_log',
+    modelKey: null,
+    authoredVisual: 'haystack',
     footprint: { width: 1, height: 1 },
     facings: 4,
     blocksMovement: true,
@@ -539,6 +550,18 @@ export function validatePurchasableCatalog(): string[] {
     if (![1, 2, 4].includes(asset.facings)) problems.push(`invalid facings: ${asset.id}`);
     if (asset.fixture !== (asset.availability === 'fixture')) {
       problems.push(`fixture flag and availability disagree: ${asset.id}`);
+    }
+    if (asset.modelKey === null && !asset.authoredVisual) {
+      problems.push(`asset needs a model key or authored visual: ${asset.id}`);
+    }
+    if (asset.modelKey !== null && asset.authoredVisual) {
+      problems.push(`asset cannot have both a model key and authored visual: ${asset.id}`);
+    }
+    if (asset.authoredVisual === 'bucket' && asset.id !== 'tool:bucket') {
+      problems.push(`bucket authored visual is assigned to the wrong asset: ${asset.id}`);
+    }
+    if (asset.authoredVisual !== 'bucket' && asset.authoredVisual && !asset.fixture) {
+      problems.push(`camp authored visual must be a fixed fixture: ${asset.id}`);
     }
     if (asset.availability === 'starter' && !asset.keybind) {
       problems.push(`starter asset needs a keybind: ${asset.id}`);

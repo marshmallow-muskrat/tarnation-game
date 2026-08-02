@@ -63,7 +63,7 @@ export type HudVendorAsset = {
   footprint: string;
   useType: PurchasableAsset['useType'];
   gate: boolean;
-  model: ModelKey;
+  model: ModelKey | null;
   price: number;
   material: string;
   owned: number;

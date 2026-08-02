@@ -318,7 +318,11 @@ export function Hud({
           <div className="vendor-list">
             {hud.vendor.items.map((item) => (
               <div className="vendor-row" key={item.id}>
-                <ModelIcon model={item.model} className="vendor-model-icon" size={46} />
+                {item.model ? (
+                  <ModelIcon model={item.model} className="vendor-model-icon" size={46} />
+                ) : (
+                  <span className="vendor-model-icon vendor-authored-visual" aria-hidden="true" />
+                )}
                 <div className="vendor-copy">
                   <p className="vendor-name">{item.name}</p>
                   <p className="vendor-description">{item.description}</p>
