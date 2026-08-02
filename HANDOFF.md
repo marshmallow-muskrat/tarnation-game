@@ -71,7 +71,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the player-control phase from ACT-05, after the completed ACT-01/02/03/04 and
+- Continue the core-loop phase from CORE-01, after the completed ACT-01/02/03/04/05 and
   PERF-05 runtime responsibility extractions.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
@@ -243,7 +243,8 @@ The characterization baseline intentionally preserves current behavior for later
   crop, loot-marker, and ambient-mote motion without changing fixed-step timing. Six focused tests cover
   the boundaries, hysteresis, residual velocity, clip mapping, cadence, and turn cap. The deterministic
   baseline is now 160 tests across 25 files. Production-preview smoke reached fresh Day 1/daylight and
-  opened the field guide without observed console warnings or errors; ACT-05 remains separate.
+  opened the field guide without observed console warnings or errors; ACT-04 was the next separate
+  control/animation task.
 
 - ACT-04 gives each held or placement profile a typed contact contract and routes action clips/timings
   through that data. Shovel work now faces valid farm targets and rejects out-of-range or wrong-tool
@@ -255,7 +256,19 @@ The characterization baseline intentionally preserves current behavior for later
   pure targeting tests plus the updated equipment/selection characterization bring the deterministic
   baseline to 163 tests across 26 files. The built preview reached Day 1/daylight with Saved status and
   visibly mounted the bucket prop; the browser harness's stale New Adventure confirmation was not used
-  as evidence and remains a tooling limitation, not a gameplay defect. ACT-05 remains separate.
+  as evidence and remains a tooling limitation, not a gameplay defect. ACT-05 followed as a separate
+  target-domain task.
+
+- ACT-05 separates primary work from explicit combat and friendly wildlife. Work actions keep their
+  authored farm/tree/boulder target selection and never include ambient animals. Secondary axe combat
+  now selects one intended target inside a deterministic facing cone before the swing and rechecks
+  range/facing at the fixed contact event, reporting empty, turned-away, or moved targets without a
+  false hit. Foxes retain the existing damage/defeat/defense-reward path; ambient animals can only be
+  briefly dazed by explicit melee, ranged, or boulder contact, with no health depletion, death marker,
+  trophy, or reward. Four new pure targeting/policy tests bring the deterministic baseline to 167 tests
+  across 26 files. Production-preview smoke reached Day 1/daylight with Saved status; selecting the
+  axe and issuing an empty-field secondary click surfaced the player-facing `No target in front of you`
+  rejection. CORE-01 is next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

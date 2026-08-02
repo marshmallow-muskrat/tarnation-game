@@ -145,7 +145,17 @@ import { CropBatches } from './CropBatches';
 import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
 import { approachHeading, LOCOMOTION_GAIT } from './Locomotion';
-import { classifyAxeTarget, headingToTarget, isWithinFacingArc } from './ToolInteraction';
+import {
+  classifyAxeTarget,
+  headingToTarget,
+  isWithinFacingArc,
+  isWithinMeleeContact,
+  isMeleeContactObstructed,
+  MELEE_FACING_HALF_ANGLE,
+  meleeEffectForTarget,
+  selectMeleeCandidate,
+  type MeleeCandidate,
+} from './ToolInteraction';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
@@ -234,7 +244,6 @@ type PlainsAnimal = {
   targetHeading: number;
   speed: number;
   timer: number;
-  hp: number;
   state: 'idle' | 'walk' | 'hurt';
   name: string;
 };
@@ -336,7 +345,7 @@ export class GameRuntime {
     fireWeapon: () => this.fireWeapon(),
     useShovel: () => this.useShovel(),
     useAxe: () => this.useAxe(),
-    useCombatAxe: () => this.meleeSwing(AXE_DAMAGE),
+    useCombatAxe: () => this.useCombatAxe(),
     emptyToolSlot: (index) => setToast(this.gs, `Slot ${index + 1} is empty`, 1.2),
   });
   private readonly placement = new PlacementCoordinator({
@@ -2429,6 +2438,11 @@ export class GameRuntime {
     this.meleeSwing(AXE_DAMAGE);
   }
 
+  /** Secondary axe input is the explicit combat affordance; left click remains farm work. */
+  private useCombatAxe(): void {
+    this.meleeSwing(AXE_DAMAGE);
+  }
+
   private aimDirection(): { dx: number; dz: number } {
     const ndc = this.input.getPointerNdc();
     const hit = this.world.raycastGround(ndc.x, ndc.y);
@@ -2572,8 +2586,17 @@ export class GameRuntime {
   ): boolean {
     const targetHeading = headingToTarget(this.playerX, this.playerZ, targetX, targetZ);
     this.headingTarget = targetHeading;
-    const halfAngle = EQUIPMENT_PROFILES[profileKey].interaction.facingHalfAngle;
+    const interaction = EQUIPMENT_PROFILES[profileKey].interaction;
+    const halfAngle = interaction.facingHalfAngle;
     return this.beginProfiledToolAction(profileKey, () => {
+      if (interaction.range !== null && Math.hypot(this.playerX - targetX, this.playerZ - targetZ) > interaction.range) {
+        setToast(this.gs, 'The target moved out of tool range', 1.4);
+        return;
+      }
+      if (isMeleeContactObstructed(this.playerX, this.playerZ, targetX, targetZ, this.obstacleTiles)) {
+        setToast(this.gs, 'An obstacle blocks the target', 1.4);
+        return;
+      }
       if (!isWithinFacingArc(this.playerHeading, targetHeading, halfAngle)) {
         setToast(this.gs, 'Turn toward the target before making contact', 1.4);
         return;
@@ -2637,31 +2660,82 @@ export class GameRuntime {
     return true;
   }
 
-  private applyMeleeDamage(damage: number): void {
-    let connected = false;
-    for (const w of [...this.foxes]) {
-      if (w.dead) continue;
-      if (Math.hypot(w.x - this.playerX, w.z - this.playerZ) > MELEE_RANGE) continue;
-      this.damageFox(w, damage);
-      connected = true;
-    }
-    for (const a of [...this.animals]) {
-      if (Math.hypot(a.x - this.playerX, a.z - this.playerZ) > MELEE_RANGE) continue;
-      this.damageAnimal(a, damage);
-      connected = true;
-    }
-    if (connected) {
-      this.world.shake(0.08, 0.07);
-      this.hitPause = 0.04;
-    }
+  private meleeTargetForHeading(heading: number): MeleeCandidate<Fox | PlainsAnimal> | null {
+    return selectMeleeCandidate<Fox | PlainsAnimal>(
+      this.playerX,
+      this.playerZ,
+      heading,
+      MELEE_RANGE,
+      MELEE_FACING_HALF_ANGLE,
+      [
+        ...this.foxes
+          .filter((target) => !target.dead)
+          .map((target) => ({ kind: 'hostile' as const, target, x: target.x, z: target.z })),
+        ...this.animals
+          .filter((target) => target.state !== 'hurt')
+          .map((target) => ({ kind: 'friendly' as const, target, x: target.x, z: target.z })),
+      ],
+    );
   }
 
-  /** Tool swing — hits everything alive inside a short radius. */
+  private applyMeleeDamage(
+    damage: number,
+    attackHeading: number,
+    candidate: MeleeCandidate<Fox | PlainsAnimal>,
+  ): void {
+    if (!isWithinFacingArc(this.playerHeading, attackHeading, MELEE_FACING_HALF_ANGLE)) {
+      setToast(this.gs, 'Turn toward the target before swinging', 1.4);
+      return;
+    }
+    if (
+      !isWithinMeleeContact(
+        this.playerX,
+        this.playerZ,
+        candidate.target.x,
+        candidate.target.z,
+        attackHeading,
+        MELEE_RANGE,
+        MELEE_FACING_HALF_ANGLE,
+      )
+    ) {
+      setToast(this.gs, 'The target moved out of melee range', 1.4);
+      return;
+    }
+    if (isMeleeContactObstructed(this.playerX, this.playerZ, candidate.target.x, candidate.target.z, this.obstacleTiles)) {
+      setToast(this.gs, 'An obstacle blocks the target', 1.4);
+      return;
+    }
+    if (meleeEffectForTarget(candidate.kind) === 'damage') {
+      const fox = candidate.target as Fox;
+      if (fox.dead) {
+        setToast(this.gs, 'The fox is no longer a target', 1.4);
+        return;
+      }
+      this.damageFox(fox, damage);
+    } else {
+      this.dazeAnimal(candidate.target as PlainsAnimal);
+    }
+    this.world.shake(0.08, 0.07);
+    this.hitPause = 0.04;
+  }
+
+  /** Combat swing — selects one intended target inside a facing cone at contact. */
   private meleeSwing(
     damage: number,
     clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash',
   ): void {
-    this.beginMeleeAction(clip, () => this.applyMeleeDamage(damage));
+    const { dx, dz } = this.aimDirection();
+    const attackHeading = Math.atan2(dx, dz);
+    const candidate = this.meleeTargetForHeading(attackHeading);
+    if (!candidate) {
+      setToast(this.gs, 'No target in front of you', 1.2);
+      return;
+    }
+    if (isMeleeContactObstructed(this.playerX, this.playerZ, candidate.target.x, candidate.target.z, this.obstacleTiles)) {
+      setToast(this.gs, 'An obstacle blocks the target', 1.4);
+      return;
+    }
+    this.beginMeleeAction(clip, () => this.applyMeleeDamage(damage, attackHeading, candidate));
   }
 
   private tryBoulderRoll(): boolean {
@@ -2720,7 +2794,7 @@ export class GameRuntime {
         if (b.hit.has(a)) continue;
         if (Math.hypot(a.x - b.x, a.z - b.z) > BOULDER_RADIUS + 0.4) continue;
         b.hit.add(a);
-        this.damageAnimal(a, BOULDER_DAMAGE);
+        this.dazeAnimal(a);
       }
 
       if (
@@ -2819,7 +2893,7 @@ export class GameRuntime {
       if (!consumed) {
         for (const a of [...this.animals]) {
           if (Math.hypot(s.x - a.x, s.z - a.z) > 0.9) continue;
-          this.damageAnimal(a, s.dmg);
+          this.dazeAnimal(a);
           if (s.ricochet > 0) {
             s.ricochet--;
             s.vx *= -1;
@@ -2864,22 +2938,15 @@ export class GameRuntime {
     this.foxes = this.foxes.filter((o) => !o.dead);
   }
 
-  private damageAnimal(a: PlainsAnimal, amount: number): void {
-    a.hp -= amount;
+  /** Ambient wildlife is friendly scenery: explicit combat can only daze it. */
+  private dazeAnimal(a: PlainsAnimal): void {
+    if (a.state === 'hurt') return;
     a.state = 'hurt';
     a.timer = 1.2;
-    if (a.hp > 0) {
-      a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
-      this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
-      this.audio.play('hit');
-      return;
-    }
-    this.stopMixer(a.actions.mixer, a.root);
-    this.spawnFeedbackBurst(a.x, a.z, 0xef7561, 8, 0.32);
-    this.audio.play('defeat');
-    this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
-    this.animals = this.animals.filter((o) => o !== a);
-    this.rollTrophy(`animal:${a.name}`, a.name, a.x, a.z);
+    a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
+    this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
+    this.audio.play('hit');
+    setToast(this.gs, `${a.name} is dazed — wildlife is unharmed`, 1.8);
   }
 
   /** Leave a short-lived, grounded carcass marker instead of making a kill pop. */
@@ -2889,7 +2956,7 @@ export class GameRuntime {
     x: number,
     z: number,
     heading: number,
-    kind: 'fox' | 'animal',
+    kind: 'fox',
   ): void {
     corpse.removeFromParent();
     corpse.scale.setScalar(baseScale);
@@ -2920,8 +2987,7 @@ export class GameRuntime {
 
     // A subtle low-poly patch gives the player a readable defeat location even
     // when the animal silhouette is partly hidden by terrain or foliage.
-    const radius = kind === 'fox' ? 0.48 : 0.7;
-    const patchGeometry = new THREE.CircleGeometry(radius, 12);
+    const patchGeometry = new THREE.CircleGeometry(0.48, 12);
     const patchMaterial = new THREE.MeshStandardMaterial({
       color: 0x6c382b,
       transparent: true,
@@ -3623,7 +3689,6 @@ export class GameRuntime {
         targetHeading: this.gs.rng() * Math.PI * 2,
         speed: 1.1 + this.gs.rng() * 0.8,
         timer: 2 + this.gs.rng() * 4,
-        hp: 3,
         state: 'idle',
         name: animal.name,
       });
