@@ -14,7 +14,11 @@ export default defineConfig({
   reporter: isCi
     ? [['line'], ['html', { outputFolder: 'qa-artifacts/playwright-report', open: 'never' }]]
     : 'list',
-  timeout: 60_000,
+  // Software WebGL on the hosted Linux runner can take several seconds to
+  // answer each browser protocol turn while the fixed-step loop is rendering.
+  // Keep the journey assertions bounded, but give a complete production-build
+  // journey enough time to finish before Playwright interrupts it.
+  timeout: 120_000,
   expect: {
     timeout: 15_000,
     toHaveScreenshot: {

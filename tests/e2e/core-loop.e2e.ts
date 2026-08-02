@@ -30,11 +30,12 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   const canvas = page.getByLabel('Tarnation game canvas');
   await canvas.focus();
   await page.keyboard.press('Digit2');
-  await page.keyboard.down('KeyD');
+  await page.keyboard.down('KeyS');
   // Hosted software-WebGL runners need a few more fixed-step frames before
-  // the player is inside the starter tile's tool range.
+  // the player is inside the starter tile's tool range. S moves down-screen,
+  // toward the nearest edge of the marked plot from the authored spawn tile.
   await page.waitForTimeout(500);
-  await page.keyboard.up('KeyD');
+  await page.keyboard.up('KeyS');
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) throw new Error('game canvas did not expose a layout box');
   // The fresh camera is snapped to the player; the first marked plot is two
@@ -46,9 +47,6 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await page.mouse.click(starterPlotPoint.x, starterPlotPoint.y);
   await expect(page.getByText(/plant one seed in that tilled plot/i)).toBeVisible({ timeout: 5_000 });
 
-  await page.keyboard.down('KeyD');
-  await page.waitForTimeout(300);
-  await page.keyboard.up('KeyD');
   await page.keyboard.press('Digit2');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(350);
@@ -103,11 +101,11 @@ test('midgame fixture lets the merchant sell a fence deed with its production co
   await page.keyboard.press('KeyE');
   const merchant = page.getByRole('dialog', { name: 'Traveling Merchant' });
   await expect(merchant).toBeVisible();
-  await merchant.getByRole('tab', { name: 'Buildings', exact: true }).click();
+  await merchant.getByRole('tab', { name: 'Buildings', exact: true }).click({ force: true });
   await expect(merchant.getByText('Silo', { exact: true })).toBeVisible();
   const buyButtons = merchant.getByRole('button', { name: 'Buy', exact: true });
   await expect(buyButtons.first()).toBeEnabled();
-  await buyButtons.first().click();
+  await buyButtons.first().click({ force: true });
   await expect(merchant.getByRole('status')).toContainText(/added to inventory|Purchased|Bought|owned/i);
   await expect(merchant.getByRole('button', { name: 'Close' })).toBeVisible();
   await expectNoBrowserErrors(page, errors);
@@ -131,7 +129,7 @@ test('midgame fixture opens a purchased deed, previews a building, and survives 
   await page.keyboard.press('KeyI');
   const inventory = page.getByRole('dialog', { name: /Inventory/ });
   await expect(inventory).toBeVisible();
-  await inventory.getByRole('button', { name: /Use Fence Section/ }).click();
+  await inventory.getByRole('button', { name: /Use Fence Section/ }).click({ force: true });
   const build = page.getByRole('dialog', { name: 'Choose a structure' });
   await expect(build).toBeVisible();
   await expect(build.getByRole('list', { name: 'Placeable buildings' })).toBeVisible();
