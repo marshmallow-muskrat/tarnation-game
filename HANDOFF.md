@@ -70,8 +70,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the player-control phase from ACT-01 through ACT-05, after the completed PERF-05 runtime
-  responsibility extraction.
+- Continue the player-control phase from ACT-03 through ACT-05, after the completed ACT-01/02 and
+  PERF-05 runtime responsibility extractions.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -221,7 +221,18 @@ The characterization baseline intentionally preserves current behavior for later
   construction, bucket work, and bear traps now apply their effects from fixed-step action callbacks;
   the current deterministic baseline is 146 tests across 23 files. The local production preview reached
   Day 1/daylight with Saved status, field-guide and inventory modal checks, and no observed console
-  warnings or errors. ACT-02–05 remain separate control/animation follow-up tasks.
+  warnings or errors. ACT-03–05 remain separate control/animation follow-up tasks.
+
+- ACT-02 moves held-equipment ownership into the typed `src/content/equipment.ts` table. Seven records
+  cover axe, bow, shotgun, shovel, bucket, bear trap, and build previews with measured axes, grip/socket
+  transforms, support-hand targets, locomotion/action metadata, fixed-step timings, feedback cues, icon
+  framing, readability bounds, and debug colours. The current four Survival Pack glTFs have no authored
+  grip/socket marker nodes, so the measured values remain the intentional source of truth. The runtime
+  consumes the table for held transforms, support solving, action timing, and opt-in F12 axis/support
+  visualization; `npm run assetcheck` validates all records. Eight focused tests characterize the table,
+  preserve the existing four transforms, and identify invalid fields. The deterministic baseline is now
+  154 tests across 24 files. Production-preview smoke reached Day 1/daylight and opened the field guide
+  without observed console warnings or errors; ACT-03–05 remain separate.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
