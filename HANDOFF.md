@@ -150,8 +150,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   full and production-only audits reported zero vulnerabilities; and contribution, changelog, license,
   and asset/audio provenance guidance were added. The task changed no Vite/React/Three.js, save,
   simulation, economy, or gameplay behavior.
-- REL-02 implementation is complete on `agent/rel-02-release-checklist`, pending the exact reviewed M10
-  merge and live smoke. The top-left HUD objective is bounded to a compact readable panel with a scroll
+- REL-02 is complete in M10 release merge `7568e1d` (PR #68). The top-left HUD objective is bounded to a compact readable panel with a scroll
   cap; `J` toggles the settlement objective and `G` toggles the market guide, and both bindings are exposed
   through Help, Settings, and README controls. The release E2E covers those controls, panel width, and the
   recoverable unsupported-WebGL launch path. Integrated local evidence is 334 Vitest tests across 49 files,
@@ -161,6 +160,14 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   remains green. The stale asset-picker documentation link was corrected from port 5173 to the configured
   Vite port 5183. Human animation/accessibility signoff and external playtesting: **Deferred by owner until
   after completion of this update; not performed and not claimed.**
+- M10 release verification passed on exact main commit `7568e1d`: [deployment workflow 30765350012](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30765350012)
+  ran the complete quality matrix and automatically deployed the verified bundle to <https://tarnation.pages.dev/>
+  (release preview <https://fbe1db1f.tarnation.pages.dev/>). Direct live smoke verified the 390px bounded HUD,
+  `J` objective hide/show, `G` market-guide hide/show, diagnostics export identifying commit
+  `7568e1db5ba2feb5bc98ac84055495e670b42828` and save v9, persisted movement displacement `0.550676`, and
+  persisted `grass → tilled` farming. The smoke test recorded zero browser warnings/errors and zero failed
+  network requests. Per owner instruction, the Core Release Gate was not separately evaluated and no
+  post-gate expansion work was started.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -742,3 +749,10 @@ Deployment record:
   validation, and production build, then deployed automatically. Fresh production smoke passed
   Continue, Day 1/daylight, Saved status, settlement objective, starter defense controls, and Help
   modal open/close with no console warnings or errors.
+- `7568e1d` — M10 release hardening: QA-01–03 and REL-01–02 — <https://tarnation.pages.dev/>; GitHub Actions
+  run [30765350012](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30765350012) verified the
+  exact main merge, ran the complete quality matrix, and automatically deployed the release preview at
+  <https://fbe1db1f.tarnation.pages.dev/>. Direct live smoke against the canonical URL passed the compact
+  objective/market-guide controls, exact diagnostics identity, movement persistence, deterministic farming
+  persistence, and browser/network error checks. Human-only animation/accessibility signoff and external
+  playtesting remain **Deferred by owner until after completion of this update; not performed and not claimed.**
