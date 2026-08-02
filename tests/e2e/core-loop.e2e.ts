@@ -31,7 +31,9 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await canvas.focus();
   await page.keyboard.press('Digit2');
   await page.keyboard.down('KeyD');
-  await page.waitForTimeout(100);
+  // Hosted software-WebGL runners need a few more fixed-step frames before
+  // the player is inside the starter tile's tool range.
+  await page.waitForTimeout(500);
   await page.keyboard.up('KeyD');
   const canvasBox = await canvas.boundingBox();
   if (!canvasBox) throw new Error('game canvas did not expose a layout box');

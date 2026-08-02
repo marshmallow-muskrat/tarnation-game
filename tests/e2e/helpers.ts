@@ -57,6 +57,9 @@ export function captureBrowserErrors(page: Page): string[] {
 }
 
 export async function expectNoBrowserErrors(page: Page, errors: readonly string[]): Promise<void> {
-  await page.waitForTimeout(250);
+  void page;
+  // Keep the drain delay outside the browser event loop. The production build
+  // can legitimately starve page timers while software WebGL is rendering.
+  await new Promise<void>((resolve) => setTimeout(resolve, 250));
   expect(errors, 'production E2E must not emit browser warnings or errors').toEqual([]);
 }
