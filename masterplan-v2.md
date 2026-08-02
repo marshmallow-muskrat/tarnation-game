@@ -796,7 +796,7 @@ retain the oscillator cues only as a missing/blocked-asset fallback. The provena
 `npm run audiocheck` validate all 24 shipped WAV files. The deterministic baseline is 319 tests
 across 46 files; full simulation, asset, audio, build, strict TypeScript, diff, and production audit
 checks pass, and production-preview smoke triggered the audio bootstrap with no browser warnings or
-errors. AUD-02 and FEEL-01 remain separate follow-up tasks.
+errors. FEEL-01 remains a separate follow-up task.
 
 ### AUD-02 — Mix for information
 
@@ -805,6 +805,15 @@ errors. AUD-02 and FEEL-01 remain separate follow-up tasks.
 - Use spatial audio only where direction helps play.
 - Provide visual equivalents/captions for meaningful cues and respect all volume settings.
 - Maintain a source/license ledger for every shipped file.
+
+Status: Complete on `agent/aud-02-information-mix` and integrated into
+`agent/masterplan-v2-implementation`. Typed event metadata now prioritizes threat, action, and UI
+feedback, bounds repeated voices and minimum intervals, ducks music and ambience for meaningful
+events, pans fox threats from their relative world position, and sends meaningful cue captions
+through the existing HUD toast/status channel. The mix remains renderer-only: seeded RNG, fixed-step
+simulation, saves, and `src/sim/` are unchanged. The deterministic baseline is 321 tests across 46
+files; full simulation, asset, audio, build, strict TypeScript, diff, production audit, and
+production-preview smoke checks pass. FEEL-01 remains.
 
 ### FEEL-01 — Cohesive feedback pass
 
@@ -1002,7 +1011,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01 complete on the task branch; AUD-02 and FEEL-01 remain |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01–02 complete on integration; FEEL-01 remains |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 

@@ -96,8 +96,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
   product owner explicitly waived UX-05's five-person external study for this release; its protocol
   remains documented for future validation without fabricated participant findings.
-  M9 Audio/feel is now in progress: AUD-01 is complete on `agent/aud-01-authored-audio`, while
-  AUD-02 and FEEL-01 remain dependency-ready follow-ups.
+  M9 Audio/feel is now in progress: AUD-01 and AUD-02 are complete on the integration branch, while
+  FEEL-01 remains the dependency-ready follow-up.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -240,8 +240,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   buses, switches day/night loop layers with the fixed simulation phase, and preserves the oscillator
   cues as the missing/blocked-asset fallback. `public/audio/CREDITS.md` records original authorship,
   `npm run audiocheck` validates the ledger and files, and the deployment workflow runs it before
-  build. The deterministic baseline is 319 tests across 46 files; all required checks and an audio
-  bootstrap production-preview smoke pass. AUD-02 and FEEL-01 remain before the M9 release.
+  build. AUD-02 adds typed priority, voice caps, repeat intervals, music/ambience ducking, directional
+  fox-threat panning, and HUD captions without changing simulation timing or save data. The
+  deterministic baseline is 321 tests across 46 files; all required checks and an audio-mix
+  production-preview smoke pass. FEEL-01 remains before the M9 release.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

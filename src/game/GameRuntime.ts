@@ -397,6 +397,7 @@ export class GameRuntime {
     this.settings = settings;
     this.audio.setVolumes(settings);
     this.audio.setMuted(settings.muted);
+    this.audio.setCaptionHandler((caption) => this.showAudioCaption(caption));
     this.input.setBindings(parseInputBindings(localStorage.getItem(INPUT_BINDINGS_STORAGE_KEY)));
     this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
   }
@@ -1372,6 +1373,12 @@ export class GameRuntime {
   private setToastForSettings(message: string): void {
     if (!this.gs) return;
     setToast(this.gs, message, 1.8);
+  }
+
+  private showAudioCaption(caption: string): void {
+    if (!this.gs) return;
+    setToast(this.gs, caption, 1.2);
+    this.pushHud(true);
   }
 
   private availableVendorTabs(): AssetCategory[] {
@@ -4057,7 +4064,12 @@ export class GameRuntime {
     this.raidTelegraphedRoles.add(w.kind);
     setToast(this.gs, `${profile.label}: ${profile.telegraph} · Counter: ${profile.counter}`, 3);
     this.spawnFeedbackBurst(w.x, w.z, 'threat');
-    this.audio.playFoxCue(profile.audioCue);
+    this.audio.playFoxCue(profile.audioCue, {
+      x: w.x,
+      z: w.z,
+      listenerX: this.playerX,
+      listenerZ: this.playerZ,
+    });
   }
 
   private raidTargetCandidates(w: Fox, crops: readonly { x: number; y: number }[]): RaidTarget[] {

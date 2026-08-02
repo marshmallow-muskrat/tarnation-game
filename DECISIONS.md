@@ -615,6 +615,15 @@ Missing, blocked, or decode-failed files use the prior oscillator cue for that e
 recoverable warning, so audio failure cannot block play. No save field, simulation rule, asset model,
 or fixed-step contract changed; AUD-02 remains responsible for the information-priority mix pass.
 
+## 2026-08-02 — Mix audio by gameplay information priority
+
+AUD-02 keeps audio presentation subordinate to readable gameplay. Typed event metadata bounds
+simultaneous voices and minimum repeat intervals, threat/action/UI events temporarily duck music and
+ambience without muting effects, and only fox threat events use a stereo pan derived from relative
+world position. Meaningful cues expose captions through the existing HUD toast/status channel.
+Audio metadata, timers, and panning live in renderer presentation only; seeded RNG, fixed-step timing,
+saves, and `src/sim/` remain unchanged. FEEL-01 remains the separate cohesive timeline pass.
+
 ## 2026-08-01 — Keep the first ten minutes derived and non-modal
 
 UX-05 adds an authored eight-beat guide in `src/sim/onboarding.ts` for launch/movement, the existing

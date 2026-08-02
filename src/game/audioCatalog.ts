@@ -4,6 +4,7 @@
  */
 export type AudioBus = 'master' | 'music' | 'effects' | 'ambience' | 'ui';
 export type AudioLeafBus = Exclude<AudioBus, 'master'>;
+export type AudioPriority = 'ambient' | 'action' | 'threat' | 'ui';
 
 export type LegacySoundKind =
   | 'ui'
@@ -48,35 +49,163 @@ export type AudioEventDefinition = Readonly<{
   loop: boolean;
   gain: number;
   fallback: LegacySoundKind | null;
+  priority: AudioPriority;
+  maxVoices: number;
+  minInterval: number;
+  duckFactor: number;
+  duckDuration: number;
+  spatial: boolean;
+  caption: string | null;
 }>;
+
+type MixOverrides = Partial<Pick<
+  AudioEventDefinition,
+  'priority' | 'maxVoices' | 'minInterval' | 'duckFactor' | 'duckDuration' | 'spatial' | 'caption'
+>>;
 
 const asset = (name: string): string => `/audio/${name}.wav`;
 
+const oneShot = (
+  name: string,
+  bus: AudioLeafBus,
+  gain: number,
+  fallback: LegacySoundKind,
+  overrides: MixOverrides = {},
+): AudioEventDefinition => ({
+  asset: asset(name),
+  bus,
+  loop: false,
+  gain,
+  fallback,
+  priority: 'action',
+  maxVoices: 2,
+  minInterval: 0.06,
+  duckFactor: 0.72,
+  duckDuration: 0.28,
+  spatial: false,
+  caption: null,
+  ...overrides,
+});
+
+const loop = (name: string, bus: 'music' | 'ambience', gain: number): AudioEventDefinition => ({
+  asset: asset(name),
+  bus,
+  loop: true,
+  gain,
+  fallback: null,
+  priority: 'ambient',
+  maxVoices: 1,
+  minInterval: 0,
+  duckFactor: 1,
+  duckDuration: 0,
+  spatial: false,
+  caption: null,
+});
+
 export const AUDIO_EVENT_CATALOG = {
-  'ui-confirm': { asset: asset('ui-confirm'), bus: 'ui', loop: false, gain: 0.7, fallback: 'ui' },
-  'ui-error': { asset: asset('ui-error'), bus: 'ui', loop: false, gain: 0.7, fallback: 'hit' },
-  'footstep-ground': { asset: asset('footstep-ground'), bus: 'effects', loop: false, gain: 0.55, fallback: 'tool' },
-  'footstep-wood': { asset: asset('footstep-wood'), bus: 'effects', loop: false, gain: 0.55, fallback: 'tool' },
-  'tool-wood': { asset: asset('tool-wood'), bus: 'effects', loop: false, gain: 0.72, fallback: 'tool' },
-  'tool-soil': { asset: asset('tool-soil'), bus: 'effects', loop: false, gain: 0.72, fallback: 'tool' },
-  'tool-metal': { asset: asset('tool-metal'), bus: 'effects', loop: false, gain: 0.66, fallback: 'hit' },
-  shot: { asset: asset('shot'), bus: 'effects', loop: false, gain: 0.7, fallback: 'shot' },
-  water: { asset: asset('water'), bus: 'effects', loop: false, gain: 0.68, fallback: 'water' },
-  'crop-harvest': { asset: asset('crop-harvest'), bus: 'effects', loop: false, gain: 0.72, fallback: 'reward' },
-  'fox-threat': { asset: asset('fox-threat'), bus: 'effects', loop: false, gain: 0.75, fallback: 'hit' },
-  'fox-hit': { asset: asset('fox-hit'), bus: 'effects', loop: false, gain: 0.7, fallback: 'hit' },
-  'fox-trap': { asset: asset('fox-trap'), bus: 'effects', loop: false, gain: 0.72, fallback: 'trap' },
-  defeat: { asset: asset('defeat'), bus: 'effects', loop: false, gain: 0.7, fallback: 'defeat' },
-  building: { asset: asset('building'), bus: 'effects', loop: false, gain: 0.72, fallback: 'build' },
-  reward: { asset: asset('reward'), bus: 'effects', loop: false, gain: 0.72, fallback: 'reward' },
-  merchant: { asset: asset('merchant'), bus: 'ui', loop: false, gain: 0.7, fallback: 'ui' },
-  'day-transition': { asset: asset('day-transition'), bus: 'ambience', loop: false, gain: 0.62, fallback: 'reward' },
-  'save-success': { asset: asset('save-success'), bus: 'ui', loop: false, gain: 0.62, fallback: 'ui' },
-  'save-error': { asset: asset('save-error'), bus: 'ui', loop: false, gain: 0.7, fallback: 'hit' },
-  'music-day': { asset: asset('music-day'), bus: 'music', loop: true, gain: 0.28, fallback: null },
-  'music-night': { asset: asset('music-night'), bus: 'music', loop: true, gain: 0.3, fallback: null },
-  'ambience-day': { asset: asset('ambience-day'), bus: 'ambience', loop: true, gain: 0.42, fallback: null },
-  'ambience-night': { asset: asset('ambience-night'), bus: 'ambience', loop: true, gain: 0.48, fallback: null },
+  'ui-confirm': oneShot('ui-confirm', 'ui', 0.7, 'ui', {
+    priority: 'ui',
+    maxVoices: 2,
+    minInterval: 0.05,
+    duckFactor: 0.68,
+    duckDuration: 0.22,
+  }),
+  'ui-error': oneShot('ui-error', 'ui', 0.7, 'hit', {
+    priority: 'ui',
+    maxVoices: 1,
+    minInterval: 0.18,
+    duckFactor: 0.55,
+    duckDuration: 0.32,
+  }),
+  'footstep-ground': oneShot('footstep-ground', 'effects', 0.55, 'tool', {
+    maxVoices: 2,
+    minInterval: 0.12,
+    duckFactor: 1,
+    duckDuration: 0,
+  }),
+  'footstep-wood': oneShot('footstep-wood', 'effects', 0.55, 'tool', {
+    maxVoices: 2,
+    minInterval: 0.12,
+    duckFactor: 1,
+    duckDuration: 0,
+  }),
+  'tool-wood': oneShot('tool-wood', 'effects', 0.72, 'tool', { minInterval: 0.08 }),
+  'tool-soil': oneShot('tool-soil', 'effects', 0.72, 'tool', { minInterval: 0.08 }),
+  'tool-metal': oneShot('tool-metal', 'effects', 0.66, 'hit', { minInterval: 0.12 }),
+  shot: oneShot('shot', 'effects', 0.7, 'shot', {
+    maxVoices: 2,
+    minInterval: 0.16,
+    duckFactor: 0.45,
+    duckDuration: 0.42,
+    caption: 'Shot fired',
+  }),
+  water: oneShot('water', 'effects', 0.68, 'water', { duckFactor: 0.9, duckDuration: 0.16 }),
+  'crop-harvest': oneShot('crop-harvest', 'effects', 0.72, 'reward', {
+    priority: 'ui',
+    minInterval: 0.14,
+    duckFactor: 0.58,
+    duckDuration: 0.5,
+    caption: 'Harvest complete',
+  }),
+  'fox-threat': oneShot('fox-threat', 'effects', 0.75, 'hit', {
+    priority: 'threat',
+    maxVoices: 1,
+    minInterval: 0.45,
+    duckFactor: 0.28,
+    duckDuration: 2.2,
+    spatial: true,
+    caption: 'Fox threat nearby',
+  }),
+  'fox-hit': oneShot('fox-hit', 'effects', 0.7, 'hit', { maxVoices: 3, minInterval: 0.05 }),
+  'fox-trap': oneShot('fox-trap', 'effects', 0.72, 'trap', { minInterval: 0.18 }),
+  defeat: oneShot('defeat', 'effects', 0.7, 'defeat', {
+    priority: 'ui',
+    minInterval: 0.18,
+    duckFactor: 0.52,
+    duckDuration: 0.55,
+  }),
+  building: oneShot('building', 'effects', 0.72, 'build', { minInterval: 0.12 }),
+  reward: oneShot('reward', 'effects', 0.72, 'reward', {
+    priority: 'ui',
+    minInterval: 0.16,
+    duckFactor: 0.54,
+    duckDuration: 0.52,
+  }),
+  merchant: oneShot('merchant', 'ui', 0.7, 'ui', {
+    priority: 'ui',
+    maxVoices: 1,
+    minInterval: 0.18,
+    duckFactor: 0.68,
+    duckDuration: 0.28,
+  }),
+  'day-transition': oneShot('day-transition', 'ambience', 0.62, 'reward', {
+    priority: 'ui',
+    maxVoices: 1,
+    minInterval: 0.5,
+    duckFactor: 0.6,
+    duckDuration: 0.8,
+    caption: 'Day transition',
+  }),
+  'save-success': oneShot('save-success', 'ui', 0.62, 'ui', {
+    priority: 'ui',
+    maxVoices: 1,
+    minInterval: 0.3,
+    duckFactor: 0.68,
+    duckDuration: 0.3,
+    caption: 'Game saved',
+  }),
+  'save-error': oneShot('save-error', 'ui', 0.7, 'hit', {
+    priority: 'threat',
+    maxVoices: 1,
+    minInterval: 0.3,
+    duckFactor: 0.35,
+    duckDuration: 0.7,
+    caption: 'Save failed',
+  }),
+  'music-day': loop('music-day', 'music', 0.28),
+  'music-night': loop('music-night', 'music', 0.3),
+  'ambience-day': loop('ambience-day', 'ambience', 0.42),
+  'ambience-night': loop('ambience-night', 'ambience', 0.48),
 } as const satisfies Record<AudioEvent, AudioEventDefinition>;
 
 export const LEGACY_SOUND_EVENTS: Record<LegacySoundKind, AudioEvent> = {
