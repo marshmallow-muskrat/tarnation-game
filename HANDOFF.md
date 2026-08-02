@@ -12,7 +12,7 @@ defends crops from foxes, upgrades the homestead, and places buildings. The desi
 non-linear progression and future maps/challenge spaces, but the current work is refinement of the
 existing loop.
 
-Run locally with `npm install && npm run dev`; open `http://localhost:5183/picker.html` for the
+Run locally with Node 24 and `npm ci && npm run dev`; open `http://localhost:5183/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
 baseline. The production page exposes no runtime debug handle; use deterministic tests and local
@@ -68,11 +68,11 @@ The completed vendor/deed sequence is preserved as
 local-only economy metrics console handle was removed in UX-02; economy behavior remains covered by
 deterministic diagnostics and tests, including four-way attempted/rejected/cancelled/completed
 outcome counts and first-completion game times for planting, harvest, sale, purchase, building, fox
-defense, and the settlement goal. The 2026-08-01 audit found that the vendor/deed foundation exists, but the
-game is not release-ready. The active priorities are the P0 blockers and dependency order in
-[`masterplan-v2.md`](masterplan-v2.md):
+defense, and the settlement goal. The 2026-08-01 audit's M0–M10 implementation and release-hardening
+work is complete on main. The Core Release Gate is conditional only on the explicitly deferred human
+validation summarized in [`docs/masterplan-v2-completion-review.md`](docs/masterplan-v2-completion-review.md):
 
-- CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
+- CORE-01 through CORE-08 and the M5 release gate are released on main
   after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is complete.
 - FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), FOX-03
   as merge `4c0244b` (PR #42), and FOX-04 as merge `86c9efb` (PR #43). Foxes select deterministic
@@ -130,10 +130,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   passed for commit `b4d4c9b`. A prior hosted run failed only because a transient UI hint appeared just
   after a 5-second wait under slow software WebGL; the artifact showed the real plantable state, so the
   final assertion uses the persisted save contract instead of increasing a timing guess. No production or
-  save behavior changed. No formatter/linter is configured yet; the six full-audit dev-tool advisories
-  remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
-  rule; release PRs remain the enforced process, with protection and the single final human review to be
-  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
+  save behavior changed. No formatter/linter is configured yet. REL-01 subsequently cleared the former
+  Wrangler-era dev-tool advisories. The repository currently has no GitHub branch-protection rule; green
+  release PRs remain the documented process, while required human approval remains intentionally disabled
+  under the owner's autonomous-PR decision.
 - QA-03 is complete on `agent/qa-03-production-diagnostics`: the pausing Help panel exports a sanitized,
   deterministic diagnostics JSON containing exact build identity, browser/GPU capabilities, save version and
   bounded metadata, fixed seed, at most 32 recent action/outcome/transition events, at most 32 unique asset
@@ -166,11 +166,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   `J` objective hide/show, `G` market-guide hide/show, diagnostics export identifying commit
   `7568e1db5ba2feb5bc98ac84055495e670b42828` and save v9, persisted movement displacement `0.550676`, and
   persisted `grass → tilled` farming. The smoke test recorded zero browser warnings/errors and zero failed
-  network requests. Per owner instruction, the Core Release Gate was not separately evaluated and no
-  post-gate expansion work was started.
-- Add unit, migration, browser E2E, visual, performance, and CI release gates.
-- Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
-  and ending loops before expanding content.
+  network requests. The independent completion review records the Core Release Gate as **conditional**:
+  automated and production criteria pass, while owner-deferred human/external validation remains unperformed
+  and is not claimed. No post-gate expansion work was started. See
+  [`docs/masterplan-v2-completion-review.md`](docs/masterplan-v2-completion-review.md).
 - BASE-02 characterization is integrated with Vitest: the original baseline had 109 deterministic
   tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
   migration fixtures for released save versions 3 through 7. PR #3 merged into the integration

@@ -974,6 +974,16 @@ Content expansion is forbidden until all are true:
 
 Only then choose one expansion prototype.
 
+### 17.1 Completion review — 2026-08-02
+
+M0–M10 implementation and automated release hardening are complete. The Core Release Gate is
+**conditional**: the technical, automated, and live-production criteria pass for the supported desktop
+browser target, while the owner-deferred first-session comprehension study, subjective arc evaluation,
+human animation/accessibility signoff, broader device sampling, and external uncoached completion remain
+unperformed and are not claimed. No expansion work is authorized until those deferred checks are completed
+and the gate is reviewed again. See [`docs/masterplan-v2-completion-review.md`](docs/masterplan-v2-completion-review.md)
+for criterion-level evidence and the remaining non-blocking engineering risks.
+
 ## 18. Post-gate roadmap candidates
 
 ### EXP-01 — Dark Woods prototype
