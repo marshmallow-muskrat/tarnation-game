@@ -1,13 +1,19 @@
 import * as THREE from 'three';
+import {
+  EQUIPMENT_PROFILES,
+  type EquipmentActionKind,
+  type EquipmentActionTiming,
+  type EquipmentKey,
+} from '../content/equipment';
 import { cloneModel } from './Assets';
-import { disposeModelClone } from './ResourceDisposal';
+import { disposeModelClone, disposeObjectResources } from './ResourceDisposal';
 import type {
   CarryAnimationProfile,
   PlayerActionController,
 } from './PlayerActionController';
 import { SLOT_AXE, SLOT_SHOTGUN, SLOT_SHOVEL } from './InteractionSystem';
 
-export type EquippedToolKey = 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel';
+export type EquippedToolKey = Extract<EquipmentKey, 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel' | 'bucket'>;
 
 export type EquipmentSelection = {
   toolbarSlot: number;
@@ -15,86 +21,19 @@ export type EquipmentSelection = {
   weapon: 'shotgun' | 'bow' | 'axe';
 };
 
+export function equipmentProfileKeyFor(selection: EquipmentSelection): EquipmentKey | null {
+  if (selection.toolSlotActive) return 'bucket';
+  return equippedToolKeyFor(selection);
+}
+
 export function equippedToolKeyFor(selection: EquipmentSelection): EquippedToolKey | null {
-  if (selection.toolSlotActive) return null;
+  if (selection.toolSlotActive) return 'bucket';
   if (selection.toolbarSlot === SLOT_AXE) return 'axe';
   if (selection.toolbarSlot === SLOT_SHOVEL) return 'shovel';
   if (selection.toolbarSlot === SLOT_SHOTGUN && selection.weapon === 'bow') return 'bow_wooden';
   if (selection.toolbarSlot === SLOT_SHOTGUN && selection.weapon === 'shotgun') return 'shotgun_2';
   return null;
 }
-
-type ToolProfile = CarryAnimationProfile & {
-  scale: number;
-  /** Authored model-space point placed exactly in the animated right fist. */
-  grip: readonly [number, number, number];
-  /** Transform from the animated right-hand socket into the tool's grip pose. */
-  carryPosition: readonly [number, number, number];
-  carryRotation: readonly [number, number, number];
-  /** Optional clip-space correction blended in only during a one-shot action. */
-  actionRotation?: readonly [number, number, number];
-  /** Optional second-hand contact point in the model's local coordinates. */
-  supportGrip?: readonly [number, number, number];
-  /** Override the carry grip for a one-shot action such as digging. */
-  actionSupportGrip?: readonly [number, number, number];
-  /** How strongly the left arm follows the support grip, 0..1. */
-  supportBlend?: number;
-};
-
-const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
-  axe: {
-    scale: 1.15,
-    grip: [0, 0.05, 0],
-    // The source axe head is +Y. The old pose left +Y pointing at the ground;
-    // the half-turn makes the head sit above the hands and the handle hang down.
-    carryPosition: [0.14, -0.02, 0.02],
-    carryRotation: [Math.PI, 0, -0.5],
-    actionRotation: [0, Math.PI / 2, -0.55],
-    runClip: 'runCarry',
-    idleTime: 0.36,
-    supportGrip: [0, 0.7, 0],
-    actionSupportGrip: [0, 0.48, 0],
-    supportBlend: 0.56,
-  },
-  bow_wooden: {
-    scale: 0.76,
-    grip: [0, 0, 0],
-    carryPosition: [0, -0.02, 0.03],
-    carryRotation: [0, 0, -0.25],
-    runClip: 'walkCarry',
-    idleTime: 0.3,
-  },
-  shotgun_2: {
-    scale: 0.42,
-    // Trigger-hand grip. Model-space +X runs from the stock into the barrel.
-    grip: [0, -0.28, 0],
-    // The source is an X-axis prop: the negative end is the stock and the
-    // positive end is the barrel. Put the stock in the right hand and use the
-    // fore-end as a real left-hand target instead of letting the gun float from
-    // the wrist or hang upside down.
-    carryPosition: [0.1, 0, 0],
-    carryRotation: [0, 0, 0.5],
-    actionRotation: [0, 0, Math.PI / 2],
-    runClip: 'runCarry',
-    idleTime: 0.32,
-    supportGrip: [1.35, 0.08, 0],
-    supportBlend: 0.58,
-  },
-  shovel: {
-    // The shovel's source is vertical. Rotate it across the body for carry so
-    // the upper shaft sits in the right hand and the lower shaft meets the
-    // left hand; the action pose then returns it toward the soil.
-    scale: 1.1,
-    grip: [0, 1.1, 0],
-    carryPosition: [0.1, -0.02, 0.02],
-    carryRotation: [Math.PI, 0, 1.05],
-    runClip: 'runCarry',
-    idleTime: 0.3,
-    supportGrip: [0, 0.02, 0],
-    actionSupportGrip: [0, -0.12, 0],
-    supportBlend: 0.68,
-  },
-};
 
 /** Owns the held tool scene graph and the renderer-only support-hand solve. */
 export class EquipmentController {
@@ -107,6 +46,10 @@ export class EquipmentController {
   private equippedToolSocket: THREE.Group | null = null;
   private equippedToolRoot: THREE.Object3D | null = null;
   private equippedToolKey: EquippedToolKey | null = null;
+  private activeProfileKey: EquipmentKey | null = null;
+  private debugVisible = false;
+  private debugVisuals: THREE.Group | null = null;
+  private debugSupportMarker: THREE.Mesh | null = null;
   private disposed = false;
 
   private readonly supportTarget = new THREE.Vector3();
@@ -118,6 +61,7 @@ export class EquipmentController {
   private readonly supportWorldQuaternion = new THREE.Quaternion();
   private readonly supportParentQuaternion = new THREE.Quaternion();
   private readonly supportLocalQuaternion = new THREE.Quaternion();
+  private readonly toolTargetPosition = new THREE.Vector3();
   private readonly toolTargetEuler = new THREE.Euler();
   private readonly toolTargetQuaternion = new THREE.Quaternion();
 
@@ -135,31 +79,49 @@ export class EquipmentController {
   }
 
   get animationProfile(): CarryAnimationProfile | null {
-    return this.equippedToolKey ? TOOL_PROFILES[this.equippedToolKey] : null;
+    return this.equippedToolKey ? EQUIPMENT_PROFILES[this.equippedToolKey].locomotion : null;
+  }
+
+  actionTimingFor(action: EquipmentActionKind): EquipmentActionTiming | null {
+    if (!this.activeProfileKey) return null;
+    return EQUIPMENT_PROFILES[this.activeProfileKey].timings[action] ?? null;
+  }
+
+  setDebugVisible(enabled: boolean): void {
+    this.debugVisible = enabled;
+    if (enabled) this.attachDebugVisuals();
+    else this.clearDebugVisuals();
   }
 
   refresh(selection: EquipmentSelection): void {
     if (this.disposed) return;
     const desired = equippedToolKeyFor(selection);
-    if (desired === this.equippedToolKey && this.equippedToolSocket?.parent === this.handBone) return;
+    const desiredProfileKey = equipmentProfileKeyFor(selection);
+    const mounted = desired
+      ? this.equippedToolSocket?.parent === this.handBone
+      : this.equippedToolSocket === null;
+    if (desired === this.equippedToolKey && desiredProfileKey === this.activeProfileKey && mounted) return;
     this.clearEquippedTool();
+    this.activeProfileKey = desiredProfileKey;
     if (!desired || !this.handBone) return;
 
-    const { root } = cloneModel(desired);
+    const profile = EQUIPMENT_PROFILES[desired];
+    const { root } = profile.modelKey
+      ? cloneModel(profile.modelKey)
+      : { root: createStylizedBucket() };
     root.name = `equipped_${desired}`;
-    const profile = TOOL_PROFILES[desired];
     const sourceScale = root.scale.x;
     // Held props pivot around a measured model-space grip. Keeping the
     // conversion on a child prevents import offsets from changing hand poses.
     root.position.set(
-      -profile.grip[0] * sourceScale,
-      -profile.grip[1] * sourceScale,
-      -profile.grip[2] * sourceScale,
+      -profile.rightHandGrip[0] * sourceScale,
+      -profile.rightHandGrip[1] * sourceScale,
+      -profile.rightHandGrip[2] * sourceScale,
     );
     const socket = new THREE.Group();
     socket.name = `tool_socket_${desired}`;
-    socket.position.set(...profile.carryPosition);
-    socket.rotation.set(...profile.carryRotation);
+    socket.position.set(...profile.sockets.carry.position);
+    socket.rotation.set(...profile.sockets.carry.rotation);
     socket.scale.setScalar(profile.scale);
     if (desired === 'axe' || desired === 'shovel') {
       // Draw the narrow dark props after the body, while retaining depth testing.
@@ -174,6 +136,7 @@ export class EquipmentController {
     this.equippedToolSocket = socket;
     this.equippedToolRoot = root;
     this.equippedToolKey = desired;
+    this.attachDebugVisuals();
   }
 
   update(dt: number): void {
@@ -189,11 +152,13 @@ export class EquipmentController {
   }
 
   private clearEquippedTool(): void {
+    this.clearDebugVisuals();
     this.equippedToolSocket?.removeFromParent();
     if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
     this.equippedToolSocket = null;
     this.equippedToolRoot = null;
     this.equippedToolKey = null;
+    this.activeProfileKey = null;
   }
 
   private findRightHand(root: THREE.Object3D): THREE.Object3D | null {
@@ -223,11 +188,13 @@ export class EquipmentController {
       !this.leftLowerArmBone
     ) return;
 
-    const profile = TOOL_PROFILES[this.equippedToolKey];
+    const profile = EQUIPMENT_PROFILES[this.equippedToolKey];
     const oneShotActive = this.playerActions.isOneShotRunning;
     // The one-handed shooting clip is authored around the right arm.
     if (oneShotActive && this.equippedToolKey === 'shotgun_2') return;
-    const grip = oneShotActive ? profile.actionSupportGrip : profile.supportGrip;
+    const grip = oneShotActive
+      ? profile.actionLeftHandSupportGrip ?? profile.leftHandSupportGrip
+      : profile.leftHandSupportGrip;
     if (!grip) return;
 
     this.playerRoot.updateMatrixWorld(true);
@@ -244,17 +211,68 @@ export class EquipmentController {
 
   private updateToolSocket(dt: number): void {
     if (!this.equippedToolSocket || !this.equippedToolKey) return;
-    const profile = TOOL_PROFILES[this.equippedToolKey];
+    const profile = EQUIPMENT_PROFILES[this.equippedToolKey];
     const actionActive = this.playerActions.isOneShotRunning;
-    const rotation = actionActive
-      ? profile.actionRotation ?? profile.carryRotation
-      : profile.carryRotation;
+    const socket = actionActive ? profile.sockets.action : profile.sockets.carry;
+    this.toolTargetPosition.set(...socket.position);
+    this.equippedToolSocket.position.lerp(
+      this.toolTargetPosition,
+      1 - Math.exp(-dt * 20),
+    );
+    const rotation = socket.rotation;
     this.toolTargetEuler.set(...rotation);
     this.toolTargetQuaternion.setFromEuler(this.toolTargetEuler);
     this.equippedToolSocket.quaternion.slerp(
       this.toolTargetQuaternion,
       1 - Math.exp(-dt * 20),
     );
+    this.updateDebugSupportMarker(actionActive, profile);
+  }
+
+  private attachDebugVisuals(): void {
+    if (!this.debugVisible || !this.equippedToolRoot || !this.equippedToolKey || this.debugVisuals) return;
+    const profile = EQUIPMENT_PROFILES[this.equippedToolKey];
+    const visuals = new THREE.Group();
+    visuals.name = `equipment_debug_${this.equippedToolKey}`;
+
+    const forward = new THREE.Vector3(...profile.modelForwardAxis).normalize();
+    const up = new THREE.Vector3(...profile.modelUpAxis).normalize();
+    const right = new THREE.Vector3().crossVectors(up, forward).normalize();
+    const basis = new THREE.Group();
+    basis.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, forward));
+    basis.add(new THREE.AxesHelper(profile.debug.axisLength));
+    visuals.add(basis);
+
+    const marker = new THREE.Mesh(
+      new THREE.SphereGeometry(0.035, 8, 6),
+      new THREE.MeshBasicMaterial({ color: profile.debug.supportColor }),
+    );
+    marker.name = 'equipment_debug_support';
+    visuals.add(marker);
+    this.equippedToolRoot.add(visuals);
+    this.debugVisuals = visuals;
+    this.debugSupportMarker = marker;
+    this.updateDebugSupportMarker(false, profile);
+  }
+
+  private updateDebugSupportMarker(
+    actionActive: boolean,
+    profile: (typeof EQUIPMENT_PROFILES)[EquippedToolKey],
+  ): void {
+    if (!this.debugSupportMarker) return;
+    const grip = actionActive
+      ? profile.actionLeftHandSupportGrip ?? profile.leftHandSupportGrip
+      : profile.leftHandSupportGrip;
+    this.debugSupportMarker.visible = grip !== undefined;
+    if (grip) this.debugSupportMarker.position.set(...grip);
+  }
+
+  private clearDebugVisuals(): void {
+    if (!this.debugVisuals) return;
+    this.debugVisuals.removeFromParent();
+    disposeObjectResources(this.debugVisuals, { geometries: true, materials: true });
+    this.debugVisuals = null;
+    this.debugSupportMarker = null;
   }
 
   private rotateArmJointToward(joint: THREE.Object3D, blend: number): void {
@@ -293,4 +311,37 @@ export class EquipmentController {
     joint.quaternion.copy(this.supportLocalQuaternion);
     joint.updateMatrixWorld(true);
   }
+}
+
+/** The accepted packs have no bucket mesh, so the bucket is intentionally a small authored prop. */
+function createStylizedBucket(): THREE.Group {
+  const root = new THREE.Group();
+  root.name = 'bucket_stylized_prop';
+  const body = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.16, 0.2, 0.24, 8, 1, true),
+    new THREE.MeshStandardMaterial({ color: 0x57717a, roughness: 0.72, metalness: 0.12 }),
+  );
+  body.position.y = -0.12;
+  body.castShadow = true;
+  root.add(body);
+
+  const rim = new THREE.Mesh(
+    new THREE.TorusGeometry(0.18, 0.018, 6, 16),
+    new THREE.MeshStandardMaterial({ color: 0xb9c8c0, roughness: 0.42, metalness: 0.3 }),
+  );
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.01;
+  rim.castShadow = true;
+  root.add(rim);
+
+  const handle = new THREE.Mesh(
+    new THREE.TorusGeometry(0.17, 0.014, 5, 14, Math.PI),
+    new THREE.MeshStandardMaterial({ color: 0xc4a36a, roughness: 0.6, metalness: 0.05 }),
+  );
+  handle.rotation.x = Math.PI / 2;
+  handle.rotation.z = Math.PI;
+  handle.position.y = 0.04;
+  handle.castShadow = true;
+  root.add(handle);
+  return root;
 }

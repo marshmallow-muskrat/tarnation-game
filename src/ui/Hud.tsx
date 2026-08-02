@@ -14,6 +14,9 @@ type Props = {
   onToggleBuild: () => void;
   onSelectBuild: (index: number) => void;
   onToggleHelp: () => void;
+  onToggleCodex: () => void;
+  onSelectCodex: (key: string) => void;
+  onToggleCodexCompare: (key: string) => void;
   onUltimate: () => void;
   onBearTrap: () => void;
   onToggleInventory: () => void;
@@ -73,6 +76,9 @@ export function Hud({
   onToggleBuild,
   onSelectBuild,
   onToggleHelp,
+  onToggleCodex,
+  onSelectCodex,
+  onToggleCodexCompare,
   onUltimate,
   onBearTrap,
   onToggleInventory,
@@ -111,6 +117,18 @@ export function Hud({
           Duckettes
         </p>
         <p className="value amber">₫ {hud.duckettes}</p>
+        <section className="settlement-objective" aria-label="Settlement objective">
+          <p className="label">Settlement objective</p>
+          <p className="settlement-objective-title">{hud.objective.title}</p>
+          <ul>
+            {hud.objective.steps.map((step) => (
+              <li className={step.complete ? 'complete' : ''} key={step.id}>
+                <span aria-hidden>{step.complete ? '✓' : '○'}</span>
+                <span>{step.label}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
         <p
           className={`save-status ${hud.save.state === 'failed' ? 'failed' : ''}`}
           role={hud.save.state === 'failed' ? 'alert' : 'status'}
@@ -121,6 +139,15 @@ export function Hud({
         </p>
         <button type="button" className="help-toggle" onClick={onToggleHelp}>
           Help <span>H</span>
+        </button>
+        <button
+          type="button"
+          className="help-toggle"
+          onClick={onToggleCodex}
+          aria-haspopup="dialog"
+          aria-expanded={hud.codex.open}
+        >
+          Seed Codex <span>K</span>
         </button>
       </div>
 
@@ -164,6 +191,9 @@ export function Hud({
         <div className="panel hud-inventory">
           <p className="label">
             Inventory · {filled}/{hud.inventory.length}
+          </p>
+          <p className="label">
+            Seed packets · {hud.seedStorage.used}/{hud.seedStorage.capacity}
           </p>
           <div className="inv-grid">
             {hud.inventory.map((slot, i) => (
@@ -270,7 +300,7 @@ export function Hud({
               Close
             </button>
           </div>
-          <p className="vendor-intro">The merchant stays at this encampment. Buy a deed, then double-click it in your inventory to use it.</p>
+          <p className="vendor-intro">The merchant stays at this encampment. Buy a permit or deed, then double-click it in your inventory to use it.</p>
           <div className="vendor-tabs" role="tablist" aria-label="Merchant categories">
             {hud.vendor.tabs.map((tab) => (
               <button
@@ -292,7 +322,7 @@ export function Hud({
                 <div className="vendor-copy">
                   <p className="vendor-name">{item.name}</p>
                   <p className="vendor-description">{item.description}</p>
-                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType}</p>
+                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType === 'apply' ? 'Upgrade' : item.useType}</p>
                   <p className="vendor-cost">Cost: {item.price}₫{item.material === '—' ? '' : ` + ${item.material}`}</p>
                   <p className="vendor-owned">Owned: {item.owned}</p>
                   <p className={`vendor-lock ${item.canBuy ? 'available' : 'blocked'}`}>{item.lockReason}</p>
@@ -413,6 +443,7 @@ export function Hud({
               <p><kbd>W A S D</kbd> Move</p>
               <p><kbd>1</kbd> Shotgun · <kbd>2</kbd> Shovel · <kbd>3</kbd> Axe</p>
               <p><kbd>6</kbd> Bucket · <kbd>[ ]</kbd> Choose seed</p>
+              <p><kbd>Z</kbd> Dig an irrigation trench</p>
               <p><kbd>Left click</kbd> Use selected tool</p>
             </div>
             <div>
@@ -420,21 +451,161 @@ export function Hud({
               <p><kbd>Right click</kbd> Attack</p>
               <p><kbd>Q</kbd> Boulder · <kbd>B</kbd> Bear trap</p>
               <p><kbd>R</kbd> Cycle unlocked weapon</p>
-              <p><kbd>U</kbd> Upgrade near the homestead</p>
             </div>
             <div>
               <p className="label">Settlement</p>
-              <p><kbd>E</kbd> Open the merchant shop nearby</p>
+              <p><kbd>E</kbd> Open the merchant shop · permits advance the homestead</p>
               <p><kbd>P</kbd> Shop nearby · legacy build with <kbd>?legacy</kbd></p>
               <p><kbd>N</kbd> Next legacy building while placing</p>
               <p><kbd>X</kbd> Demolish mode · <kbd>F12</kbd> Grid debug</p>
-              <p><kbd>I</kbd> Inventory · <kbd>H</kbd> This guide</p>
+              <p><kbd>I</kbd> Inventory · <kbd>K</kbd> Seed Codex · <kbd>H</kbd> This guide</p>
               <p><kbd>+ −</kbd> Camera zoom · <kbd>M</kbd> Reduced motion</p>
               <p><kbd>V</kbd> Toggle synthesized sound feedback</p>
               <p><kbd>Esc</kbd> Cancel active mode · pause when idle</p>
             </div>
           </div>
-          <p className="help-footer">Tip: crops take two days. Water them, protect them from foxes, then sell the harvest at the market stall.</p>
+          <p className="help-footer">Tip: traits change how crops grow and defend themselves. Water them, protect them from foxes, then sell the harvest at the market stall.</p>
+        </div>
+      )}
+
+      {hud.codex.open && (
+        <div
+          className="panel codex-panel"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="codex-title"
+        >
+          <div className="codex-heading">
+            <div>
+              <p className="label">Breeding record</p>
+              <h2 id="codex-title">Seed Codex</h2>
+            </div>
+            <button type="button" className="build-close" onClick={onToggleCodex}>
+              Close
+            </button>
+          </div>
+          <p className="codex-status" role="status" aria-live="polite" aria-atomic="true">
+            {hud.codex.status}
+          </p>
+          <div className="codex-layout">
+            <div className="codex-list" role="list" aria-label="Seed Codex entries">
+              {hud.codex.entries.map((entry) => (
+                <div className="codex-list-row" key={entry.key} role="listitem">
+                  <button
+                    type="button"
+                    className={`codex-entry ${entry.key === hud.codex.selectedKey ? 'selected' : ''} ${entry.kind === 'undiscovered' ? 'unknown' : ''}`}
+                    onClick={() => onSelectCodex(entry.key)}
+                    aria-pressed={entry.key === hud.codex.selectedKey}
+                    aria-label={entry.ariaLabel}
+                  >
+                    {entry.model ? (
+                      <ModelIcon
+                        model={entry.model}
+                        className={`codex-model-icon ${entry.kind === 'undiscovered' ? 'codex-silhouette' : ''}`}
+                        size={42}
+                      />
+                    ) : (
+                      <span className="codex-unknown-mark" aria-hidden="true">?</span>
+                    )}
+                    <span className="codex-entry-copy">
+                      <span className="codex-entry-name">{entry.name}</span>
+                      <span className="codex-entry-meta">
+                        {entry.kind === 'discovered' ? `Day ${entry.discoveredDay ?? 1}` : 'Not discovered'}
+                      </span>
+                    </span>
+                  </button>
+                  {entry.kind === 'discovered' && (
+                    <button
+                      type="button"
+                      className={`codex-compare ${entry.compareSelected ? 'selected' : ''}`}
+                      onClick={() => onToggleCodexCompare(entry.key)}
+                      aria-pressed={entry.compareSelected}
+                      aria-label={`${entry.compareSelected ? 'Remove' : 'Add'} ${entry.name} ${entry.compareSelected ? 'from' : 'to'} comparison`}
+                    >
+                      {entry.compareSelected ? 'Comparing' : 'Compare'}
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className="codex-detail" aria-label="Selected seed details">
+              {(() => {
+                const selected = hud.codex.entries.find((entry) => entry.key === hud.codex.selectedKey);
+                if (!selected) return <p className="hint">No seed entry selected.</p>;
+                return (
+                  <>
+                    <div className="codex-detail-heading">
+                      {selected.model ? (
+                        <ModelIcon
+                          model={selected.model}
+                          className={`codex-detail-icon ${selected.kind === 'undiscovered' ? 'codex-silhouette' : ''}`}
+                          size={64}
+                        />
+                      ) : <span className="codex-detail-unknown">?</span>}
+                      <div>
+                        <p className="label">{selected.kind === 'discovered' ? 'Discovered seed' : 'Undiscovered'}</p>
+                        <h3>{selected.name}</h3>
+                      </div>
+                    </div>
+                    {selected.kind === 'discovered' ? (
+                      <>
+                        <dl className="codex-facts">
+                          <div><dt>Species</dt><dd>{selected.species}</dd></div>
+                          <div><dt>Parentage</dt><dd>{selected.lineage}</dd></div>
+                          <div><dt>Effect</dt><dd>{selected.effect}</dd></div>
+                        </dl>
+                        <div className="codex-traits" aria-label={`${selected.name} traits`}>
+                          {selected.traits.map((trait) => (
+                            <div key={trait.label} className="codex-trait">
+                              <span>{trait.label}</span>
+                              <strong>{trait.value}</strong>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          type="button"
+                          className="codex-detail-compare"
+                          onClick={() => onToggleCodexCompare(selected.key)}
+                          aria-pressed={selected.compareSelected}
+                        >
+                          {selected.compareSelected ? 'Remove from comparison' : 'Compare this seed'}
+                        </button>
+                      </>
+                    ) : (
+                      <p className="codex-locked-copy">
+                        This silhouette is still a mystery. Breed or recover the seed to reveal its
+                        parentage, traits, and field effect.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+          {hud.codex.compareKeys.length > 0 && (
+            <section className="codex-comparison" aria-label="Seed comparison">
+              <div className="codex-comparison-heading">
+                <p className="label">Compare</p>
+                <span>{hud.codex.compareKeys.length}/2 selected</span>
+              </div>
+              <div className="codex-comparison-grid">
+                {hud.codex.compareKeys.map((key) => {
+                  const entry = hud.codex.entries.find((candidate) => candidate.key === key);
+                  if (!entry) return null;
+                  return (
+                    <div className="codex-comparison-card" key={entry.key}>
+                      <strong>{entry.name}</strong>
+                      {entry.traits.map((trait) => (
+                        <span key={trait.label}>{trait.label}: {trait.value}</span>
+                      ))}
+                      <span>Effect: {entry.effect}</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="codex-compare-help">Choose two discovered seeds to compare their loadout traits.</p>
+            </section>
+          )}
         </div>
       )}
 
@@ -518,13 +689,28 @@ export function Hud({
       </div>
 
       {hud.win && (
-        <div className="win-overlay">
-          <div className="panel win-card">
-            <h1>Draft Complete</h1>
-            <p>Days survived · {hud.win.daysSurvived}</p>
-            <p>Crops harvested · {hud.win.cropsHarvested}</p>
-            <p>Wood gathered · {hud.win.woodGathered}</p>
-            <p>Trophies · {hud.win.trophies}</p>
+        <div
+          className="win-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="settlement-title"
+        >
+          <div className="panel win-card settlement-card">
+            <p className="label">The homestead stands</p>
+            <h1 id="settlement-title">Homestead Established</h1>
+            <p>Grow, experiment, defend, and develop now have a place here.</p>
+            <ul className="settlement-completion-list">
+              {hud.objective.steps.map((step) => (
+                <li key={step.id}>
+                  <span aria-hidden>✓</span>
+                  <span>{step.label}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="win-stats">Days survived · {hud.win.daysSurvived}</p>
+            <p className="win-stats">Crops harvested · {hud.win.cropsHarvested}</p>
+            <p className="win-stats">Wood gathered · {hud.win.woodGathered}</p>
+            <p className="win-stats">Trophies · {hud.win.trophies}</p>
             <button type="button" onClick={onDismissWin}>
               Keep playing
             </button>

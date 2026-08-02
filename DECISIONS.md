@@ -200,3 +200,198 @@ inventory/market/vendor/build mapping, HUD JSON deduplication, and transient-arr
 renders the same typed snapshot, while `GameRuntime` supplies live world bearings, save feedback,
 placement status, economy capability, and interaction hints as callbacks. The presenter has no DOM,
 Three.js, save mutation, or simulation-rule authority; its deterministic tests use fixed game state.
+
+## 2026-08-01 — Apply player effects from fixed-step action phases
+
+`ActionStateMachine` is the renderer-independent authority for player action transitions. Tool actions use
+0.12 seconds of windup, a 0.05-second contact phase, and 0.18 seconds of recovery; ranged actions expose
+0.08 seconds of aim before the fire event; interaction actions expose an explicit contact event. Tool input
+can buffer one same-kind follow-up during contact/recovery, while cross-kind, menu, and disabled input is
+rejected. Gameplay effects for farming, melee, projectiles, construction, bucket work, and bear traps now
+run from fixed-step contact/fire callbacks. Movement remains available with authored phase scales of 0.75
+for tool windup/recovery, 0.45 at tool contact, 0.85 while aiming, and 0.65 at ranged fire; menus and lost
+focus stop movement. Focus loss cancels pending effects and focus restoration returns to a valid idle/move
+state. Animation clips remain renderer-facing and are started from the state-machine start event.
+
+## 2026-08-01 — Keep equipment profiles typed and renderer-owned
+
+ACT-02 centralizes the measured held-equipment contract in `src/content/equipment.ts`. The table covers
+the four current model-backed tools plus the bucket glyph, bear-trap model, and building preview. Each
+record owns source forward/up axes, right- and optional left-hand grip points, carry/action socket
+transforms, scale/readability bounds, locomotion and compatible action metadata, audio/VFX cues, fixed-step
+timings, icon framing, and debug visualization settings. The current Survival Pack glTFs were inspected
+and contain no authored grip/socket marker nodes, so the existing measured transforms remain authoritative
+until those source assets provide markers.
+
+`EquipmentController` now consumes the table for model cloning, grip pivots, carry/action transforms,
+support-hand targets, and locomotion profiles. `GameRuntime` consumes the profile timing records while
+retaining the same 0.12/0.05/0.18 tool, 0.08/0.06/0 ranged, and 0.08/0/0.08 interaction timings. F12
+enables the renderer-only model-axis and support-point visualization; it is off by default and its
+procedural resources are disposed with the held clone. `assetcheck` and deterministic Vitest coverage
+reject invalid profile fields without loading Three.js assets. No save, simulation, timestep, input,
+pricing, or gameplay rule changed in ACT-02.
+
+## 2026-08-01 — Use a bounded, renderer-facing locomotion policy
+
+ACT-03 keeps fixed-step movement and seeded simulation authority in `GameRuntime`, while the
+renderer-facing locomotion policy owns idle/walk/run hysteresis, in-place clip cadence, and bounded
+heading turns. Intent starts locomotion only after a small speed boundary, release preserves the
+current gait until residual velocity settles, and run entry/exit use separate thresholds so the clip
+does not chatter. Ranged aim/fire keeps the aim heading while movement strafes; ordinary movement
+updates the target heading. The player glTF's Walk/Run/Carry clips have constant root translations,
+so cadence is normalized with measured gait ratios rather than invented root motion. The existing
+0.14-second crossfade is retained as restrained start/stop anticipation because the asset has no
+authored start/stop clips. Reduced motion freezes nonessential renderer bob, motes, and shake while
+leaving fixed-step timing and gameplay outcomes unchanged. No save, simulation, input binding, or
+economy rule changes in ACT-03.
+
+## 2026-08-01 — Give each tool a typed contact contract
+
+ACT-04 adds an interaction record to every held or placement profile: action kind, authored player
+clip, target class, range, and facing arc. Fixed-step callbacks remain the only place that changes
+the world. The shovel now faces a valid farm tile and applies soil/plant/harvest/breeding contact
+effects only at its contact event. The selected axe path accepts trees, stumps, and boulders only;
+tree work uses a bounded facing arc, while a boulder produces a distinct clang response instead of
+falling through to generic radial damage. The bucket uses a small authored low-poly prop because the
+accepted packs contain no bucket mesh; its action socket tilts for fill/use, and fill/water feedback
+still occurs at the fixed contact event. Shotgun and bow readiness still aim before the action, while
+projectiles, release bursts, audio, and recoil occur at the fixed fire event. Trap and building
+placement keep their valid preview/confirmation path and use the existing non-melee `PickUp` clip
+because the player asset has no authored placement clip. Invalid shovel/bucket targets now explain
+range or target requirements without playing a false action, and the selected shovel no longer calls
+bucket watering on a thirsty crop despite the HUD saying to equip the bucket. No save, simulation,
+economy, timestep, or seeded-RNG rule changes in ACT-04.
+
+## 2026-08-01 — Keep work, combat, and wildlife target domains separate
+
+ACT-05 keeps primary work actions target-specific: shovel and selected-axe actions resolve farm
+tiles or tree/boulder targets before starting an authored action, so ambient animals are never part
+of their effect set. The explicit secondary axe combat affordance selects the nearest intended
+hostile or friendly wildlife candidate inside a fixed-step facing cone before the swing, then checks
+the same range and facing volume again at contact. A missed or moved target reports the reason and
+does not produce a success effect. Foxes retain their existing damage, defeat, and defense-reward
+path. Friendly ambient animals have no combat health path: melee, ranged shots, and the boulder can
+only produce a short hurt/daze response with feedback and no death marker, trophy, or reward. No
+player-health or hunt system is introduced, and no save, simulation, economy, timestep, or seeded-RNG
+rule changes are part of ACT-05.
+
+## 2026-08-01 — Bound new farm work to an authored homestead
+
+CORE-01 keeps the existing 240×240 world for exploration and decorative presentation, but only the
+typed 48×48 homestead region accepts new soil work. Camp reservations, the homestead building
+footprint, placed physical obstacles, trees, boulders, and water remain distinct runtime blockers;
+the new farm-region predicate is only the missing outer boundary. The renderer adds a low,
+non-colliding boundary and a fresh-run 10×8 starter-plot marker, while the guide derives its short
+till/plant/water/grow/harvest/sell prompts from existing tiles and stats rather than adding a saved
+quest schema. Fresh runs use a deterministic validated approach point outside the house and camp;
+loading does not delete legacy worked tiles outside the region, preserving save data while rejecting
+new work there. No seed-consumption, irrigation-tier, economy, building-function, raid, save-schema,
+or ending rule is introduced by CORE-01.
+
+## 2026-08-01 — Count seed packets by full genotype
+
+CORE-02 uses a separate counted seed-packet store with 24 distinct-stack slots, matching the regular
+inventory capacity. A packet key includes species, all five traits, display name, hybrid flag,
+mechanic, and lineage; the older display-oriented `seedId` remains the Codex key for compatibility.
+Planting consumes one exact packet only when the farm target can accept it. A mature harvest is one
+transaction that requires room for both produce and one recovered packet, then returns the exact
+genotype; this keeps full-storage failures from deleting a crop. The recovery rule is intentionally
+simple and tuned for the current loop: one seed packet per mature crop harvested. Old v9 bare seed
+indexes and v8 full-grid `Seed[]` entries migrate to counted packets; duplicate genotypes merge, and
+legacy saves with more than 24 distinct stacks are preserved as temporary overflow rather than
+silently discarded. Seed packets remain separate from sellable produce; a seed-sale economy is not
+invented in CORE-02. No later genetics, irrigation, economy-tuning, or Codex-UI task is included.
+
+## 2026-08-02 — Give every released seed trait a bounded consequence
+
+CORE-03 keeps the existing Seed genotype as the sole producer and save representation for all trait
+effects. `growTimeForSeed` maps Vigor 0–100 to 1.25–0.75× the species base duration, while
+`waterGrowthMultiplierForSeed` maps the clamped species water need plus Thirst to 0.80–1.25× for a
+watered crop; Vigor and Thirst are multiplied per crop and never pooled across the field.
+`nibbleDamageForSeed` maps Hardiness 0–100 to 1.5–0.5× of the existing fox bite, per target crop.
+Greed crops add one produce unit and four raid-attraction score points per active crop. These
+effects are exercised by pure deterministic farm, genetics, and raid-score tests and surface in the
+planting HUD with their numeric trait values and effect text.
+
+Local mechanisms deliberately do not stack: the presence of any active `repel_foxes`, `ricochet`,
+or `portable_light` crop enables one boolean effect within a capped radius of 3, 8, or 6 tiles.
+Repellers send a fox fleeing with a feedback burst/toast; a ricochet crop gives each fired shotgun
+pellet or bow arrow at most one seeded-RNG bounce; portable light is derived from the selected
+packet or nearby planted crop and expands/brightens the renderer hero light. Ironroot remains an
+absolute bite defense and mature-crop destruction defense, with explicit failed-raid feedback.
+The derived effects add no save fields, preserve v9 compatibility, and do not change Codex identity
+or packet stacking. The economy diagnostic remains a generic two-day base-crop model until a later
+calibration task intentionally models trait distributions.
+
+## 2026-08-02 — Finish the Seed Codex without changing save compatibility
+
+CORE-04 presents a pure, deterministic catalog derived from the existing `CodexEntry[]`: saved
+IDs are displayed once in discovery order, then absent base crop species appear as stable unknown
+silhouettes in authored crop-definition order. A fresh `createGameState` records the five starter
+species as day-1 discoveries so the player can immediately inspect the released roster; loading a
+pre-Codex save with an empty Codex does not fabricate discoveries and instead keeps those species
+unknown until the player recovers/discovers them. Existing hybrid IDs, parentage, traits, mechanism
+text, and discovered days remain the saved source of truth, and the compact v9 wire format is
+unchanged.
+
+The Codex is a pausing modal. Selection and comparison use explicit buttons and keyboard operation,
+comparison is limited to two discovered entries, and the modal exposes a polite live status sentence
+for screen readers. Discovery feedback is brief: a first-time recovered or bred seed gets a
+`New Codex entry` toast, while repeat discoveries retain the existing hybrid feedback. Selection and
+comparison state is transient UI state and is not persisted. The catalog defensively deduplicates
+duplicate IDs without mutating the save; all discovery, duplicate, migration, round-trip, and HUD
+status contracts are covered by deterministic tests.
+
+## 2026-08-02 — Make irrigation and homestead progression authored merchant paths
+
+CORE-05 keeps the existing tile and save fields but gives them one player-facing authority. A trench
+touching authored open water is a deterministic source; water traverses connected trenches only
+downhill or across flat tiles, marks the connected trench visibly wet, and waters adjacent planted
+crops. Flow is recomputed after trench, planting, load, and trench destruction so stale wet trench
+states cannot survive a topology change. Bucket watering remains available everywhere in the bounded
+homestead, and irrigation tier 3 removes bucket consumption; the upgrade does not claim to replace
+the visible trench rule with automatic watering.
+
+The Traveling Merchant sells one-time apply permits for homestead tiers 2–5 and irrigation tier 3.
+Homestead permits are sequentially locked, consume on application, preserve the existing tier field,
+show the existing tier models, and retain the current bow/axe unlock thresholds. The direct `U`
+shortcut is removed from production. Legacy placeable homestead deed IDs stay in the catalog for old
+save rendering and use, but remain unreleased so old inventory cannot be silently discarded and new
+players do not see a second progression path. No save schema or migration rule changes in CORE-05.
+
+## 2026-08-02 — Give the released building portfolio one bounded job each
+
+CORE-06 releases the existing fence/gate path plus Silo and Water Tower as the small functional portfolio. A placed
+Silo adds eight distinct seed-packet slots per instance; capacity is derived from `placedBuildings`, so no duplicate
+save field or migration is needed. Existing seed overflow is preserved when a Silo is demolished rather than silently
+discarded, and the HUD exposes the resulting used/capacity state. A Water Tower supplies bucket filling for the player
+and acts as a deterministic trench-flow source within six world tiles; placement and demolition recompute the relevant
+obstacle, enclosure, world-tile, and trench topology. Merchant descriptions and runtime effects use the same contract.
+Coops, barns, windmills, and other cosmetic buildings remain unreleased until their animal or processing loops exist.
+Rotation, collision, enclosure, demolition refunds, save round-trips, and capacity/source rules remain covered by pure
+or deterministic characterization tests. No save schema or migration rule changes in CORE-06.
+
+## 2026-08-02 — Make the multi-day arc explicit and recoverable
+
+CORE-07 keeps the onboarding guide as derived UI rather than introducing a second saved quest
+system. Day 2 presents the current functional choices—Silo, Water Tower, crop strategy through the
+breeding tool, or fence/gate defense—and dusk uses a deterministic, once-per-day telegraph before
+the existing raid. After the first market sale, the guide points at whichever of genetics or a
+functional building is still missing. If dawn finds no counted seed packets, one Grass packet is
+restored through the existing seed-inventory transaction; this is a bounded recovery path with no
+save-schema field and no change to raid damage, prices, or purchase policy. The economy diagnostic
+continues to represent generic two-day base crops, so its day-3 first-crop-sale result remains a
+documented calibration follow-up while the existing Day 1 wood-sale route remains available.
+
+## 2026-08-01 — Make the settlement endpoint a derived four-pillar objective
+
+CORE-08 replaces the prototype day threshold with one authored `Establish the homestead` objective.
+Grow is satisfied by a recorded crop harvest, Experiment by any discovered hybrid in the Codex,
+Defend by a placed fence or gate or an existing trophy outcome, and Develop by homestead tier 2+
+or a placed Silo/Water Tower. These sources are already saved gameplay state and keep the merchant,
+Codex, defense, and building systems as the progression authorities rather than adding a quest
+schema. The HUD shows each step from fresh play through completion, and the ending presents a
+`Homestead Established` payoff using the existing feedback burst and reward sound before allowing
+continued play. The existing `winShown` field remains the dismissal marker; no save schema or
+migration changes are introduced. The old day-five-only behavior is characterized as insufficient,
+not silently retained as a second ending path.

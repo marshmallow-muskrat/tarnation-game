@@ -19,10 +19,12 @@ import {
   FIXED_DT,
   GRID_H,
   GRID_W,
+  HOMESTEAD_FOOTPRINT,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
+  HOMESTEAD_SPAWN_X,
+  HOMESTEAD_SPAWN_Z,
   HOMESTEAD_SIZE,
-  HOMESTEAD_UPGRADE_WOOD,
   MARKET_RANGE,
   MELEE_COOLDOWN,
   MELEE_RANGE,
@@ -49,19 +51,23 @@ import {
 import {
   addSeedToInventory,
   addToInventory,
+  canStoreSeedPacket,
   checkWin,
   clearStump,
   createGameState,
   cycleWeapon,
   cycleSeed,
   fillBucket,
+  harvestCropTransaction,
   isStumpCleared,
   isTreeChopped,
   markTreeChopped,
   markWinShown,
   onNewDay,
   placeBuilding,
+  plantSeedPacket,
   selectedSeed,
+  selectedSeedPacket,
   sellEverything,
   sellItem,
   setToast,
@@ -72,29 +78,46 @@ import {
   woodCount,
   type GameState,
 } from '../sim/gameState';
+import { SEED_RECOVERY_PER_HARVEST } from '../sim/seedInventory';
+import {
+  seedPacketCapacity,
+  waterTowerProvidesWater,
+} from '../sim/buildings';
 import {
   clearBreedingParents,
   destroyCrop,
   digTrench,
+  flowTrenchWater,
   getTile,
-  harvestTile,
+  hasPortableLightNearby,
   hasRepelNearby,
+  hasRicochetNearby,
   makeBreedingBed,
   nibbleCrop,
   placeBearTrap,
-  plantTile,
   tillTile,
   tileCenter,
+  trenchSourceTiles,
   triggerBearTrap,
   waterTile,
   worldToTile,
   cropValueScore,
   totalWeirdness,
 } from '../sim/farm';
-import { crossbreed } from '../sim/genetics';
+import {
+  crossbreed,
+  PORTABLE_LIGHT_RADIUS,
+  REPEL_FOX_RADIUS,
+  RICOCHET_RADIUS,
+  seedId,
+  seedTraitDescription,
+} from '../sim/genetics';
 import { hasRoomFor } from '../sim/inventory';
 import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
+import { buildCodexCatalog } from '../sim/codex';
 import { purchaseAsset } from '../sim/economy';
+import { progressionLockReason } from '../sim/progression';
+import { dayTwoChoiceHint, multiDayArcHint, RAID_TELEGRAPH, shouldTelegraphRaid } from '../sim/gameArc';
 import {
   type OutcomeKind,
   type OutcomeStatus,
@@ -105,6 +128,12 @@ import {
   nearestEdgePoint,
 } from '../sim/raid';
 import {
+  EQUIPMENT_PROFILES,
+  equipmentActionClipFor,
+  equipmentTimingFor,
+  type EquipmentKey,
+} from '../content/equipment';
+import {
   cloneModel,
   initAssetLoaders,
   preloadGroup,
@@ -113,6 +142,13 @@ import {
 } from './Assets';
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
+import {
+  ActionStateMachine,
+  DEFAULT_INTERACT_ACTION_TIMING,
+  DEFAULT_RANGED_ACTION_TIMING,
+  DEFAULT_TOOL_ACTION_TIMING,
+  type ActionEvent,
+} from './ActionStateMachine';
 import { buildMarketStall } from './MarketStall';
 import {
   disposeCloneOwnedMaterials,
@@ -131,6 +167,18 @@ import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
 import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
+import { approachHeading, LOCOMOTION_GAIT } from './Locomotion';
+import {
+  classifyAxeTarget,
+  headingToTarget,
+  isWithinFacingArc,
+  isWithinMeleeContact,
+  isMeleeContactObstructed,
+  MELEE_FACING_HALF_ANGLE,
+  meleeEffectForTarget,
+  selectMeleeCandidate,
+  type MeleeCandidate,
+} from './ToolInteraction';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
@@ -168,6 +216,12 @@ import {
   tileIsEnclosed,
   tileKey,
 } from '../sim/placement';
+import {
+  firstPlotHint as formatFirstPlotHint,
+  firstPlotStage,
+  isHomesteadFootprintTile,
+  isFarmableTile,
+} from '../sim/farmBoundary';
 
 type Shot = {
   root: THREE.Object3D;
@@ -181,6 +235,12 @@ type Shot = {
   life: number;
   ricochet: number;
   dmg: number;
+};
+
+type PendingPlayerAction = {
+  clip: PlayerClip;
+  onContact?: () => void;
+  onFire?: () => void;
 };
 
 type Boulder = {
@@ -213,7 +273,6 @@ type PlainsAnimal = {
   targetHeading: number;
   speed: number;
   timer: number;
-  hp: number;
   state: 'idle' | 'walk' | 'hurt';
   name: string;
 };
@@ -295,7 +354,9 @@ const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
 const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as const satisfies readonly AssetCategory[];
 
 export class GameRuntime {
-  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {}
+  constructor(private readonly saveService = new SaveService(browserSaveStorage())) {
+    this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
+  }
 
   private readonly economyCapability = getEconomyCapability();
 
@@ -313,7 +374,7 @@ export class GameRuntime {
     fireWeapon: () => this.fireWeapon(),
     useShovel: () => this.useShovel(),
     useAxe: () => this.useAxe(),
-    useCombatAxe: () => this.meleeSwing(AXE_DAMAGE),
+    useCombatAxe: () => this.useCombatAxe(),
     emptyToolSlot: (index) => setToast(this.gs, `Slot ${index + 1} is empty`, 1.2),
   });
   private readonly placement = new PlacementCoordinator({
@@ -339,17 +400,26 @@ export class GameRuntime {
   private playerRoot!: THREE.Object3D;
   private playerActions!: PlayerActionController;
   private equipment!: EquipmentController;
+  private readonly actionState = new ActionStateMachine<null>();
+  private readonly pendingPlayerActions = new Map<number, PendingPlayerAction>();
+  private processingActionEvents = false;
   private playerX = WORLD_SIZE / 2;
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
   private velZ = 0;
+  private movementIntent = false;
+  private playerHeading = 0;
   private headingTarget = 0;
   private nearWater = false;
+  private nearWaterTower = false;
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
   private demolishMode = false;
   private pauseOpen = false;
   private helpOpen = false;
+  private codexOpen = false;
+  private codexSelectedKey: string | null = null;
+  private codexCompareKeys: string[] = [];
   private reducedMotion = false;
   private debugGrid = false;
   private vendorOpen = false;
@@ -387,6 +457,8 @@ export class GameRuntime {
   private merchantX = CENTRAL_CAMP.merchantX;
   private merchantZ = CENTRAL_CAMP.merchantZ;
   private nearMerchant = false;
+  private firstPlotGuideActive = false;
+  private raidWarningDay = -1;
   private fixtureRoots: THREE.Object3D[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
@@ -427,6 +499,7 @@ export class GameRuntime {
   /** Renderer-only randomness; never consume the simulation RNG for decoration. */
   private feedbackSeed = 0x51f15eed;
   private winShownLocal = false;
+  private settlementCelebrated = false;
   private readonly runtimeMetrics = new RuntimeMetrics(performance.now());
   private readonly hudPresenter = new HudPresenter();
 
@@ -470,6 +543,15 @@ export class GameRuntime {
       }
       this.gs = loaded.state;
     }
+    this.firstPlotGuideActive = options.newAdventure === true;
+    this.winShownLocal = false;
+    this.settlementCelebrated = false;
+    this.raidWarningDay = -1;
+    this.codexOpen = false;
+    this.codexCompareKeys = [];
+    this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
+    this.world.setStarterPlotVisible(this.firstPlotGuideActive);
+    this.syncActionMenuState();
     this.input.attach(canvas);
     this.resize();
     window.addEventListener('resize', this.resize);
@@ -478,6 +560,9 @@ export class GameRuntime {
 
     this.playerX = this.gs.playerX;
     this.playerZ = this.gs.playerZ;
+    this.movementIntent = false;
+    this.playerHeading = 0;
+    this.headingTarget = 0;
 
     this.world.initFarmTrees({
       heightAt: (x, z) => this.world.heightAt(x, z),
@@ -487,6 +572,7 @@ export class GameRuntime {
       tileBlocked: (tx, ty) => (this.gs.tiles[ty]?.[tx]?.state ?? 'grass') !== 'grass',
     });
 
+    this.validatePlayerSpawn(options.newAdventure === true);
     this.spawnPlayer();
     this.spawnStall();
     this.spawnMerchantCamp();
@@ -499,6 +585,7 @@ export class GameRuntime {
     this.syncBearTrapModels();
     this.seedPlainsAnimals();
     this.refreshObstacleTopology();
+    this.refreshTrenchWater();
     this.syncWorldTiles();
     this.rebuildCrops();
     this.recalculateEnclosure();
@@ -594,6 +681,8 @@ export class GameRuntime {
     this.bearTrapRoots.clear();
     this.gateCloseTimers.clear();
     this.treeChops.clear();
+    this.cancelPlayerActions('focus_lost');
+    this.input.setFocusHandler(null);
     this.input.dispose();
     this.input.setGestureHandler(null);
     this.audio.dispose();
@@ -650,8 +739,68 @@ export class GameRuntime {
     this.playerRoot.position.set(this.playerX, 0, this.playerZ);
     this.world.getSharedActors().add(this.playerRoot);
     this.playerActions = new PlayerActionController(root, animations);
+    this.playerActions.setReducedMotion(this.reducedMotion);
     this.equipment = new EquipmentController(root, this.playerActions);
     this.equipment.refresh(this.gs);
+  }
+
+  /** Keep fresh runs and invalid legacy positions out of the merchant camp. */
+  private validatePlayerSpawn(forceFresh: boolean): void {
+    const currentTile = this.worldToFarmTile(this.playerX, this.playerZ);
+    const currentKey = currentTile ? tileKey(currentTile.tx, currentTile.ty) : '';
+    const placedObstacles = occupiedPlacedTiles(this.gs.placedBuildings);
+    const currentIsSafe =
+      currentTile !== null &&
+      !this.fixtureReservations.has(currentKey) &&
+      !this.fixtureObstacles.has(currentKey) &&
+      !placedObstacles.has(currentKey) &&
+      !isHomesteadFootprintTile(currentTile.tx, currentTile.ty) &&
+      Number.isFinite(this.playerX) &&
+      Number.isFinite(this.playerZ);
+    if (!forceFresh && currentIsSafe) return;
+
+    const candidates: { x: number; z: number }[] = [
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X + 1, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z + 1 },
+      { x: HOMESTEAD_SPAWN_X - 1, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z - 1 },
+    ];
+    for (let radius = 0; radius <= 12; radius++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
+          candidates.push({
+            x: HOMESTEAD_MIN_X + 0.5 + dx + 8,
+            z: HOMESTEAD_MIN_Z + 0.5 + dz + 8,
+          });
+        }
+      }
+    }
+
+    const candidate = candidates.find((point) => this.isSafeSpawnPoint(point.x, point.z));
+    if (!candidate) {
+      // The authored region is large enough that this should never be reached;
+      // retain a deterministic in-region fallback rather than spawning at camp.
+      this.playerX = HOMESTEAD_MIN_X + 1.5;
+      this.playerZ = HOMESTEAD_MIN_Z + 1.5;
+    } else {
+      this.playerX = candidate.x;
+      this.playerZ = candidate.z;
+    }
+    this.gs.playerX = this.playerX;
+    this.gs.playerZ = this.playerZ;
+  }
+
+  private isSafeSpawnPoint(x: number, z: number): boolean {
+    const tile = this.worldToFarmTile(x, z);
+    if (!tile || !isFarmableTile(tile.tx, tile.ty)) return false;
+    if (isHomesteadFootprintTile(tile.tx, tile.ty)) return false;
+    const key = tileKey(tile.tx, tile.ty);
+    if (this.fixtureReservations.has(key) || this.fixtureObstacles.has(key)) return false;
+    if (occupiedPlacedTiles(this.gs.placedBuildings).has(key)) return false;
+    if (this.world.getFarmTrees()?.blocksTilling(tile.tx, tile.ty)) return false;
+    return this.world.distToWater(x, z) >= 1.2;
   }
 
   /** The legacy selling stall remains separate from the traveling merchant. */
@@ -709,6 +858,11 @@ export class GameRuntime {
   private refreshObstacleTopology(): void {
     this.obstacleTiles.clear();
     for (const key of this.fixtureObstacles) this.obstacleTiles.add(key);
+    for (let ty = HOMESTEAD_FOOTPRINT.minZ; ty < HOMESTEAD_FOOTPRINT.minZ + HOMESTEAD_FOOTPRINT.height; ty++) {
+      for (let tx = HOMESTEAD_FOOTPRINT.minX; tx < HOMESTEAD_FOOTPRINT.minX + HOMESTEAD_FOOTPRINT.width; tx++) {
+        this.obstacleTiles.add(tileKey(tx, ty));
+      }
+    }
     for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
     this.topologyVersion++;
     this.foxDirector.clear();
@@ -869,7 +1023,7 @@ export class GameRuntime {
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
     this.gs.toolSlotActive = false;
@@ -884,7 +1038,9 @@ export class GameRuntime {
     this.buildingMode = false;
     this.placement.clear();
     this.demolishMode = false;
-    this.playerActions.cancel();
+    this.gs.inventoryOpen = false;
+    this.syncActionMenuState();
+    this.cancelPlayerActions();
     this.clearShots();
     this.gs.toolSlotActive = true;
     this.toolMode = 'farm';
@@ -903,7 +1059,7 @@ export class GameRuntime {
     }
     this.buildingMode = !this.buildingMode;
     this.toolMode = 'farm';
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     this.clearShots();
     this.gs.toolSlotActive = false;
     this.equipment.refresh(this.gs);
@@ -926,17 +1082,72 @@ export class GameRuntime {
   }
 
   toggleHelp(): void {
+    if (!this.helpOpen) this.codexOpen = false;
     this.helpOpen = !this.helpOpen;
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
-      this.playerActions.cancel();
+    }
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  toggleCodex(): void {
+    if (this.codexOpen) {
+      this.codexOpen = false;
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
+    this.codexOpen = true;
+    this.helpOpen = false;
+    this.vendorOpen = false;
+    this.vendorMessage = '';
+    this.buildingMode = false;
+    this.placement.clear();
+    this.demolishMode = false;
+    this.gs.inventoryOpen = false;
+    this.closeContextMenu();
+    this.cancelPlayerActions();
+    this.clearShots();
+    this.velX = 0;
+    this.velZ = 0;
+    const catalog = buildCodexCatalog(this.gs.codex);
+    const first = catalog[0];
+    if (!this.codexSelectedKey || !catalog.some((entry) => entry.key === this.codexSelectedKey)) {
+      this.codexSelectedKey = first?.key ?? null;
+    }
+    this.codexCompareKeys = [];
+    this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  selectCodexEntry(key: string): void {
+    const catalog = buildCodexCatalog(this.gs.codex);
+    if (!this.codexOpen || !catalog.some((entry) => entry.key === key)) return;
+    this.codexSelectedKey = key;
+    this.pushHud(true);
+  }
+
+  toggleCodexCompare(key: string): void {
+    if (!this.codexOpen) return;
+    const entry = buildCodexCatalog(this.gs.codex).find((candidate) => candidate.key === key);
+    if (!entry || entry.kind !== 'discovered') return;
+    const index = this.codexCompareKeys.indexOf(key);
+    if (index >= 0) {
+      this.codexCompareKeys.splice(index, 1);
+    } else if (this.codexCompareKeys.length >= 2) {
+      setToast(this.gs, 'Compare up to two discovered seeds', 1.6);
+    } else {
+      this.codexCompareKeys.push(key);
     }
     this.pushHud(true);
   }
 
   toggleInventory(): void {
+    if (!this.gs.inventoryOpen) this.codexOpen = false;
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -960,14 +1171,17 @@ export class GameRuntime {
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
+    this.cancelPlayerActions();
     this.velX = 0;
     this.velZ = 0;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
   closeVendor(): void {
     this.vendorOpen = false;
     this.vendorMessage = '';
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1005,7 +1219,7 @@ export class GameRuntime {
       : this.economyCapability.allowFreePurchases
         ? ' · no currency cost in this sandbox'
         : ' · no duckette or material cost';
-    this.vendorMessage = `${asset.displayName} deed added to inventory${spentSummary}`;
+    this.vendorMessage = `${asset.displayName} ${asset.progression ? 'permit' : 'deed'} added to inventory${spentSummary}`;
     this.recordOutcome('purchase', 'completed');
     this.persist();
     this.pushHud(true);
@@ -1016,12 +1230,46 @@ export class GameRuntime {
     if (!assetId) return;
     const asset = assetDefinition(assetId);
     if (!asset || !this.gs.inventory.some((slot) => slot?.id === id)) return;
+    this.gs.inventoryOpen = false;
+    this.syncActionMenuState();
+    if (asset.progression) {
+      const progressionReason = progressionLockReason(asset.progression, this.gs);
+      if (progressionReason) {
+        setToast(this.gs, progressionReason, 1.8);
+        this.pushHud(true);
+        return;
+      }
+      if (!takeFromInventory(this.gs, id, 1)) return;
+      if (asset.progression.kind === 'irrigation') {
+        this.gs.irrigationTier = asset.progression.targetTier;
+        this.recordAction('upgrade_irrigation');
+        setToast(this.gs, 'Irrigation upgraded · bucket water is no longer consumed', 2.2);
+      } else {
+        this.gs.homesteadTier = asset.progression.targetTier;
+        this.runtimeMetrics.recordUpgrade(this.gs.simTime);
+        const unlocked = asset.progression.targetTier === 2
+          ? unlockWeapon(this.gs, 'bow')
+          : asset.progression.targetTier === 3
+            ? unlockWeapon(this.gs, 'axe')
+            : false;
+        this.syncBuildings();
+        setToast(
+          this.gs,
+          unlocked
+            ? `Homestead tier ${this.gs.homesteadTier} · new weapon: ${this.gs.unlockedWeapons[this.gs.unlockedWeapons.length - 1]}`
+            : `Homestead tier ${this.gs.homesteadTier}`,
+          2.4,
+        );
+        this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
+        this.audio.play('build');
+      }
+      this.persist();
+      this.pushHud(true);
+      return;
+    }
     if (asset.id === 'utility:bear-trap') {
       this.gs.bearTrapCooldown = 0;
-      if (this.tryBearTrap()) {
-        takeFromInventory(this.gs, id, 1);
-        this.persist();
-      }
+      this.tryBearTrap(() => takeFromInventory(this.gs, id, 1));
       this.pushHud(true);
       return;
     }
@@ -1035,19 +1283,6 @@ export class GameRuntime {
         takeFromInventory(this.gs, id, 1);
         this.persist();
       }
-      this.pushHud(true);
-      return;
-    }
-    if (asset.id === 'upgrade:irrigation') {
-      if (this.gs.irrigationTier >= 3) {
-        setToast(this.gs, 'Irrigation is already fully upgraded', 1.6);
-        return;
-      }
-      this.gs.irrigationTier = 3;
-      takeFromInventory(this.gs, id, 1);
-      setToast(this.gs, 'Irrigation upgraded · crops no longer need bucket water', 2.2);
-      this.recordAction('upgrade_irrigation');
-      this.persist();
       this.pushHud(true);
       return;
     }
@@ -1098,7 +1333,7 @@ export class GameRuntime {
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
-    this.playerActions.cancel();
+    this.cancelPlayerActions();
     this.clearShots();
     setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
     this.pushHud(true);
@@ -1116,12 +1351,17 @@ export class GameRuntime {
       return;
     }
     if (this.buildingMode || this.placement.activeDeedAssetId) {
+      this.cancelPlayerActions();
       this.recordOutcome('building', 'cancelled');
       this.buildingMode = false;
       this.placement.clear();
       this.world.setBuildPreview(null);
       setToast(this.gs, 'Placement cancelled', 1.2);
       this.pushHud(true);
+      return;
+    }
+    if (this.actionState.isBusy) {
+      this.cancelPlayerActions();
       return;
     }
     if (this.demolishMode) {
@@ -1134,25 +1374,41 @@ export class GameRuntime {
       this.closeVendor();
       return;
     }
+    if (this.codexOpen) {
+      this.codexOpen = false;
+      this.codexCompareKeys = [];
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
     if (this.helpOpen) {
       this.helpOpen = false;
       this.pushHud(true);
       return;
     }
+    if (this.gs.inventoryOpen) {
+      this.gs.inventoryOpen = false;
+      this.syncActionMenuState();
+      this.pushHud(true);
+      return;
+    }
     if (this.pauseOpen) {
       this.pauseOpen = false;
+      this.syncActionMenuState();
       this.pushHud(true);
       return;
     }
     this.pauseOpen = true;
     this.velX = 0;
     this.velZ = 0;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
   resumeGame(): void {
     if (!this.pauseOpen) return;
     this.pauseOpen = false;
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1166,6 +1422,7 @@ export class GameRuntime {
       gate: false,
       gateOpen: false,
     };
+    this.syncActionMenuState();
     this.pushHud(true);
   }
 
@@ -1197,6 +1454,7 @@ export class GameRuntime {
       gate: asset.gate,
       gateOpen: this.gs.placedBuildings[index]!.gateOpen === true,
     };
+    this.syncActionMenuState();
     this.pushHud(true);
     return true;
   }
@@ -1270,14 +1528,23 @@ export class GameRuntime {
       setToast(this.gs, 'No inventory space for the returned deed', 1.8);
       return;
     }
+    const previousSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
     this.gateCloseTimers.delete(placed);
     this.gs.placedBuildings.splice(index, 1);
     addToInventory(this.gs, deed, 1);
     this.refreshObstacleTopology();
+    this.refreshTrenchWater();
     this.syncBuildings();
+    this.syncWorldTiles();
     this.recalculateEnclosure();
     this.persist();
-    setToast(this.gs, `${asset.displayName} demolished · deed returned`, 1.6);
+    const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
+    const functionNote = asset.id === 'silo'
+      ? ` · seed storage ${previousSeedCapacity}→${nextSeedCapacity}`
+      : asset.id === 'water_tower'
+        ? ' · local water source removed'
+        : '';
+    setToast(this.gs, `${asset.displayName} demolished · deed returned${functionNote}`, 1.8);
     this.pushHud(true);
   }
 
@@ -1288,7 +1555,7 @@ export class GameRuntime {
 
   useBearTrap(): void {
     this.recordAction('bear_trap');
-    if (this.tryBearTrap()) this.persist();
+    this.tryBearTrap();
   }
 
   /** Console helpers — teleport, hand out items, jump the clock. */
@@ -1360,6 +1627,71 @@ export class GameRuntime {
     this.runtimeMetrics.recordAction(kind);
   }
 
+  private handleFocusChange(focused: boolean): void {
+    if (focused) {
+      this.actionState.enable();
+      if (this.gs) this.syncActionMenuState();
+      return;
+    }
+    const cancelled = this.actionState.disable();
+    for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+    this.playerActions?.cancel();
+    this.velX = 0;
+    this.velZ = 0;
+  }
+
+  private cancelPlayerActions(reason: 'cancel' | 'focus_lost' = 'cancel'): void {
+    const cancelled = this.actionState.cancel(reason);
+    for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+    this.playerActions?.cancel();
+  }
+
+  private syncActionMenuState(): void {
+    const menuOpen =
+      this.pauseOpen ||
+      this.helpOpen ||
+      this.codexOpen ||
+      this.vendorOpen ||
+      this.contextMenu.open ||
+      this.gs.inventoryOpen;
+    if (menuOpen) {
+      const cancelled = this.actionState.enterMenu();
+      for (const actionId of cancelled) this.pendingPlayerActions.delete(actionId);
+      this.playerActions?.cancel();
+    } else {
+      this.actionState.exitMenu();
+    }
+  }
+
+  private flushActionEvents(): void {
+    if (this.processingActionEvents) return;
+    this.processingActionEvents = true;
+    try {
+      while (true) {
+        const events = this.actionState.drainEvents();
+        if (events.length === 0) break;
+        for (const event of events) this.applyActionEvent(event);
+      }
+    } finally {
+      this.processingActionEvents = false;
+    }
+  }
+
+  private applyActionEvent(event: ActionEvent<null>): void {
+    const pending = this.pendingPlayerActions.get(event.actionId);
+    if (!pending) return;
+    if (event.type === 'start') {
+      if (event.kind === 'tool') this.meleeCd = MELEE_COOLDOWN;
+      this.playerActions?.play(pending.clip);
+    } else if (event.type === 'contact') {
+      pending.onContact?.();
+    } else if (event.type === 'fire') {
+      pending.onFire?.();
+    } else if (event.type === 'complete') {
+      this.pendingPlayerActions.delete(event.actionId);
+    }
+  }
+
   private recordOutcome(
     kind: OutcomeKind,
     status: OutcomeStatus,
@@ -1404,7 +1736,7 @@ export class GameRuntime {
     this.stepFeedbackBursts(dt);
 
     const speed = Math.hypot(this.velX, this.velZ);
-    this.playerActions.updateLocomotion(speed > 0.4, speed, this.equipment.animationProfile);
+    this.playerActions.updateLocomotion(this.movementIntent, speed, this.equipment.animationProfile);
 
     let leadX = 0;
     let leadZ = 0;
@@ -1418,11 +1750,13 @@ export class GameRuntime {
 
     const py = this.world.heightAt(this.playerX, this.playerZ);
     this.playerRoot.position.set(this.playerX, py, this.playerZ);
-    this.playerTargetQuaternion.setFromAxisAngle(
-      this.playerUp,
+    this.playerHeading = approachHeading(
+      this.playerHeading,
       this.headingTarget,
+      LOCOMOTION_GAIT.turnRate * dt,
     );
-    this.playerRoot.quaternion.slerp(this.playerTargetQuaternion, 1 - Math.exp(-dt * 10));
+    this.playerTargetQuaternion.setFromAxisAngle(this.playerUp, this.playerHeading);
+    this.playerRoot.quaternion.copy(this.playerTargetQuaternion);
     this.equipment.update(dt);
 
     this.world.render();
@@ -1432,6 +1766,14 @@ export class GameRuntime {
 
   private handleHotkeys(): void {
     if (this.pauseOpen) {
+      if (this.input.justPressed('Escape')) this.cancelActiveState();
+      return;
+    }
+    if (this.input.justPressed('KeyK')) {
+      this.toggleCodex();
+      return;
+    }
+    if (this.codexOpen) {
       if (this.input.justPressed('Escape')) this.cancelActiveState();
       return;
     }
@@ -1457,7 +1799,6 @@ export class GameRuntime {
       this.equipment.refresh(this.gs);
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
-    if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
     if (this.input.justPressed('KeyV')) {
       const muted = this.audio.toggleMuted();
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
@@ -1466,6 +1807,7 @@ export class GameRuntime {
     if (this.input.justPressed('F12')) {
       this.debugGrid = !this.debugGrid;
       this.world.setGridDebug(this.debugGrid);
+      this.equipment.setDebugVisible(this.debugGrid);
       setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
     }
     if (this.input.justPressed('KeyX')) {
@@ -1486,6 +1828,7 @@ export class GameRuntime {
     if (this.input.justPressed('KeyM')) {
       this.reducedMotion = !this.reducedMotion;
       this.world.setReducedMotion(this.reducedMotion);
+      this.playerActions.setReducedMotion(this.reducedMotion);
       localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
       setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
@@ -1499,12 +1842,14 @@ export class GameRuntime {
     if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
       cycleSeed(this.gs, -1);
       const s = selectedSeed(this.gs);
-      if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
+      const packet = selectedSeedPacket(this.gs);
+      if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
     if (this.input.justPressed('BracketRight') || this.input.justPressed('Period')) {
       cycleSeed(this.gs, 1);
       const s = selectedSeed(this.gs);
-      if (s) setToast(this.gs, `Seed: ${s.displayName}`, 1.2);
+      const packet = selectedSeedPacket(this.gs);
+      if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
 
     if (this.input.justPressed('Escape')) this.cancelActiveState();
@@ -1523,14 +1868,40 @@ export class GameRuntime {
 
   private update(dt: number): void {
     this.handleHotkeys();
+    if (this.actionState.currentState === 'disabled') {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+    if (this.codexOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     if (this.pauseOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+    if (this.gs.inventoryOpen) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
+      return;
+    }
+    if (this.contextMenu.open) {
+      this.velX = 0;
+      this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     const b = this.world.getWorldBounds();
@@ -1547,7 +1918,9 @@ export class GameRuntime {
     this.stepFoxes(dt);
     this.stepAnimals(dt);
 
-    this.nearWater = this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE;
+    this.nearWaterTower = waterTowerProvidesWater(this.gs.placedBuildings, this.playerX, this.playerZ);
+    this.nearWater =
+      this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE || this.nearWaterTower;
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('KeyE')) {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
@@ -1568,6 +1941,7 @@ export class GameRuntime {
     if (this.vendorOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
 
@@ -1578,8 +1952,17 @@ export class GameRuntime {
       toolbarSlot: this.gs.toolbarSlot,
     });
 
+    this.actionState.advance(dt);
+    this.flushActionEvents();
+
     const clock = stepGameClock(this.gs, dt);
+    this.world.setPortableLightActive(this.hasPortableLightSource());
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
+
+    if (shouldTelegraphRaid(this.gs.clock, this.raidWarningDay)) {
+      this.raidWarningDay = this.gs.clock.day;
+      setToast(this.gs, RAID_TELEGRAPH, 4);
+    }
 
     if (clock.matured.length) {
       for (const m of clock.matured) this.syncCropTile(m.x, m.y);
@@ -1591,11 +1974,15 @@ export class GameRuntime {
     }
     this.cropBatches?.update(this.gs.simTime);
     for (const c of this.crops) {
-      const s = c.root.scale.x;
-      const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
-      c.root.scale.setScalar(
-        THREE.MathUtils.lerp(s, target, 0.08),
-      );
+      if (this.reducedMotion) {
+        c.root.scale.setScalar(c.baseScale);
+      } else {
+        const s = c.root.scale.x;
+        const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
+        c.root.scale.setScalar(
+          THREE.MathUtils.lerp(s, target, 0.08),
+        );
+      }
     }
 
     if (clock.becameNight) {
@@ -1609,32 +1996,41 @@ export class GameRuntime {
       this.clearDeathMarkers();
       this.clearLootMarkers();
       this.clearFeedbackBursts();
-      const { lostTilth, regrown } = onNewDay(this.gs);
+      const { lostTilth, regrown, seedReserveAdded } = onNewDay(this.gs);
       this.refreshCropTargetsFromTiles();
-      setToast(
-        this.gs,
-        lostTilth.length
-          ? `Day ${this.gs.clock.day} — ${lostTilth.length} bare plots went back to grass`
-          : `Day ${this.gs.clock.day}`,
-        3,
-      );
+      const dayNotes = [`Day ${this.gs.clock.day}`];
+      if (lostTilth.length) dayNotes.push(`${lostTilth.length} bare plots went back to grass`);
+      if (this.gs.clock.day === 2) dayNotes.push(dayTwoChoiceHint());
+      if (seedReserveAdded) dayNotes.push('reserve Grass seed restored');
+      setToast(this.gs, dayNotes.join(' · '), 4);
       if (lostTilth.length || regrown.length) {
         this.world.getFarmTrees()?.rebuildAll();
         this.world.markShadowsDirty();
       }
       this.syncWorldTiles();
       this.persist();
-      if (checkWin(this.gs) && !this.gs.winShown) {
-        if (!this.runtimeMetrics.hasCompleted('settlement_goal')) {
-          this.recordOutcome('settlement_goal', 'completed');
-        }
-        this.winShownLocal = false;
-      }
     }
+  }
+
+  private maybeShowSettlementGoal(): void {
+    if (!checkWin(this.gs)) return;
+    if (!this.runtimeMetrics.hasCompleted('settlement_goal')) {
+      this.recordOutcome('settlement_goal', 'completed');
+    }
+    if (this.settlementCelebrated) return;
+    this.settlementCelebrated = true;
+    this.winShownLocal = false;
+    setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
+    this.spawnFeedbackBurst(this.playerX, this.playerZ, 0xf2c266, 14, 0.34);
+    this.audio.play('reward');
+    this.persist();
   }
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
     const stick = this.input.getMoveStick();
+    this.movementIntent = Math.hypot(stick.x, stick.y) > 1e-6;
+    this.actionState.setMovementIntent(this.movementIntent);
+    const movementScale = this.actionState.movementScale;
     const { forward, right } = this.world.getScreenBasis();
     let wishX = right.x * stick.x + forward.x * stick.y;
     let wishZ = right.z * stick.x + forward.z * stick.y;
@@ -1642,18 +2038,22 @@ export class GameRuntime {
     if (wlen > 1e-6) {
       wishX /= wlen;
       wishZ /= wlen;
-      this.velX += wishX * PLAYER_ACCEL * dt;
-      this.velZ += wishZ * PLAYER_ACCEL * dt;
-      this.headingTarget = Math.atan2(wishX, wishZ);
+      this.velX += wishX * PLAYER_ACCEL * movementScale * dt;
+      this.velZ += wishZ * PLAYER_ACCEL * movementScale * dt;
+      const aimLocksHeading =
+        this.actionState.currentState === 'ranged_aim' ||
+        this.actionState.currentState === 'ranged_fire';
+      if (!aimLocksHeading) this.headingTarget = Math.atan2(wishX, wishZ);
     } else {
       const damp = Math.exp(-PLAYER_DAMP * dt);
       this.velX *= damp;
       this.velZ *= damp;
     }
     const sp = Math.hypot(this.velX, this.velZ);
-    if (sp > PLAYER_SPEED) {
-      this.velX = (this.velX / sp) * PLAYER_SPEED;
-      this.velZ = (this.velZ / sp) * PLAYER_SPEED;
+    const maxSpeed = PLAYER_SPEED * movementScale;
+    if (sp > maxSpeed) {
+      this.velX = (this.velX / sp) * maxSpeed;
+      this.velZ = (this.velZ / sp) * maxSpeed;
     }
     const nextX = THREE.MathUtils.clamp(this.playerX + this.velX * dt, minX, maxX);
     const nextZ = THREE.MathUtils.clamp(this.playerZ + this.velZ * dt, minZ, maxZ);
@@ -1671,13 +2071,46 @@ export class GameRuntime {
     return { tx, ty };
   }
 
+  /** One live ricochet crop arms every projectile fired from nearby. */
+  private ricochetChargesForPlayer(): number {
+    const tile = this.worldToFarmTile(this.playerX, this.playerZ);
+    return tile && hasRicochetNearby(this.gs.tiles, tile.tx, tile.ty, RICOCHET_RADIUS) ? 1 : 0;
+  }
+
+  /** Portable light is derived from the held packet or a nearby live crop. */
+  private hasPortableLightSource(): boolean {
+    const selected = selectedSeed(this.gs);
+    if (selected?.mech === 'portable_light') return true;
+    const tile = this.worldToFarmTile(this.playerX, this.playerZ);
+    return tile
+      ? hasPortableLightNearby(this.gs.tiles, tile.tx, tile.ty, PORTABLE_LIGHT_RADIUS)
+      : false;
+  }
+
   private farmTileWorld(tx: number, ty: number): { x: number; z: number } {
     const c = tileCenter(tx, ty, 1);
     return { x: c.x, z: c.y };
   }
 
+  /** Recompute visible trench flow from the live world water boundary. */
+  private refreshTrenchWater(): number {
+    const sources = trenchSourceTiles(this.gs.tiles, (x, z) => {
+      const towerSourceDistance = waterTowerProvidesWater(this.gs.placedBuildings, x, z)
+        ? 0
+        : Number.POSITIVE_INFINITY;
+      return Math.min(this.world.distToWater(x, z), towerSourceDistance);
+    });
+    return flowTrenchWater(
+      this.gs.tiles,
+      (x, z) => this.world.heightAt(x, z),
+      sources,
+    );
+  }
+
   /** Rock, tree, stump or open water — all of them stop a shovel. */
   private tileBlockedForTilling(tx: number, ty: number): boolean {
+    if (!isFarmableTile(tx, ty)) return true;
+    if (isHomesteadFootprintTile(tx, ty)) return true;
     const trees = this.world.getFarmTrees();
     if (trees?.blocksTilling(tx, ty)) return true;
     const key = tileKey(tx, ty);
@@ -1864,39 +2297,6 @@ export class GameRuntime {
     return this.world.raycastTree(ndc.x, ndc.y);
   }
 
-  private tryUpgradeHomestead(): void {
-    const distance = Math.hypot(this.playerX - HOMESTEAD_X, this.playerZ - HOMESTEAD_Z);
-    if (distance > 8) {
-      setToast(this.gs, 'Stand by the homestead to upgrade it', 1.8);
-      return;
-    }
-    if (this.gs.homesteadTier >= HOMESTEAD_MODEL_KEYS.length) {
-      setToast(this.gs, 'The homestead is fully upgraded', 1.8);
-      return;
-    }
-    const nextTier = this.gs.homesteadTier + 1;
-    const cost = HOMESTEAD_UPGRADE_WOOD[nextTier - 1] ?? 0;
-    if (woodCount(this.gs) < cost) {
-      setToast(this.gs, `Homestead tier ${nextTier}: need ${cost} Wood`, 2);
-      return;
-    }
-    if (cost > 0) takeFromInventory(this.gs, ITEM_WOOD, cost);
-    this.gs.homesteadTier = nextTier;
-    this.runtimeMetrics.recordUpgrade(this.gs.simTime);
-    const unlocked = nextTier === 2 ? unlockWeapon(this.gs, 'bow') : nextTier === 3 ? unlockWeapon(this.gs, 'axe') : false;
-    this.syncBuildings();
-    this.persist();
-    this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 0xf2c266, 8, 0.32);
-    this.audio.play('build');
-    setToast(
-      this.gs,
-      unlocked
-        ? `Homestead tier ${nextTier} · new weapon: ${this.gs.unlockedWeapons[this.gs.unlockedWeapons.length - 1]}`
-        : `Homestead tier ${nextTier}`,
-      2.4,
-    );
-  }
-
   private placeSelectedBuilding(): void {
     this.recordOutcome('building', 'attempted');
     const placement = this.placement.status();
@@ -1906,70 +2306,143 @@ export class GameRuntime {
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
+    const deedPlacement = this.placement.activeDeedAssetId !== null;
     const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
-    if (!this.placement.activeDeedAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
-    else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+    if (deedPlacement && !this.gs.inventory.some((slot) => slot?.id === deedItemId(selected.id))) {
       this.recordOutcome('building', 'rejected');
       setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
       return;
     }
-    this.recordOutcome('building', 'completed', 'build');
-    placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
-    this.runtimeMetrics.recordBuildingPlaced();
-    this.playerActions.play('pickUp');
-    this.refreshObstacleTopology();
-    this.syncBuildings();
-    this.recalculateEnclosure();
-    this.persist();
-    this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
-    this.audio.play('build');
-    setToast(this.gs, `Built ${selected.displayName}`, 1.6);
-    this.buildingMode = false;
-    this.placement.clear();
-    this.pushHud(true);
+    if (!this.beginInteractAction(() => {
+      if (!deedPlacement) {
+        if (!takeFromInventory(this.gs, ITEM_WOOD, legacyCost)) {
+          this.recordOutcome('building', 'rejected');
+          setToast(this.gs, `Need ${legacyCost} Wood`, 1.6);
+          return;
+        }
+      } else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
+        this.recordOutcome('building', 'rejected');
+        setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
+        return;
+      }
+      this.recordOutcome('building', 'completed', 'build');
+      const previousSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
+      placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
+      this.runtimeMetrics.recordBuildingPlaced();
+      this.refreshObstacleTopology();
+      this.refreshTrenchWater();
+      this.syncBuildings();
+      this.syncWorldTiles();
+      this.recalculateEnclosure();
+      this.persist();
+      this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
+      this.audio.play('build');
+      const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
+      const functionNote = selected.id === 'silo'
+        ? ` · seed storage ${previousSeedCapacity}→${nextSeedCapacity}`
+        : selected.id === 'water_tower'
+          ? ' · local bucket and trench water source active'
+          : '';
+      setToast(this.gs, `Built ${selected.displayName}${functionNote}`, 1.8);
+      this.buildingMode = false;
+      this.placement.clear();
+      this.pushHud(true);
+    }, 'build_preview')) this.recordOutcome('building', 'rejected');
   }
 
   private useBucket(): void {
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
-      fillBucket(this.gs);
-      this.recordAction('fill_bucket');
-      this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
-      this.audio.play('water');
-      setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
-      this.persist();
+      this.beginProfiledToolAction('bucket', () => {
+        fillBucket(this.gs);
+        this.recordAction('fill_bucket');
+        this.spawnFeedbackBurst(this.playerX, this.playerZ, 0x69b8dc, 4, 0.22);
+        this.audio.play('water');
+        setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
+        this.persist();
+      });
       return;
     }
     const tilePos = this.pointerTile();
-    if (!tilePos) return;
+    if (!tilePos) {
+      setToast(this.gs, 'Point the bucket at a thirsty crop', 1.4);
+      return;
+    }
     const { tx, ty } = tilePos;
+    if (!isFarmableTile(tx, ty)) {
+      setToast(this.gs, 'That ground is outside your homestead', 1.6);
+      return;
+    }
     const tile = getTile(this.gs.tiles, tx, ty);
     const wc = this.farmTileWorld(tx, ty);
-    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return;
-    this.waterWithBucket(tx, ty, tile?.state === 'planted' && !tile.watered);
+    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
+      setToast(this.gs, 'Move closer to use the bucket', 1.4);
+      return;
+    }
+    if (tile?.state !== 'planted' || tile.watered) {
+      setToast(this.gs, tile?.state === 'mature' ? 'Harvest is ready — switch to the shovel' : 'Point at a thirsty crop', 1.4);
+      return;
+    }
+    if (this.gs.irrigationTier < 3 && this.gs.bucketFill <= 0) {
+      setToast(this.gs, 'Bucket empty — fill at the river or a creek', 2);
+      return;
+    }
+    this.beginFacingToolAction('bucket', wc.x, wc.z, () => {
+      this.waterWithBucket(tx, ty, true);
+    });
   }
 
   private useAxe(): void {
-    if (!this.beginMeleeAction('swordSlash')) return;
-    // A tree is a direct click target. Ground aiming remains a fallback for
-    // ordinary melee, but the player never has to line up a reticle with timber.
     const tilePos = this.pointerTreeTile() ?? this.pointerTile();
-    if (tilePos && this.chopFarmTree(tilePos.tx, tilePos.ty)) return;
-    // Nothing to chop — swing at whatever is in front of you instead.
-    this.applyMeleeDamage(AXE_DAMAGE);
+    const trees = this.world.getFarmTrees();
+    if (!tilePos || !trees) {
+      setToast(this.gs, 'Point at a tree, stump, or boulder', 1.4);
+      return;
+    }
+    const target = classifyAxeTarget({
+      tree: trees.hasTree(tilePos.tx, tilePos.ty),
+      stump: trees.hasStump(tilePos.tx, tilePos.ty),
+      boulder: trees.rockSlot(tilePos.tx, tilePos.ty),
+    });
+    if (target === 'none') {
+      setToast(this.gs, 'Point at a tree, stump, or boulder', 1.4);
+      return;
+    }
+    const wc = this.farmTileWorld(tilePos.tx, tilePos.ty);
+    const range = EQUIPMENT_PROFILES.axe.interaction.range ?? TOOL_RANGE;
+    if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > range) {
+      setToast(this.gs, 'Move closer to use the axe', 1.4);
+      return;
+    }
+    this.beginFacingToolAction('axe', wc.x, wc.z, () => {
+      if (target === 'boulder') {
+        this.world.shake(0.03, 0.03);
+        this.spawnFeedbackBurst(wc.x, wc.z, 0x77736b, 4, 0.16);
+        this.audio.play('hit');
+        setToast(this.gs, 'The axe clangs off the boulder', 1.4);
+        return;
+      }
+      if (!this.chopFarmTree(tilePos.tx, tilePos.ty)) {
+        setToast(this.gs, 'That tree is no longer in reach', 1.4);
+      }
+    });
   }
 
   private useShovel(): void {
     const tilePos = this.pointerTile();
     if (!tilePos) {
-      this.meleeSwing(FIST_DAMAGE, 'pickUp');
+      setToast(this.gs, 'Point the shovel at a farm tile', 1.4);
       return;
     }
     const { tx, ty } = tilePos;
+    if (!isFarmableTile(tx, ty)) {
+      setToast(this.gs, 'That ground is outside your homestead', 1.6);
+      return;
+    }
     const tile = getTile(this.gs.tiles, tx, ty);
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
-      this.meleeSwing(FIST_DAMAGE, 'pickUp');
+      setToast(this.gs, 'Move closer to work this tile', 1.4);
       return;
     }
 
@@ -1988,124 +2461,165 @@ export class GameRuntime {
     }
 
     if (this.toolMode === 'trench') {
-      if (this.meleeCd > 0) return;
-      if (digTrench(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('pickUp');
-        for (const [dx, dy] of [
-          [0, 0],
-          [1, 0],
-          [-1, 0],
-          [0, 1],
-          [0, -1],
-        ] as const) {
-          const t2 = getTile(this.gs.tiles, tx + dx, ty + dy);
-          if (t2?.state === 'planted' && !t2.watered && this.world.distToWater(wc.x, wc.z) < 3) {
-            t2.watered = true;
-          }
-        }
-        this.syncWorldTiles([
-          { tx, ty },
-          { tx: tx + 1, ty },
-          { tx: tx - 1, ty },
-          { tx, ty: ty + 1 },
-          { tx, ty: ty - 1 },
-        ]);
+      if (tile.state === 'planted' || tile.state === 'mature' || tile.state === 'breeding') return;
+      this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+        if (!digTrench(this.gs.tiles, tx, ty)) return;
+        const watered = this.refreshTrenchWater();
+        this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
         this.audio.play('tool');
+        setToast(
+          this.gs,
+          watered > 0
+            ? `Irrigation flow reached ${watered} crop${watered === 1 ? '' : 's'}`
+            : 'Dry trench · extend it to open water',
+          1.8,
+        );
         this.persist();
-      }
+      });
       return;
     }
 
     if (this.toolMode === 'breed') {
-      if (this.meleeCd > 0) return;
-      if (makeBreedingBed(this.gs.tiles, tx, ty)) {
-        this.beginMeleeAction('pickUp');
-        this.syncWorldTiles([{ tx, ty }]);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
-        this.audio.play('build');
-        setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
-        this.persist();
+      if (tile.state === 'tilled') {
+        this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+          if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
+          this.syncWorldTiles([{ tx, ty }]);
+          this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
+          this.audio.play('build');
+          setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
+          this.persist();
+        });
       } else if (tile.state === 'breeding' && tile.breedA && tile.breedB) {
-        const parents = clearBreedingParents(this.gs.tiles, tx, ty);
-        if (parents) {
-          this.beginMeleeAction('pickUp');
+        // A full packet inventory must not consume the breeding bed before the
+        // child has somewhere to go. The child is deterministic only after the
+        // action commits, so conservatively require one available stack slot.
+        if (this.gs.seedInventory.length >= seedPacketCapacity(this.gs.placedBuildings)) {
+          setToast(this.gs, 'Seed storage full — harvest or discard a packet', 2);
+          return;
+        }
+        this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+          const parents = clearBreedingParents(this.gs.tiles, tx, ty);
+          if (!parents) return;
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
-          addSeedToInventory(this.gs, child);
+          const wasKnown = this.gs.codex.some((entry) => entry.id === seedId(child));
+          if (!addSeedToInventory(this.gs, child)) {
+            // The preflight above should make this unreachable, but retain the
+            // breeding parents if a future capacity rule changes underneath it.
+            const restored = getTile(this.gs.tiles, tx, ty);
+            if (restored) {
+              restored.breedA = parents.a;
+              restored.breedB = parents.b;
+              restored.state = 'breeding';
+            }
+            setToast(this.gs, 'Seed storage full — hybrid not harvested', 2);
+            return;
+          }
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
           this.audio.play('reward');
-          setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
+          setToast(
+            this.gs,
+            wasKnown ? `Hybrid: ${child.displayName}!` : `New Codex entry: ${child.displayName}!`,
+            3.5,
+          );
           this.persist();
-        }
+        });
       }
       return;
     }
 
     if (tile.state === 'grass') {
-      if (this.meleeCd > 0) return;
       if (this.tileBlockedForTilling(tx, ty)) {
         setToast(this.gs, "This ground can't be worked", 1.4);
         return;
       }
-      if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
+      this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+        if (!tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) return;
         this.recordAction('till');
-        this.beginMeleeAction('pickUp');
         this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
         this.audio.play('tool');
         this.persist();
-      }
+      });
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
       this.recordOutcome('plant', 'attempted');
-      if (this.meleeCd > 0) {
-        this.recordOutcome('plant', 'rejected');
-        return;
-      }
       const seed = selectedSeed(this.gs);
       if (!seed) {
         this.recordOutcome('plant', 'rejected');
         setToast(this.gs, 'No seeds', 1.5);
         return;
       }
-      if (plantTile(this.gs.tiles, tx, ty, seed)) {
+      if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+        if (!plantSeedPacket(this.gs, tx, ty, seed)) {
+          this.recordOutcome('plant', 'rejected');
+          setToast(this.gs, 'That seed packet is no longer available', 1.4);
+          return;
+        }
         this.recordOutcome('plant', 'completed');
         this.runtimeMetrics.recordCropPlanted();
-        this.beginMeleeAction('pickUp');
+        this.refreshTrenchWater();
         this.syncCropTile(tx, ty);
-        this.syncWorldTiles([{ tx, ty }]);
+        this.syncWorldTiles();
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
-      } else this.recordOutcome('plant', 'rejected');
+      })) this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
-      this.waterWithBucket(tx, ty, true);
+      setToast(this.gs, 'Use the bucket to water this crop', 1.4);
     } else if (tile.state === 'mature') {
       this.recordOutcome('harvest', 'attempted');
-      if (this.meleeCd > 0) {
+      if (!tile.seed) {
         this.recordOutcome('harvest', 'rejected');
         return;
       }
-      const res = harvestTile(this.gs.tiles, tx, ty);
-      if (res.ok && res.seed) {
-        this.beginMeleeAction('pickUp');
-        const id = cropItem(res.seed.displayName);
-        if (!addToInventory(this.gs, id, res.count)) {
+      const matureSeed = tile.seed;
+      const matureItem = cropItem(matureSeed.displayName);
+      if (!hasRoomFor(this.gs.inventory, matureItem)) {
+        this.recordOutcome('harvest', 'rejected');
+        setToast(this.gs, 'Inventory full — make room before harvesting', 2);
+        return;
+      }
+      if (!canStoreSeedPacket(this.gs, matureSeed, SEED_RECOVERY_PER_HARVEST)) {
+        this.recordOutcome('harvest', 'rejected');
+        setToast(this.gs, 'Seed storage full — harvest or discard a packet', 2);
+        return;
+      }
+      if (!this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
+        // Re-check both destinations at the fixed contact event. Harvesting is
+        // one transaction: a full produce bag or seed store leaves the crop
+        // untouched rather than silently deleting it.
+        const current = getTile(this.gs.tiles, tx, ty);
+        const currentSeed = current?.seed;
+        if (!currentSeed) {
           this.recordOutcome('harvest', 'rejected');
           return;
         }
-        this.recordOutcome('harvest', 'completed');
-        this.runtimeMetrics.recordCropHarvested(res.count);
-        this.gs.stats.cropsHarvested += res.count;
-        addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
-        this.syncCropTile(tx, ty);
-        this.syncWorldTiles([{ tx, ty }]);
-        this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
-        this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
-        this.audio.play('reward');
-        this.persist();
-      } else this.recordOutcome('harvest', 'rejected');
+        const currentItem = cropItem(currentSeed.displayName);
+        if (
+          !hasRoomFor(this.gs.inventory, currentItem) ||
+          !canStoreSeedPacket(this.gs, currentSeed, SEED_RECOVERY_PER_HARVEST)
+        ) {
+          this.recordOutcome('harvest', 'rejected');
+          setToast(this.gs, 'Harvest storage is full', 1.8);
+          return;
+        }
+        const wasKnown = this.gs.codex.some((entry) => entry.id === seedId(currentSeed));
+        const res = harvestCropTransaction(this.gs, tx, ty);
+        if (res.ok && res.seed) {
+          this.recordOutcome('harvest', 'completed');
+          this.runtimeMetrics.recordCropHarvested(res.count);
+          this.gs.stats.cropsHarvested += res.count;
+          this.syncCropTile(tx, ty);
+          this.syncWorldTiles([{ tx, ty }]);
+          this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
+          this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
+          this.audio.play('reward');
+          if (!wasKnown) setToast(this.gs, `New Codex entry: ${res.seed.displayName}!`, 3.5);
+          this.persist();
+        } else this.recordOutcome('harvest', 'rejected');
+      })) this.recordOutcome('harvest', 'rejected');
     }
   }
 
@@ -2214,6 +2728,11 @@ export class GameRuntime {
     this.meleeSwing(AXE_DAMAGE);
   }
 
+  /** Secondary axe input is the explicit combat affordance; left click remains farm work. */
+  private useCombatAxe(): void {
+    this.meleeSwing(AXE_DAMAGE);
+  }
+
   private aimDirection(): { dx: number; dz: number } {
     const ndc = this.input.getPointerNdc();
     const hit = this.world.raycastGround(ndc.x, ndc.y);
@@ -2235,46 +2754,51 @@ export class GameRuntime {
     const { dx, dz } = this.aimDirection();
     const sideX = dz;
     const sideZ = -dx;
-    const pelletMaterial = new THREE.MeshStandardMaterial({
-      color: 0x4b4b45,
-      metalness: 0.65,
-      roughness: 0.35,
-    });
-
-    for (let i = 0; i < SHOTGUN_PELLETS; i++) {
-      const spread = (i - (SHOTGUN_PELLETS - 1) / 2) * SHOTGUN_SPREAD;
-      const rawX = dx + sideX * spread;
-      const rawZ = dz + sideZ * spread;
-      const length = Math.hypot(rawX, rawZ) || 1;
-      const pelletX = rawX / length;
-      const pelletZ = rawZ / length;
-      const geometry = new THREE.SphereGeometry(0.065, 6, 4);
-      const mesh = new THREE.Mesh(geometry, pelletMaterial);
-      mesh.position.set(
-        this.playerX + pelletX * 0.4,
-        this.world.heightAt(this.playerX, this.playerZ) + 0.82,
-        this.playerZ + pelletZ * 0.4,
-      );
-      mesh.castShadow = true;
-      this.world.getSharedActors().add(mesh);
-      this.shots.push({
-        root: mesh,
-        kind: 'pellet',
-        geometry,
-        material: pelletMaterial,
-        x: this.playerX,
-        z: this.playerZ,
-        vx: pelletX * SHOTGUN_SPEED,
-        vz: pelletZ * SHOTGUN_SPEED,
-        life: SHOT_LIFETIME,
-        ricochet: 0,
-        dmg: 1,
+    this.beginRangedAction('shotgun_2', () => {
+      const ricochet = this.ricochetChargesForPlayer();
+      const pelletMaterial = new THREE.MeshStandardMaterial({
+        color: 0x4b4b45,
+        metalness: 0.65,
+        roughness: 0.35,
       });
-    }
-    this.shotCd = SHOTGUN_COOLDOWN;
-    this.playerActions.play('shoot');
-    this.audio.play('shot');
-    this.world.shake(0.06, 0.05);
+      for (let i = 0; i < SHOTGUN_PELLETS; i++) {
+        const spread = (i - (SHOTGUN_PELLETS - 1) / 2) * SHOTGUN_SPREAD;
+        const rawX = dx + sideX * spread;
+        const rawZ = dz + sideZ * spread;
+        const length = Math.hypot(rawX, rawZ) || 1;
+        const pelletX = rawX / length;
+        const pelletZ = rawZ / length;
+        const geometry = new THREE.SphereGeometry(0.065, 6, 4);
+        const mesh = new THREE.Mesh(geometry, pelletMaterial);
+        mesh.position.set(
+          this.playerX + pelletX * 0.4,
+          this.world.heightAt(this.playerX, this.playerZ) + 0.82,
+          this.playerZ + pelletZ * 0.4,
+        );
+        mesh.castShadow = true;
+        this.world.getSharedActors().add(mesh);
+        this.shots.push({
+          root: mesh,
+          kind: 'pellet',
+          geometry,
+          material: pelletMaterial,
+          x: this.playerX,
+          z: this.playerZ,
+          vx: pelletX * SHOTGUN_SPEED,
+          vz: pelletZ * SHOTGUN_SPEED,
+          life: SHOT_LIFETIME,
+          ricochet,
+          dmg: 1,
+        });
+      }
+      if (ricochet > 0) {
+        setToast(this.gs, 'Ricochet crop armed · each projectile bounces once', 1.5);
+      }
+      this.shotCd = SHOTGUN_COOLDOWN;
+      this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 0xffd07a, 5, 0.12);
+      this.audio.play('shot');
+      this.world.shake(0.06, 0.05);
+    });
   }
 
   private clearShots(): void {
@@ -2299,69 +2823,217 @@ export class GameRuntime {
   private fireBow(): void {
     if (this.shotCd > 0) return;
     const { dx, dz } = this.aimDirection();
-    const { root } = cloneModel('arrow');
-    root.scale.multiplyScalar(0.85);
-    root.position.set(
-      this.playerX + dx * 0.35,
-      this.world.heightAt(this.playerX, this.playerZ) + 0.95,
-      this.playerZ + dz * 0.35,
-    );
-    root.rotation.y = Math.atan2(dx, dz);
-    root.castShadow = true;
-    this.world.getSharedActors().add(root);
-    this.shots.push({
-      root,
-      kind: 'arrow',
-      x: this.playerX,
-      z: this.playerZ,
-      vx: dx * BOW_SPEED,
-      vz: dz * BOW_SPEED,
-      life: SHOT_LIFETIME,
-      ricochet: 0,
-      dmg: 2,
+    this.beginRangedAction('bow_wooden', () => {
+      const ricochet = this.ricochetChargesForPlayer();
+      const { root } = cloneModel('arrow');
+      root.scale.multiplyScalar(0.85);
+      root.position.set(
+        this.playerX + dx * 0.35,
+        this.world.heightAt(this.playerX, this.playerZ) + 0.95,
+        this.playerZ + dz * 0.35,
+      );
+      root.rotation.y = Math.atan2(dx, dz);
+      root.castShadow = true;
+      this.world.getSharedActors().add(root);
+      this.shots.push({
+        root,
+        kind: 'arrow',
+        x: this.playerX,
+        z: this.playerZ,
+        vx: dx * BOW_SPEED,
+        vz: dz * BOW_SPEED,
+        life: SHOT_LIFETIME,
+        ricochet,
+        dmg: 2,
+      });
+      if (ricochet > 0) {
+        setToast(this.gs, 'Ricochet crop armed · the arrow bounces once', 1.5);
+      }
+      this.shotCd = BOW_COOLDOWN;
+      this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 0xd79358, 4, 0.1);
+      this.audio.play('shot');
+      this.world.shake(0.025, 0.02);
     });
-    this.shotCd = BOW_COOLDOWN;
-    this.playerActions.play('shoot');
-    this.audio.play('shot');
   }
 
-  private beginMeleeAction(clip: PlayerClip): boolean {
-    if (this.meleeCd > 0) return false;
-    // Do not restart a one-shot halfway through its authored motion when the
-    // player holds the mouse down. That turns a readable chop/dig into a
-    // jittering pose; let the current swing finish before accepting the next.
-    if (this.playerActions.isOneShotRunning) return false;
-    this.meleeCd = MELEE_COOLDOWN;
-    this.playerActions.play(clip);
+  private beginProfiledToolAction(profileKey: EquipmentKey, onContact: () => void): boolean {
+    const profile = EQUIPMENT_PROFILES[profileKey];
+    if (profile.interaction.kind !== 'tool') return false;
+    if (!this.actionState.isBusy && this.meleeCd > 0) return false;
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'tool',
+      timing: equipmentTimingFor(profileKey, 'tool') ?? DEFAULT_TOOL_ACTION_TIMING,
+      payload: null,
+      bufferable: true,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onContact,
+    });
+    this.flushActionEvents();
     return true;
   }
 
-  private applyMeleeDamage(damage: number): void {
-    let connected = false;
-    for (const w of [...this.foxes]) {
-      if (w.dead) continue;
-      if (Math.hypot(w.x - this.playerX, w.z - this.playerZ) > MELEE_RANGE) continue;
-      this.damageFox(w, damage);
-      connected = true;
-    }
-    for (const a of [...this.animals]) {
-      if (Math.hypot(a.x - this.playerX, a.z - this.playerZ) > MELEE_RANGE) continue;
-      this.damageAnimal(a, damage);
-      connected = true;
-    }
-    if (connected) {
-      this.world.shake(0.08, 0.07);
-      this.hitPause = 0.04;
-    }
+  private beginFacingToolAction(
+    profileKey: EquipmentKey,
+    targetX: number,
+    targetZ: number,
+    onContact: () => void,
+  ): boolean {
+    const targetHeading = headingToTarget(this.playerX, this.playerZ, targetX, targetZ);
+    this.headingTarget = targetHeading;
+    const interaction = EQUIPMENT_PROFILES[profileKey].interaction;
+    const halfAngle = interaction.facingHalfAngle;
+    return this.beginProfiledToolAction(profileKey, () => {
+      if (interaction.range !== null && Math.hypot(this.playerX - targetX, this.playerZ - targetZ) > interaction.range) {
+        setToast(this.gs, 'The target moved out of tool range', 1.4);
+        return;
+      }
+      if (isMeleeContactObstructed(this.playerX, this.playerZ, targetX, targetZ, this.obstacleTiles)) {
+        setToast(this.gs, 'An obstacle blocks the target', 1.4);
+        return;
+      }
+      if (!isWithinFacingArc(this.playerHeading, targetHeading, halfAngle)) {
+        setToast(this.gs, 'Turn toward the target before making contact', 1.4);
+        return;
+      }
+      onContact();
+    });
   }
 
-  /** Tool swing — hits everything alive inside a short radius. */
+  private beginMeleeAction(clip: PlayerClip, onContact: () => void): boolean {
+    if (!this.actionState.isBusy && this.meleeCd > 0) return false;
+    // Do not restart a one-shot halfway through its authored motion when the
+    // player holds the mouse down. That turns a readable chop/dig into a
+    // jittering pose; let the current swing finish before accepting the next.
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'tool',
+      timing: this.equipment.actionTimingFor('tool') ?? DEFAULT_TOOL_ACTION_TIMING,
+      payload: null,
+      bufferable: true,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, { clip, onContact });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private beginRangedAction(profileKey: EquipmentKey, onFire: () => void): boolean {
+    if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'ranged',
+      timing: equipmentTimingFor(profileKey, 'ranged') ?? DEFAULT_RANGED_ACTION_TIMING,
+      payload: null,
+      bufferable: false,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onFire,
+    });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private beginInteractAction(
+    onContact: () => void,
+    profileKey: EquipmentKey = 'build_preview',
+  ): boolean {
+    if (this.actionState.isBusy || this.playerActions.isOneShotRunning) return false;
+    const admission = this.actionState.request({
+      kind: 'interact',
+      timing: equipmentTimingFor(profileKey, 'interact') ?? DEFAULT_INTERACT_ACTION_TIMING,
+      payload: null,
+      bufferable: false,
+    });
+    if (admission.disposition === 'rejected' || admission.actionId === null) return false;
+    this.pendingPlayerActions.set(admission.actionId, {
+      clip: equipmentActionClipFor(profileKey),
+      onContact,
+    });
+    this.flushActionEvents();
+    return true;
+  }
+
+  private meleeTargetForHeading(heading: number): MeleeCandidate<Fox | PlainsAnimal> | null {
+    return selectMeleeCandidate<Fox | PlainsAnimal>(
+      this.playerX,
+      this.playerZ,
+      heading,
+      MELEE_RANGE,
+      MELEE_FACING_HALF_ANGLE,
+      [
+        ...this.foxes
+          .filter((target) => !target.dead)
+          .map((target) => ({ kind: 'hostile' as const, target, x: target.x, z: target.z })),
+        ...this.animals
+          .filter((target) => target.state !== 'hurt')
+          .map((target) => ({ kind: 'friendly' as const, target, x: target.x, z: target.z })),
+      ],
+    );
+  }
+
+  private applyMeleeDamage(
+    damage: number,
+    attackHeading: number,
+    candidate: MeleeCandidate<Fox | PlainsAnimal>,
+  ): void {
+    if (!isWithinFacingArc(this.playerHeading, attackHeading, MELEE_FACING_HALF_ANGLE)) {
+      setToast(this.gs, 'Turn toward the target before swinging', 1.4);
+      return;
+    }
+    if (
+      !isWithinMeleeContact(
+        this.playerX,
+        this.playerZ,
+        candidate.target.x,
+        candidate.target.z,
+        attackHeading,
+        MELEE_RANGE,
+        MELEE_FACING_HALF_ANGLE,
+      )
+    ) {
+      setToast(this.gs, 'The target moved out of melee range', 1.4);
+      return;
+    }
+    if (isMeleeContactObstructed(this.playerX, this.playerZ, candidate.target.x, candidate.target.z, this.obstacleTiles)) {
+      setToast(this.gs, 'An obstacle blocks the target', 1.4);
+      return;
+    }
+    if (meleeEffectForTarget(candidate.kind) === 'damage') {
+      const fox = candidate.target as Fox;
+      if (fox.dead) {
+        setToast(this.gs, 'The fox is no longer a target', 1.4);
+        return;
+      }
+      this.damageFox(fox, damage);
+    } else {
+      this.dazeAnimal(candidate.target as PlainsAnimal);
+    }
+    this.world.shake(0.08, 0.07);
+    this.hitPause = 0.04;
+  }
+
+  /** Combat swing — selects one intended target inside a facing cone at contact. */
   private meleeSwing(
     damage: number,
     clip: PlayerClip = damage === FIST_DAMAGE ? 'punch' : 'swordSlash',
   ): void {
-    if (!this.beginMeleeAction(clip)) return;
-    this.applyMeleeDamage(damage);
+    const { dx, dz } = this.aimDirection();
+    const attackHeading = Math.atan2(dx, dz);
+    const candidate = this.meleeTargetForHeading(attackHeading);
+    if (!candidate) {
+      setToast(this.gs, 'No target in front of you', 1.2);
+      return;
+    }
+    if (isMeleeContactObstructed(this.playerX, this.playerZ, candidate.target.x, candidate.target.z, this.obstacleTiles)) {
+      setToast(this.gs, 'An obstacle blocks the target', 1.4);
+      return;
+    }
+    this.beginMeleeAction(clip, () => this.applyMeleeDamage(damage, attackHeading, candidate));
   }
 
   private tryBoulderRoll(): boolean {
@@ -2420,7 +3092,7 @@ export class GameRuntime {
         if (b.hit.has(a)) continue;
         if (Math.hypot(a.x - b.x, a.z - b.z) > BOULDER_RADIUS + 0.4) continue;
         b.hit.add(a);
-        this.damageAnimal(a, BOULDER_DAMAGE);
+        this.dazeAnimal(a);
       }
 
       if (
@@ -2448,7 +3120,7 @@ export class GameRuntime {
     boulder.material.dispose();
   }
 
-  private tryBearTrap(): boolean {
+  private tryBearTrap(onPlaced?: () => void): boolean {
     if (this.gs.bearTrapCooldown > 0) {
       setToast(this.gs, `Bear trap ready in ${Math.ceil(this.gs.bearTrapCooldown)}s`, 1.2);
       return false;
@@ -2469,18 +3141,21 @@ export class GameRuntime {
       setToast(this.gs, 'Place the bear trap on clear ground nearby', 1.5);
       return false;
     }
-    if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
-      setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
-      return false;
-    }
-    this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
-    this.playerActions.play('pickUp');
-    this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
-    this.syncBearTrapModels();
-    this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
-    this.audio.play('trap');
-    setToast(this.gs, 'Bear trap set', 1.4);
-    return true;
+    return this.beginInteractAction(() => {
+      if (!placeBearTrap(this.gs.tiles, tilePos.tx, tilePos.ty)) {
+        setToast(this.gs, 'A trap is already here or the ground is occupied', 1.5);
+        return;
+      }
+      this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
+      onPlaced?.();
+      this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
+      this.syncBearTrapModels();
+      this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
+      this.audio.play('trap');
+      setToast(this.gs, 'Bear trap set', 1.4);
+      this.persist();
+      this.pushHud(true);
+    }, 'bear_trap');
   }
 
   private stepShots(dt: number): void {
@@ -2516,7 +3191,7 @@ export class GameRuntime {
       if (!consumed) {
         for (const a of [...this.animals]) {
           if (Math.hypot(s.x - a.x, s.z - a.z) > 0.9) continue;
-          this.damageAnimal(a, s.dmg);
+          this.dazeAnimal(a);
           if (s.ricochet > 0) {
             s.ricochet--;
             s.vx *= -1;
@@ -2561,22 +3236,15 @@ export class GameRuntime {
     this.foxes = this.foxes.filter((o) => !o.dead);
   }
 
-  private damageAnimal(a: PlainsAnimal, amount: number): void {
-    a.hp -= amount;
+  /** Ambient wildlife is friendly scenery: explicit combat can only daze it. */
+  private dazeAnimal(a: PlainsAnimal): void {
+    if (a.state === 'hurt') return;
     a.state = 'hurt';
     a.timer = 1.2;
-    if (a.hp > 0) {
-      a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
-      this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
-      this.audio.play('hit');
-      return;
-    }
-    this.stopMixer(a.actions.mixer, a.root);
-    this.spawnFeedbackBurst(a.x, a.z, 0xef7561, 8, 0.32);
-    this.audio.play('defeat');
-    this.spawnDeathMarker(a.root, a.baseScale, a.x, a.z, a.heading, 'animal');
-    this.animals = this.animals.filter((o) => o !== a);
-    this.rollTrophy(`animal:${a.name}`, a.name, a.x, a.z);
+    a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
+    this.spawnFeedbackBurst(a.x, a.z, 0xffb45c, 4, 0.2);
+    this.audio.play('hit');
+    setToast(this.gs, `${a.name} is dazed — wildlife is unharmed`, 1.8);
   }
 
   /** Leave a short-lived, grounded carcass marker instead of making a kill pop. */
@@ -2586,7 +3254,7 @@ export class GameRuntime {
     x: number,
     z: number,
     heading: number,
-    kind: 'fox' | 'animal',
+    kind: 'fox',
   ): void {
     corpse.removeFromParent();
     corpse.scale.setScalar(baseScale);
@@ -2617,8 +3285,7 @@ export class GameRuntime {
 
     // A subtle low-poly patch gives the player a readable defeat location even
     // when the animal silhouette is partly hidden by terrain or foliage.
-    const radius = kind === 'fox' ? 0.48 : 0.7;
-    const patchGeometry = new THREE.CircleGeometry(radius, 12);
+    const patchGeometry = new THREE.CircleGeometry(0.48, 12);
     const patchMaterial = new THREE.MeshStandardMaterial({
       color: 0x6c382b,
       transparent: true,
@@ -2717,9 +3384,9 @@ export class GameRuntime {
         this.lootMarkers.splice(i, 1);
         continue;
       }
-      marker.root.position.y =
-        this.world.heightAt(marker.x, marker.z) + 0.18 + Math.sin(marker.age * 4.2) * 0.06;
-      marker.root.rotation.y += dt * 1.8;
+      marker.root.position.y = this.world.heightAt(marker.x, marker.z) + 0.18 +
+        (this.reducedMotion ? 0 : Math.sin(marker.age * 4.2) * 0.06);
+      if (!this.reducedMotion) marker.root.rotation.y += dt * 1.8;
     }
   }
 
@@ -2992,7 +3659,17 @@ export class GameRuntime {
       }
 
       const tpos = this.worldToFarmTile(w.x, w.z);
-      if (tpos && hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, 3)) w.state = 'flee';
+      if (
+        w.state !== 'trapped' &&
+        tpos &&
+        hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, REPEL_FOX_RADIUS) &&
+        w.state !== 'flee'
+      ) {
+        w.state = 'flee';
+        this.playFoxAction(w, 'walk');
+        this.spawnFeedbackBurst(w.x, w.z, 0xb9e06b, 6, 0.22);
+        setToast(this.gs, 'Repeller crop drove a fox away', 1.4);
+      }
 
       if (w.state === 'trapped') {
         this.playFoxAction(w, 'idle');
@@ -3105,6 +3782,7 @@ export class GameRuntime {
               t.structureHp -= 1;
               if (t.structureHp <= 0) {
                 t.state = 'grass';
+                this.refreshTrenchWater();
                 this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
               }
             }
@@ -3112,6 +3790,11 @@ export class GameRuntime {
           } else if (w.kind === 'nibbler') {
             const nibbled = nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
             if (nibbled) this.syncCropTile(w.targetTx, w.targetTy);
+            else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+              const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              setToast(this.gs, 'Ironroot resisted the fox bite', 1.5);
+            }
             this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
             w.targetTx = -1;
             if (this.gs.rng() < 0.4) w.state = 'flee';
@@ -3120,6 +3803,10 @@ export class GameRuntime {
               w.haulSeed = true;
               this.syncCropTile(w.targetTx, w.targetTy);
               this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
+            } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+              const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              setToast(this.gs, 'Ironroot held against the fox', 1.5);
             }
             w.state = 'flee';
           } else {
@@ -3139,6 +3826,10 @@ export class GameRuntime {
         if (w.eatTimer <= 0) {
           if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
             this.syncCropTile(w.targetTx, w.targetTy);
+          } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+            const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+            this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+            setToast(this.gs, 'Ironroot held against the fox', 1.5);
           }
           this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
           w.state = 'flee';
@@ -3320,7 +4011,6 @@ export class GameRuntime {
         targetHeading: this.gs.rng() * Math.PI * 2,
         speed: 1.1 + this.gs.rng() * 0.8,
         timer: 2 + this.gs.rng() * 4,
-        hp: 3,
         state: 'idle',
         name: animal.name,
       });
@@ -3405,22 +4095,43 @@ export class GameRuntime {
     this.popups = this.popups.filter((p) => p.life > 0);
   }
 
-  private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion · F12 grid`;
+  private interactionHint(
+    seed: ReturnType<typeof selectedSeed>,
+    packet: ReturnType<typeof selectedSeedPacket>,
+  ): string {
+    const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
+    const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · C breed · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
     }
+    if (this.firstPlotGuideActive) {
+      const stage = firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes);
+      if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
+        return formatFirstPlotHint(stage, seed?.displayName);
+      }
+    }
+    const arcHint = multiDayArcHint({
+      day: this.gs.clock.day,
+      cropsHarvested: this.gs.stats.cropsHarvested,
+      codex: this.gs.codex,
+      placedBuildings: this.gs.placedBuildings,
+    });
+    if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
-    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) return 'E — fill bucket';
+    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
+      return this.nearWaterTower ? 'E — fill bucket at the water tower' : 'E — fill bucket';
+    }
     if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
 
     const tile = this.pointerTile();
     if (this.gs.toolSlotActive) {
-      if (!tile) return '6 bucket · point at a planted tile to water';
+      const irrigationNote = this.gs.irrigationTier >= 3 ? ' · irrigation active' : '';
+      if (!tile) return `6 bucket · point at a planted tile to water${irrigationNote}`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
-      if (target?.state === 'planted' && !target.watered) return '6 bucket · click to water';
+      if (target?.state === 'planted' && !target.watered) return `6 bucket · click to water${irrigationNote}`;
       if (target?.state === 'mature') return 'Harvest is ready · switch to the shovel';
       return '6 bucket · point at a thirsty crop';
     }
@@ -3437,7 +4148,9 @@ export class GameRuntime {
       if (!target) return 'Point at a farm tile';
       if (target.state === 'grass') return 'Click to till this tile';
       if (target.state === 'tilled' || target.state === 'breeding') {
-        return seed ? `Click to plant ${seed.displayName}` : 'No seed selected';
+        return seed
+          ? `Click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
+          : 'No seed selected';
       }
       if (target.state === 'planted' && !target.watered) return 'Use the bucket to water this crop';
       if (target.state === 'mature') return 'Click to harvest';
@@ -3458,9 +4171,10 @@ export class GameRuntime {
 
   private pushHud(force: boolean): void {
     if (!this.gs || !this.hudPresenter.hasListener) return;
+    this.maybeShowSettlementGoal();
     this.hudPresenter.push(force, {
       state: this.gs,
-      hint: this.interactionHint(selectedSeed(this.gs)),
+      hint: this.interactionHint(selectedSeed(this.gs), selectedSeedPacket(this.gs)),
       buildingMode: this.buildingMode,
       selectedBuildIndex: this.placement.currentIndex,
       placement: () => {
@@ -3468,6 +4182,9 @@ export class GameRuntime {
         return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
+      codexOpen: this.codexOpen,
+      codexSelectedKey: this.codexSelectedKey,
+      codexCompareKeys: this.codexCompareKeys,
       toolSlotModel: null,
       marketOpen: this.nearMarket,
       vendorOpen: this.vendorOpen,

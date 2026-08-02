@@ -26,7 +26,8 @@ exposes the runtime for browser debugging.
 - Grass, plants, flowers, bushes, and rocks from the accepted Ultimate Nature set, instanced in
   `ScatterChunks.ts`.
 - Crop roster: Grass, Dandelion, Beet, Carrot, Lettuce.
-- Survival Pack shotgun, shovel, and red axe in the toolbar; bucket remains a readable glyph.
+- Survival Pack shotgun, shovel, and red axe in the toolbar; bucket uses a small authored stylized
+  held prop with fill/use posing.
 - Bear traps on `B` with open/closed models and fox capture; `Q` remains the separate boulder.
 - Weapon progression is asset-led: ranged shotgun/bow work, with axe/melee as the close option.
 - Farm building models are wired to homestead tiers and the first placeable building set.
@@ -70,11 +71,12 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the remaining runtime-responsibility work (PERF-05).
+- CORE-01 through CORE-08 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; the M5 release gate is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: the current baseline has 109 deterministic
+- BASE-02 characterization is integrated with Vitest: the original baseline had 109 deterministic
   tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
   migration fixtures for released save versions 3 through 7. PR #3 merged into the integration
   branch as `5ff922b`.
@@ -86,7 +88,7 @@ The characterization baseline intentionally preserves current behavior for later
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
-  fresh fixture is 1,084 bytes, the representative midgame fixture is about 1.5 KB, and the dense
+  fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB
   warning threshold; v8 full-grid saves remain readable and migrate explicitly. PR #5 is integrated
   on `agent/masterplan-v2-implementation`. SAVE-02 now routes runtime persistence through a checksummed
@@ -205,13 +207,186 @@ The characterization baseline intentionally preserves current behavior for later
   remains the composition root and supplies live placement, world, save, economy, and interaction
   callbacks; React continues to render the same snapshot shape. Four focused tests cover fresh HUD
   mapping, item/market totals, tab normalization with pause/ending state, and deduplication. The
-  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete; M3 release evidence
-  still requires the integrated milestone release workflow and live smoke test.
+  deterministic baseline is now 138 tests across 22 files. PERF-05 is complete, and M3 release
+  evidence is recorded below.
 
 - Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
   exactly the same position, the existing separation fallback treats them as one unit apart before
   calculating the push, producing only a small deterministic nudge (0.052 units at the current 1.05
   unit nominal gap) rather than fully separating them. No gameplay rule was changed in PERF-05.
+
+- ACT-01 adds the renderer-independent `ActionStateMachine` with explicit idle/move, tool windup/contact/
+  recovery, ranged aim/fire, interaction, menu, and disabled states. Eight focused tests cover delayed
+  contact/fire events, recovery, one-slot same-kind buffering, cross-kind rejection, movement scales,
+  interaction completion, menu cancellation, and focus restoration. Farming, melee, projectiles,
+  construction, bucket work, and bear traps now apply their effects from fixed-step action callbacks;
+  the current deterministic baseline is 146 tests across 23 files. The local production preview reached
+  Day 1/daylight with Saved status, field-guide and inventory modal checks, and no observed console
+  warnings or errors. ACT-03–05 remain separate control/animation follow-up tasks.
+
+- ACT-02 moves held-equipment ownership into the typed `src/content/equipment.ts` table. Seven records
+  cover axe, bow, shotgun, shovel, bucket, bear trap, and build previews with measured axes, grip/socket
+  transforms, support-hand targets, locomotion/action metadata, fixed-step timings, feedback cues, icon
+  framing, readability bounds, and debug colours. The current four Survival Pack glTFs have no authored
+  grip/socket marker nodes, so the measured values remain the intentional source of truth. The runtime
+  consumes the table for held transforms, support solving, action timing, and opt-in F12 axis/support
+  visualization; `npm run assetcheck` validates all records. Eight focused tests characterize the table,
+  preserve the existing four transforms, and identify invalid fields. The deterministic baseline is now
+  154 tests across 24 files. Production-preview smoke reached Day 1/daylight and opened the field guide
+  without observed console warnings or errors; ACT-03 was the next separate control/animation task.
+
+- ACT-03 adds a pure locomotion policy with intent-aware idle start/stop thresholds, walk/run hysteresis,
+  authored empty-hand and carry clip mapping, measured in-place gait cadence, and a bounded shortest-path
+  heading turn. Aim/fire preserves the aim heading while movement strafes; ordinary movement turns toward
+  its wish direction. The existing 0.14-second crossfade remains the restrained transition because the
+  player asset has no authored start/stop clips. Reduced motion now removes camera shake plus nonessential
+  crop, loot-marker, and ambient-mote motion without changing fixed-step timing. Six focused tests cover
+  the boundaries, hysteresis, residual velocity, clip mapping, cadence, and turn cap. The deterministic
+  baseline is now 160 tests across 25 files. Production-preview smoke reached fresh Day 1/daylight and
+  opened the field guide without observed console warnings or errors; ACT-04 was the next separate
+  control/animation task.
+
+- ACT-04 gives each held or placement profile a typed contact contract and routes action clips/timings
+  through that data. Shovel work now faces valid farm targets and rejects out-of-range or wrong-tool
+  targets without a false pickup/fist action. Selected-axe work classifies trees, stumps, and boulders,
+  applies a bounded facing arc, and gives boulders a distinct clang response instead of radial damage.
+  The bucket now mounts an authored low-poly prop with a fill/use tilt and retains fixed contact water
+  feedback. Shotgun/bow projectiles and release feedback occur at the fire event; placement and trap
+  interactions keep their preview/confirmation path with the existing non-melee `PickUp` clip. Three
+  pure targeting tests plus the updated equipment/selection characterization bring the deterministic
+  baseline to 163 tests across 26 files. The built preview reached Day 1/daylight with Saved status and
+  visibly mounted the bucket prop; the browser harness's stale New Adventure confirmation was not used
+  as evidence and remains a tooling limitation, not a gameplay defect. ACT-05 followed as a separate
+  target-domain task.
+
+- ACT-05 separates primary work from explicit combat and friendly wildlife. Work actions keep their
+  authored farm/tree/boulder target selection and never include ambient animals. Secondary axe combat
+  now selects one intended target inside a deterministic facing cone before the swing and rechecks
+  range/facing at the fixed contact event, reporting empty, turned-away, or moved targets without a
+  false hit. Foxes retain the existing damage/defeat/defense-reward path; ambient animals can only be
+  briefly dazed by explicit melee, ranged, or boulder contact, with no health depletion, death marker,
+  trophy, or reward. Four new pure targeting/policy tests bring the deterministic baseline to 167 tests
+  across 26 files. Production-preview smoke reached Day 1/daylight with Saved status; selecting the
+  axe and issuing an empty-field secondary click surfaced the player-facing `No target in front of you`
+  rejection. CORE-01 is next.
+
+- CORE-01 now defines one typed 48×48 homestead farm region instead of treating the full 240×240
+  world as tillable. A low renderer-only boundary marks that region, the 10×8 starter plot is kept
+  clear of deterministic decorative scatter and marked during New Adventure, and the short guide
+  advances through tilling, planting, watering, growth, harvesting, and selling from existing tile
+  and progression state. Shovel, bucket, trap, and debug till paths reject new work outside the
+  region; camp reservations, the visible homestead footprint, placed-building obstacles, trees,
+  boulders, and water remain separate blockers. Fresh runs and camp-invalid legacy positions choose
+  the first deterministic safe approach point; existing saves retain out-of-region tile data rather
+  than silently deleting it, but cannot create new work there. The baseline is now 179 deterministic
+  tests across 28 files. Production-preview smoke reached fresh Day 1/daylight with the first-plot
+  guide and Saved status, and browser logs contained no warnings or errors.
+
+- CORE-02 replaces the old effectively infinite seed list with counted packets stacked by a full
+  genotype key. Planting consumes exactly one matching packet at the fixed shovel contact, while a
+  mature crop transaction returns its produce and one genotype-preserving packet; full produce or
+  seed storage leaves the crop untouched. Sorting, deletion, capacity, legacy overflow, and Codex
+  discovery are pure deterministic rules. Compact v9 writes use seed-table references plus counts;
+  old bare v9 indexes and released v8 Seed[] entries migrate explicitly and merge only identical
+  genotypes. The separate seed packet store remains distinct from sellable produce. The baseline is
+  now 189 deterministic tests across 29 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. CORE-03 follows as the separate trait-effects task documented
+  immediately below.
+
+- CORE-03 makes every released seed trait earn a player-visible decision. Vigor changes the base
+  grow duration by ±25% around trait 50; species water need plus Thirst changes watered growth by
+  0.80–1.25×; Hardiness scales fox bite damage from 1.5× at 0 to 0.5× at 100; and Greed crops
+  return one additional produce unit plus four raid-attraction score points. Repel, Ricochet, and
+  Portable Light are local boolean effects with authored caps of 3, 8, and 6 tiles respectively;
+  multiple sources do not stack, and projectiles receive at most one bounce. Ironroot keeps its
+  existing mature-crop immunity and bite resistance, now with explicit feedback. The planting HUD
+  describes all numeric traits and mechanisms; repels, blocked bites, ricochet arming, and harvest
+  results provide runtime feedback. Effects are derived from the already-saved Seed genotype, so
+  no save schema or migration changes were needed. Pure tests cover each magnitude, active-tile
+  rule, cap, non-stacking boolean, and deterministic crop/raid outcome. The baseline is now 196
+  deterministic tests across 30 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. CORE-04 followed as the separate Codex task.
+
+- CORE-04 completes the Seed Codex without changing the v9 save schema. Fresh game state seeds the
+  five authored base species as day-1 discoveries; the pure catalog deduplicates saved IDs, keeps
+  discovered hybrids with their parentage, all five numeric traits, and mechanism explanation, and
+  supplies stable undiscovered silhouettes for absent base species. First-time hybrid recovery and
+  harvest discoveries produce brief player-facing toasts. The modal is a pausing screen with
+  explicit keyboard/focusable select and compare buttons, a two-entry comparison limit, and a
+  polite live status sentence for screen readers. Codex selection/comparison is transient UI state;
+  discovery data continues to use the existing compact v9 representation. Duplicate discovery,
+  deterministic catalog ordering, v8 migration preservation, round-trip data, and presenter status
+  are covered by the new characterization tests. The baseline is now 201 deterministic tests across
+  31 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production
+  build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass.
+  Production-preview smoke reached Day 1/daylight, opened the Codex, verified the accessible dialog
+  status and `K` toggle, and showed stable unknown silhouettes when continuing a pre-Codex save.
+  Pre-Codex saves intentionally do not invent discovery history: their empty Codex remains rendered
+  as undiscovered silhouettes until a seed is recovered or otherwise discovered.
+
+- CORE-05 makes irrigation flow an authored, deterministic rule. Trench tiles touching open water
+  become wet sources, flow only across connected downhill/flat trench topology, water adjacent
+  planted crops, and are recomputed so disconnected trenches visibly return to a dry state. The
+  renderer distinguishes dry and wet trenches, while bucket watering remains the simple fallback;
+  tier-three irrigation removes bucket consumption rather than promising an unimplemented automatic
+  crop effect. The merchant is now the sole player-facing homestead progression authority: sequential
+  tier 2–5 permits are typed apply assets, consume on use, unlock the existing bow/axe thresholds,
+  persist through the existing `homesteadTier` field, and replace the production `U` shortcut. Legacy
+  placeable homestead deed IDs remain loadable for compatibility but are not new merchant choices.
+  The first-plot completion hint, help guide, merchant copy, inventory labels, and purchase locks all
+  describe the same permit path. The compact save schema is unchanged; a permit round-trip and
+  progression quote coverage were added. The deterministic baseline is now 205 tests across 31 files.
+  `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build,
+  strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. Production
+  preview smoke reached a saved Day 6 session, opened the field guide, verified the Z trench and E
+  merchant-permit controls, and recorded no console warnings or errors. The economy diagnostic now
+  reports 112 completed purchases across 16 seeds, no dead or malformed rows, first irrigation by
+  day 5 in 16/16 runs, 16/16 resource-starvation runs, and one existing long-horizon runaway boundary
+  hit; that calibration follow-up remains separate from CORE-05.
+
+- CORE-06 releases a small functional building portfolio without changing the save schema. The
+  existing fence/gate path remains the physical collision, enclosure, routing, rotation, and refund
+  authority; the silo adds eight distinct seed-packet slots per placed instance, derived directly
+  from saved buildings, and the HUD reports used/capacity. The water tower supplies bucket filling
+  for the player and a deterministic local trench source within six tiles; placement and demolition
+  recompute obstacle, enclosure, world-tile, and trench-flow state. Silo and water-tower descriptions
+  now match their runtime effects and are merchant choices; coop, barn, windmill, and other cosmetic
+  buildings remain unreleased until their loops exist. Compact typed fixtures cover the new saved
+  building portfolio, while legacy overflow remains preserved rather than silently discarded. The
+  deterministic baseline is now 210 tests across 32 files. `npm run test`, `npm run test:ci`,
+  `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` pass. The existing deployment workflow already runs
+  `npm run test:ci` before asset validation and build; no deployment was performed for this task.
+
+- CORE-07 makes the existing first-plot onboarding and market route an explicit multi-day arc. Day 2
+  now surfaces a deliberate Silo/Water Tower, crop-strategy, or fence/gate choice; dusk warns once
+  before the first and later fox raids; after the first sale, the guide names the missing genetics or
+  functional-building pillar. Dawn restores one deterministic Grass packet when seed storage is empty,
+  preventing a poor purchase or crop loss from permanently removing the planting route without adding
+  a save field. The existing wood sale keeps the Day 1 market route available; the economy diagnostic
+  intentionally still models generic two-day crops and reports the first crop sale on day 3, which is
+  deferred as an opening-pacing calibration rather than changed here. The deterministic baseline is
+  now 214 tests across 33 files. `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`,
+  the production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
+  pass. Production-preview smoke reached fresh Day 1/daylight with Saved status and no console
+  warnings or errors. No save schema, raid damage, or economy price changed in CORE-07; the authored
+  ending replacement is recorded separately under CORE-08.
+
+- CORE-08 replaces the day-five prototype boundary with the derived `Establish the homestead`
+  objective. Grow requires a harvested crop, Experiment requires a discovered hybrid in the Codex,
+  Defend requires a fence, gate, or existing trophy outcome, and Develop requires homestead tier 2+
+  or a Silo/Water Tower. Progress is visible in the HUD and the completed objective opens a
+  `Homestead Established` overlay with the existing counters, a bounded feedback burst, and the
+  existing reward sound; `Keep playing` preserves continued play. The existing `winShown` dismissal
+  field remains the only save representation, so no schema or migration changed. The deterministic
+  baseline is now 223 tests across 34 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. Production-preview smoke reached saved Day 1/daylight, showed
+  all four objective steps, and recorded no console warnings or errors. The existing deployment
+  workflow already runs `npm run test:ci` before asset validation and build; no deployment was
+  performed for this task.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -227,12 +402,14 @@ The characterization baseline intentionally preserves current behavior for later
   runtime authority; its outdated raid terminology is represented as foxes in project notes.
 - Keep the active code and documentation vocabulary aligned with the accepted crop, wildlife, and
   building assets; obsolete prototype entries have been removed while save loading remains safe.
-- ECON-04 intentionally leaves the parallel `U` homestead shortcut in place until CORE-05 makes
-  merchant/deeds the single progression authority. Homestead deed rows now have finite legacy costs
-  but remain unreleased, so existing saves can render/use them without presenting a duplicate or
-  nonfunctional progression purchase to new players. The 30-day diagnostic still shows one rare
-  runaway boundary hit because current released sinks are intentionally small; functional buildings
-  are a later CORE-06 dependency, not silently invented here.
+- CORE-05 has removed the parallel `U` homestead shortcut from production and moved new progression
+  purchases to sequential merchant permits. Legacy homestead deed rows remain loadable with their
+  finite historical costs, while the 30-day diagnostic still shows one rare runaway boundary hit
+  because current released sinks are intentionally small; CORE-06 adds bounded silo and water-tower
+  sinks/utilities without claiming to solve long-horizon economy calibration.
+- The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
+  not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
+  follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.
 
 ## 5. Release procedure
 
@@ -276,3 +453,10 @@ Deployment record:
   passed simulation checks, the deterministic unit suite, asset validation, build, and deployment.
   Fresh live smoke passed New Adventure, Day 1/daylight HUD launch, Saved status, starter controls,
   and produced no console warnings or errors.
+- `d8a4362` — M3 runtime health: staged loading, shared icon rendering, disposal ownership, incremental
+  world updates, and all PERF-05 responsibility extractions — <https://836e92f3.tarnation.pages.dev>
+  (canonical <https://tarnation.pages.dev/>); GitHub Actions run
+  [30728223190](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30728223190)
+  passed simulation checks, the deterministic 138-test suite, asset validation, build, and automatic
+  deployment. Live smoke passed launch, Continue, Day 1/daylight, Saved status, market cue, and
+  starter controls with no observed console errors or warnings.

@@ -10,6 +10,7 @@ import {
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
   ROCK_TILE_FRACTION,
+  STARTER_PLOT,
   TREE_CHUNK_RADIUS,
 } from '../content';
 import { CENTRAL_CAMP, isCampTile } from '../content/mapData';
@@ -121,6 +122,13 @@ export class FarmTrees {
   private inClearing(x: number, z: number): boolean {
     if (Math.hypot(x - STALL_X, z - STALL_Z) < 9) return true;
     if (Math.hypot(x - SPAWN_X, z - SPAWN_Z) < 5) return true;
+    if (Math.hypot(x - (HOMESTEAD_MIN_X + 8), z - (HOMESTEAD_MIN_Z + 8)) < 6.5) return true;
+    if (
+      x >= STARTER_PLOT.minX - 1 &&
+      x <= STARTER_PLOT.minX + STARTER_PLOT.width + 1 &&
+      z >= STARTER_PLOT.minZ - 1 &&
+      z <= STARTER_PLOT.minZ + STARTER_PLOT.height + 1
+    ) return true;
     if (
       x >= CENTRAL_CAMP.minX - 1 &&
       x <= CENTRAL_CAMP.minX + CENTRAL_CAMP.width + 1 &&

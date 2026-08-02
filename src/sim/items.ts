@@ -62,10 +62,14 @@ export function itemInfo(id: ItemId): ItemInfo {
     const asset = assetDefinition(deed);
     return {
       id,
-      name: asset ? `${asset.displayName} Deed` : 'Unknown Deed',
+      name: asset
+        ? asset.progression
+          ? asset.displayName
+          : `${asset.displayName} Deed`
+        : 'Unknown Deed',
       glyph: 'D',
       price: 0,
-      blurb: asset?.description ?? 'A deed for an unknown asset.',
+      blurb: asset?.description ?? 'A permit or deed for an unknown asset.',
     };
   }
   if (id === ITEM_WOOD) {

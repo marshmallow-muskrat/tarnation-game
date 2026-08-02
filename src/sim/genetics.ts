@@ -33,11 +33,26 @@ export interface Seed {
   lineage?: string[];
 }
 
+/** A counted packet keeps the complete genotype while allowing like seeds to stack. */
+export interface SeedPacket {
+  seed: Seed;
+  count: number;
+}
+
 export interface CodexEntry {
   id: string;
   seed: Seed;
   discoveredDay: number;
 }
+
+/**
+ * Characterized ranges for released hybrid mechanisms. These are sim-owned
+ * values so the runtime and pure tests cannot quietly drift apart.
+ */
+export const REPEL_FOX_RADIUS = 3;
+export const RICOCHET_RADIUS = 8;
+export const PORTABLE_LIGHT_RADIUS = 6;
+export const GREED_RAID_SCORE = 4;
 
 export function defaultTraits(species: BaseCropId): Traits {
   switch (species) {
@@ -154,13 +169,77 @@ export function seedId(s: Seed): string {
 }
 
 /**
- * Every plant takes the same two days, hybrids included — vigor and greed_crop no
- * longer bend the timer, so the player can plan a harvest by the calendar.
+ * Full genotype identity used by inventory stacking. The Codex keeps its older
+ * display-oriented seedId for compatibility; packets must distinguish every
+ * inherited trait and lineage so unlike seeds never merge.
  */
-export function growTimeForSeed(_seed: Seed, baseGrow: number): number {
-  return baseGrow;
+export function seedGenotypeKey(s: Seed): string {
+  return JSON.stringify([
+    s.species,
+    s.traits.yield,
+    s.traits.vigor,
+    s.traits.thirst,
+    s.traits.hardiness,
+    s.traits.weirdness,
+    s.displayName,
+    s.hybrid,
+    s.mech,
+    s.lineage ?? null,
+  ]);
+}
+
+/** Vigor 50 is the baseline; the released 0–100 range changes time by ±25%. */
+export function growTimeForSeed(seed: Seed, baseGrow: number): number {
+  return baseGrow * (1.25 - seed.traits.vigor / 200);
 }
 
 export function waterNeedForSeed(seed: Seed, base: number): number {
   return Math.min(1, Math.max(0.1, base + (seed.traits.thirst - 50) / 200));
+}
+
+/**
+ * A watered crop still expresses its thirst trait: higher need makes the wet
+ * growth cycle slower, while low need rewards a lighter watering burden.
+ * The neutral value at waterNeed .5 is 1, preserving the base crop contract.
+ */
+export function waterGrowthMultiplierForSeed(seed: Seed, baseWaterNeed: number): number {
+  return 0.75 + waterNeedForSeed(seed, baseWaterNeed) * 0.5;
+}
+
+/** Exact deterministic duration for a planted, watered crop. */
+export function growthDurationForSeed(seed: Seed, baseGrow: number, baseWaterNeed: number): number {
+  return growTimeForSeed(seed, baseGrow) * waterGrowthMultiplierForSeed(seed, baseWaterNeed);
+}
+
+/** One fox bite is reduced by hardiness; 50 is the characterized baseline. */
+export function nibbleDamageForSeed(seed: Seed, baseDamage: number): number {
+  return baseDamage * (1.5 - seed.traits.hardiness / 100);
+}
+
+/** Greed crops yield one additional produce unit, making the tradeoff tangible. */
+export function cropYieldForSeed(seed: Seed): number {
+  return 1 + Math.floor(seed.traits.yield / 40) + (seed.mech === 'greed_crop' ? 1 : 0);
+}
+
+/** The explicit raid-pressure contribution of a greed crop. */
+export function raidAttractionForSeed(seed: Seed): number {
+  return seed.mech === 'greed_crop' ? GREED_RAID_SCORE : 0;
+}
+
+/** Player-facing explanation for the released hybrid mechanism. */
+export function seedMechanismDescription(mech: HybridMech): string {
+  return {
+    repel_foxes: 'Repels foxes within 3 tiles',
+    portable_light: 'Brightens night travel nearby',
+    ironroot: 'Resists fox bites and mature destruction',
+    ricochet: 'Nearby projectiles bounce once',
+    greed_crop: '+1 produce and attracts more foxes',
+    none: 'No hybrid mechanism',
+  }[mech];
+}
+
+/** Compact player-facing description used by the planting HUD. */
+export function seedTraitDescription(seed: Seed): string {
+  const traits = `Vigor ${seed.traits.vigor} · Thirst ${seed.traits.thirst} · Hardiness ${seed.traits.hardiness} · Yield ${seed.traits.yield}`;
+  return `${traits} · ${seedMechanismDescription(seed.mech)}`;
 }

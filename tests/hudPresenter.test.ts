@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { WIN_DAY } from '../src/content';
 import { createGameState } from '../src/sim/gameState';
+import { makeSeed } from '../src/sim/genetics';
 import { ITEM_WOOD } from '../src/sim/items';
 import { addToInventory } from '../src/sim/gameState';
 import {
@@ -17,6 +17,9 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
     selectedBuildIndex: 0,
     placement: () => ({ valid: false, reason: 'Open build mode to preview a structure' }),
     helpOpen: false,
+    codexOpen: false,
+    codexSelectedKey: null,
+    codexCompareKeys: [],
     toolSlotModel: null,
     marketOpen: false,
     vendorOpen: false,
@@ -60,6 +63,7 @@ describe('HUD presenter', () => {
       save: { state: 'saved', message: 'Saved' },
     });
     expect(received!.inventory).toHaveLength(24);
+    expect(received!.seedStorage).toEqual({ used: 5, capacity: 24 });
     expect(received!.toolbar.map((slot) => slot.name)).toEqual(['Brown Shotgun', 'Shovel', 'Red Axe']);
     expect(received!.toolbar[0]!.selected).toBe(true);
     expect(received!.build.options.map((option) => option.name)).toEqual([
@@ -68,6 +72,8 @@ describe('HUD presenter', () => {
       'Field Gate',
     ]);
     expect(received!.vendor.tabs).toEqual(['Housing', 'Buildings', 'Upgrades']);
+    expect(received!.codex.entries).toHaveLength(5);
+    expect(received!.codex.entries.every((entry) => entry.kind === 'discovered')).toBe(true);
   });
 
   it('presents inventory item models and market totals from the live stack state', () => {
@@ -89,10 +95,16 @@ describe('HUD presenter', () => {
     expect(received!.market.items).toHaveLength(1);
   });
 
-  it('normalizes an unavailable vendor tab and preserves build, pause, and ending status in the view model', () => {
+  it('normalizes an unavailable vendor tab and presents the completed settlement objective', () => {
     const state = createGameState(123);
-    state.clock.day = WIN_DAY;
-    state.stats.daysSurvived = WIN_DAY;
+    state.stats.cropsHarvested = 1;
+    state.stats.trophies = 1;
+    state.codex.push({
+      id: 'test-hybrid',
+      seed: { ...makeSeed('beet'), displayName: 'Beet-Carrot Hybrid', hybrid: true, lineage: ['Beet', 'Carrot'] },
+      discoveredDay: 2,
+    });
+    state.homesteadTier = 2;
     const context = makeContext(state);
     context.buildingMode = true;
     context.selectedBuildIndex = 2;
@@ -119,7 +131,25 @@ describe('HUD presenter', () => {
     expect(received!.build).toMatchObject({ active: true, selectedIndex: 2, placement: { reason: 'Move closer to place' } });
     expect(received!.helpOpen).toBe(true);
     expect(received!.paused).toBe(true);
-    expect(received!.win).toMatchObject({ daysSurvived: WIN_DAY });
+    expect(received!.objective).toMatchObject({ title: 'Establish the homestead', complete: true });
+    expect(received!.objective.steps.every((step) => step.complete)).toBe(true);
+    expect(received!.win).toMatchObject({ daysSurvived: state.clock.day });
+  });
+
+  it('keeps the ending hidden when day five is reached without the settlement objective', () => {
+    const state = createGameState(123);
+    state.clock.day = 5;
+    const context = makeContext(state);
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.objective.complete).toBe(false);
+    expect(received!.win).toBeNull();
   });
 
   it('deduplicates unchanged HUD JSON while publishing changes and copying transient arrays', () => {
@@ -138,5 +168,28 @@ describe('HUD presenter', () => {
     expect(received).toHaveLength(2);
     received[0]!.popups[0]!.life = 0;
     expect(popup.life).toBe(1);
+  });
+
+  it('publishes keyboard-selectable Codex comparison entries with a screen-reader status sentence', () => {
+    const context = makeContext();
+    context.codexOpen = true;
+    context.codexSelectedKey = 'known:Grass|grass|0|none';
+    context.codexCompareKeys = ['known:Grass|grass|0|none', 'known:Beet|beet|8|none'];
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.codex.open).toBe(true);
+    expect(received!.codex.selectedKey).toBe('known:Grass|grass|0|none');
+    expect(received!.codex.compareKeys).toEqual([
+      'known:Grass|grass|0|none',
+      'known:Beet|beet|8|none',
+    ]);
+    expect(received!.codex.status).toContain('Grass selected');
+    expect(received!.codex.entries.find((entry) => entry.key === 'known:Grass|grass|0|none')?.compareSelected).toBe(true);
   });
 });

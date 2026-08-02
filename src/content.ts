@@ -113,6 +113,28 @@ export const HOMESTEAD_MIN_X = (WORLD_SIZE - HOMESTEAD_SIZE) / 2;
 export const HOMESTEAD_MIN_Z = (WORLD_SIZE - HOMESTEAD_SIZE) / 2;
 export const HOMESTEAD_MAX_X = HOMESTEAD_MIN_X + HOMESTEAD_SIZE;
 export const HOMESTEAD_MAX_Z = HOMESTEAD_MIN_Z + HOMESTEAD_SIZE;
+/** The authored homestead footprint is the only region where new farm work can begin. */
+export const FARM_REGION_MIN_X = HOMESTEAD_MIN_X;
+export const FARM_REGION_MIN_Z = HOMESTEAD_MIN_Z;
+export const FARM_REGION_MAX_X = HOMESTEAD_MAX_X;
+export const FARM_REGION_MAX_Z = HOMESTEAD_MAX_Z;
+/** Fresh runs begin in the open south-west approach to the homestead. */
+export const HOMESTEAD_SPAWN_X = HOMESTEAD_MIN_X + 5.5;
+export const HOMESTEAD_SPAWN_Z = HOMESTEAD_MIN_Z + 14.5;
+/** Gameplay footprint of the visible homestead model; its doorway remains approachable. */
+export const HOMESTEAD_FOOTPRINT = {
+  minX: HOMESTEAD_MIN_X + 4,
+  minZ: HOMESTEAD_MIN_Z + 4,
+  width: 8,
+  height: 8,
+} as const;
+/** A compact, visually marked plot for the first farming sequence. */
+export const STARTER_PLOT = {
+  minX: HOMESTEAD_MIN_X + 2,
+  minZ: HOMESTEAD_MIN_Z + 16,
+  width: 10,
+  height: 8,
+} as const;
 export const LAKE_CX = 168;
 export const LAKE_CZ = 100;
 export const LAKE_RADIUS = 22;
@@ -177,7 +199,7 @@ export const FARM_COLORS = {
   trench: 0x3a5a8a,
 };
 
-/** Base crop catalogue. Every plant grows in exactly two days. */
+/** Base crop catalogue. Trait-neutral crops use the two-day grow baseline. */
 export const CROP_DEFS = {
   grass: { id: 'grass' as const, name: 'Grass', grow: PLANT_GROW_TIME, waterNeed: 0.25, color: 0x7cb342 },
   dandelion: { id: 'dandelion' as const, name: 'Dandelion', grow: PLANT_GROW_TIME, waterNeed: 0.3, color: 0xf0d060 },

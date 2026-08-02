@@ -1,28 +1,53 @@
 /**
  * Shared mutable game state — pure, no renderer/DOM.
  */
-import { BUCKET_CAPACITY, GRID_H, GRID_W, TOOLBAR_SLOTS, TREE_RESPAWN_DAYS, WIN_DAY, WORLD_SIZE } from '../content';
+import {
+  BUCKET_CAPACITY,
+  GRID_H,
+  GRID_W,
+  HOMESTEAD_SPAWN_X,
+  HOMESTEAD_SPAWN_Z,
+  TOOLBAR_SLOTS,
+  TREE_RESPAWN_DAYS,
+} from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
 import {
+  canPlantTile,
   cloneGrid,
   createEmptyGrid,
   decayUnplantedTilth,
+  getTile,
+  harvestTile,
+  plantTile,
   stepCrops,
+  type HarvestResult,
   type Tile,
 } from './farm';
-import type { CodexEntry, Seed } from './genetics';
+import type { CodexEntry, Seed, SeedPacket } from './genetics';
 import { makeSeed, seedId } from './genetics';
+import {
+  addSeedPacket,
+  canAddSeedPacket,
+  cloneSeedPacket,
+  consumeSeedPacket,
+  discardSeedPacket,
+  normalizeSeedPackets,
+  seedPacketAt,
+  SEED_RECOVERY_PER_HARVEST,
+  sortSeedPackets,
+} from './seedInventory';
 import {
   addItem,
   cloneInventory,
   countItem,
   createInventory,
+  hasRoomFor,
   normalizeInventory,
   removeAll,
   removeItem,
   type Inventory,
 } from './inventory';
-import { itemInfo, ITEM_WOOD, type ItemId } from './items';
+import { cropItem, itemInfo, ITEM_WOOD, type ItemId } from './items';
 import type { PityState } from './luck';
 import { mulberry32, type Rng } from './rng';
 import {
@@ -39,6 +64,8 @@ import {
   deserialize,
 } from './save';
 import type { AssetId } from '../content/purchasables';
+import { seedPacketCapacity } from './buildings';
+import { isSettlementObjectiveComplete } from './settlement';
 
 export interface GameState {
   seed: number;
@@ -74,8 +101,8 @@ export interface GameState {
   bearTrapCooldown: number;
   homesteadTier: number;
   placedBuildings: PlacedBuilding[];
-  /** Plantable seeds (including hybrids) */
-  seedInventory: Seed[];
+  /** Counted plantable packets (including hybrids), one stack per full genotype. */
+  seedInventory: SeedPacket[];
   codex: CodexEntry[];
   stats: GameStats;
   simTime: number;
@@ -88,20 +115,20 @@ export interface GameState {
 
 export function createGameState(seed?: number): GameState {
   const s = seed ?? (Date.now() >>> 0);
-  const starter: Seed[] = [
-    makeSeed('grass'),
-    makeSeed('dandelion'),
-    makeSeed('beet'),
-    makeSeed('carrot'),
-    makeSeed('lettuce'),
+  const starter: SeedPacket[] = [
+    { seed: makeSeed('grass'), count: 1 },
+    { seed: makeSeed('dandelion'), count: 1 },
+    { seed: makeSeed('beet'), count: 1 },
+    { seed: makeSeed('carrot'), count: 1 },
+    { seed: makeSeed('lettuce'), count: 1 },
   ];
   return {
     seed: s,
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
-    playerX: WORLD_SIZE / 2,
-    playerZ: WORLD_SIZE / 2,
+    playerX: HOMESTEAD_SPAWN_X,
+    playerZ: HOMESTEAD_SPAWN_Z,
     weapon: 'shotgun',
     unlockedWeapons: ['shotgun'],
     homesteadTier: 1,
@@ -120,7 +147,7 @@ export function createGameState(seed?: number): GameState {
     boulderCooldown: 0,
     bearTrapCooldown: 0,
     seedInventory: starter,
-    codex: [],
+    codex: starterCodexEntries(starter.map((packet) => packet.seed)),
     stats: defaultStats(),
     simTime: 0,
     winShown: false,
@@ -133,6 +160,18 @@ export function createGameState(seed?: number): GameState {
 
 function gridMatches(tiles: Tile[][]): boolean {
   return tiles.length === GRID_H && tiles.every((row) => row.length === GRID_W);
+}
+
+function starterCodexEntries(starter: readonly Seed[]): CodexEntry[] {
+  return starter.map((seed) => ({
+    id: seedId(seed),
+    seed: {
+      ...seed,
+      traits: { ...seed.traits },
+      lineage: seed.lineage ? [...seed.lineage] : undefined,
+    },
+    discoveredDay: 1,
+  }));
 }
 
 export function loadFromSaveData(data: SaveData): GameState {
@@ -160,7 +199,9 @@ export function loadFromSaveData(data: SaveData): GameState {
     dropPity: { ...(data.dropPity ?? {}) },
     toolbarSlot: Math.min(Math.max(data.toolbarSlot ?? 0, 0), TOOLBAR_SLOTS - 1),
     toolSlotActive: data.toolSlotActive ?? false,
-    seedInventory: data.seedInventory?.length ? data.seedInventory : base.seedInventory,
+    seedInventory: normalizeSeedPackets(
+      data.seedInventory?.length ? data.seedInventory : base.seedInventory,
+    ),
     codex: data.codex ?? [],
     stats: { ...defaultStats(), ...data.stats },
     simTime: data.simTime ?? 0,
@@ -194,11 +235,7 @@ export function toSaveData(gs: GameState): SaveData {
     dropPity: { ...gs.dropPity },
     toolbarSlot: gs.toolbarSlot,
     toolSlotActive: gs.toolSlotActive,
-    seedInventory: gs.seedInventory.map((s) => ({
-      ...s,
-      traits: { ...s.traits },
-      lineage: s.lineage ? [...s.lineage] : undefined,
-    })),
+    seedInventory: gs.seedInventory.map(cloneSeedPacket),
     codex: gs.codex.map((c) => ({
       ...c,
       seed: { ...c.seed, traits: { ...c.seed.traits } },
@@ -250,10 +287,13 @@ export function setToast(gs: GameState, msg: string, duration = 3): void {
 export function onNewDay(gs: GameState): {
   lostTilth: { x: number; y: number }[];
   regrown: { tx: number; ty: number }[];
+  seedReserveAdded: boolean;
 } {
+  const seedReserveAdded = gs.seedInventory.length === 0 && addSeedToInventory(gs, makeSeed('grass'));
   return {
     lostTilth: decayUnplantedTilth(gs.tiles, gs.clock.day),
     regrown: respawnTrees(gs),
+    seedReserveAdded,
   };
 }
 
@@ -339,7 +379,7 @@ export function respawnTrees(gs: GameState): { tx: number; ty: number }[] {
 }
 
 export function checkWin(gs: GameState): boolean {
-  return gs.clock.day >= WIN_DAY && !gs.winShown;
+  return isSettlementObjectiveComplete(gs) && !gs.winShown;
 }
 
 export function markWinShown(gs: GameState): void {
@@ -363,9 +403,77 @@ export function discoverSeed(gs: GameState, seed: Seed): boolean {
   return true;
 }
 
-export function addSeedToInventory(gs: GameState, seed: Seed): void {
-  gs.seedInventory.push(seed);
+export function addSeedToInventory(gs: GameState, seed: Seed, count = 1): boolean {
+  if (!addSeedPacket(gs.seedInventory, seed, count, seedPacketCapacity(gs.placedBuildings))) return false;
   discoverSeed(gs, seed);
+  return true;
+}
+
+export function canStoreSeedPacket(gs: GameState, seed: Seed, count = 1): boolean {
+  return canAddSeedPacket(gs.seedInventory, seed, count, seedPacketCapacity(gs.placedBuildings));
+}
+
+function failedHarvest(): HarvestResult {
+  return { ok: false, seed: null, count: 0, hybridChild: null };
+}
+
+/**
+ * Harvest a mature crop and commit its produce plus one recovered packet as a
+ * single pure transaction. A full destination leaves the tile untouched.
+ */
+export function harvestCropTransaction(gs: GameState, tx: number, ty: number): HarvestResult {
+  const tile = getTile(gs.tiles, tx, ty);
+  if (!tile || tile.state !== 'mature' || !tile.seed) return failedHarvest();
+  const seed = tile.seed;
+  const produce = cropItem(seed.displayName);
+  if (!hasRoomFor(gs.inventory, produce) || !canStoreSeedPacket(gs, seed, SEED_RECOVERY_PER_HARVEST)) {
+    return failedHarvest();
+  }
+
+  const before = { ...tile };
+  const result = harvestTile(gs.tiles, tx, ty);
+  if (!result.ok || !result.seed || !addItem(gs.inventory, produce, result.count)) {
+    Object.assign(tile, before);
+    return failedHarvest();
+  }
+  if (!addSeedToInventory(gs, result.seed, SEED_RECOVERY_PER_HARVEST)) {
+    removeItem(gs.inventory, produce, result.count);
+    Object.assign(tile, before);
+    return failedHarvest();
+  }
+  return result;
+}
+
+/** Consume one exact genotype only after the farm predicate has passed. */
+export function plantSeedPacket(gs: GameState, tx: number, ty: number, seed: Seed): boolean {
+  if (!canPlantTile(gs.tiles, tx, ty)) return false;
+  if (!consumeSeedPacket(gs.seedInventory, seed, 1)) return false;
+  if (!plantTile(gs.tiles, tx, ty, seed)) {
+    // The predicate and mutation share the same pure tile rules. Keep the
+    // rollback explicit so a future rule change cannot erase a packet.
+    addSeedPacket(gs.seedInventory, seed, 1, seedPacketCapacity(gs.placedBuildings));
+    return false;
+  }
+  if (gs.selectedSeedIndex >= gs.seedInventory.length) {
+    gs.selectedSeedIndex = Math.max(0, gs.seedInventory.length - 1);
+  }
+  return true;
+}
+
+export function discardSeedFromInventory(gs: GameState, index: number, count = 1): boolean {
+  const ok = discardSeedPacket(gs.seedInventory, index, count);
+  if (!ok) return false;
+  if (!gs.seedInventory.length) gs.selectedSeedIndex = 0;
+  else gs.selectedSeedIndex = Math.min(gs.selectedSeedIndex, gs.seedInventory.length - 1);
+  const seed = selectedSeed(gs);
+  if (seed) gs.selectedCrop = seed.species;
+  return true;
+}
+
+export function sortSeedInventory(gs: GameState): void {
+  gs.selectedSeedIndex = sortSeedPackets(gs.seedInventory, gs.selectedSeedIndex);
+  const seed = selectedSeed(gs);
+  if (seed) gs.selectedCrop = seed.species;
 }
 
 export function fillBucket(gs: GameState): boolean {
@@ -380,8 +488,12 @@ export function useBucketWater(gs: GameState): boolean {
   return true;
 }
 
+export function selectedSeedPacket(gs: GameState): SeedPacket | null {
+  return seedPacketAt(gs.seedInventory, gs.selectedSeedIndex);
+}
+
 export function selectedSeed(gs: GameState): Seed | null {
-  return gs.seedInventory[gs.selectedSeedIndex] ?? gs.seedInventory[0] ?? null;
+  return selectedSeedPacket(gs)?.seed ?? null;
 }
 
 export function cycleSeed(gs: GameState, dir: number): void {

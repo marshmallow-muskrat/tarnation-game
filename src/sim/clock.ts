@@ -84,6 +84,6 @@ export function nightTintAlpha(clock: ClockState): number {
   return 0;
 }
 
-export function isDuskNear(clock: ClockState): boolean {
+export function isDuskNear(clock: Pick<ClockState, 'phase' | 't'>): boolean {
   return clock.phase === 'day' && clock.t >= 0.85;
 }
