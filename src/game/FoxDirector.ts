@@ -7,12 +7,12 @@ import {
   WORLD_SIZE,
 } from '../content';
 import { tileKey } from '../sim/placement';
-import { type FoxType } from '../sim/raid';
+import { type FoxType, type RaidTarget } from '../sim/raid';
 import { FoxNavigation } from './FoxNavigation';
 
 const FOX_NAVIGATION_BUDGET = 4096;
 
-export type FoxState = 'burrow' | 'seek' | 'attack' | 'eat' | 'flee' | 'trapped';
+export type FoxState = 'burrow' | 'seek' | 'eat' | 'flee' | 'trapped';
 
 export type FoxActions = {
   mixer: AnimationMixer | null;
@@ -34,11 +34,10 @@ export type Fox = {
   timer: number;
   targetTx: number;
   targetTy: number;
+  raidTarget: RaidTarget | null;
   eatTimer: number;
   dead: boolean;
-  haulSeed: boolean;
-  attackSlot: number;
-  attackAngle: number;
+  carryingProduce: boolean;
   trappedTx: number;
   trappedTy: number;
   path: { tx: number; ty: number }[];
@@ -156,6 +155,7 @@ export class FoxDirector {
     if (!exposed.length) {
       fox.targetTx = -1;
       fox.targetTy = -1;
+      fox.raidTarget = null;
       fox.path = [];
       fox.pathGoalKey = '';
       fox.pathTimer = 0;
@@ -173,6 +173,13 @@ export class FoxDirector {
     }
     fox.targetTx = best.x;
     fox.targetTy = best.y;
+    fox.raidTarget = {
+      kind: 'crop',
+      x: best.x,
+      y: best.y,
+      distance: bestDistance,
+      exposed: true,
+    };
     fox.path = [];
     fox.pathGoalKey = '';
     fox.pathTimer = 0;
