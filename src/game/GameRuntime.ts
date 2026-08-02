@@ -143,6 +143,13 @@ import {
 import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
 import { FoxNavigation } from './FoxNavigation';
+import {
+  EquipmentController,
+  SLOT_AXE,
+  SLOT_SHOTGUN,
+  SLOT_SHOVEL,
+} from './EquipmentController';
+import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { getEconomyCapability } from './EconomyCapability';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
@@ -473,40 +480,6 @@ type DirtyTile = { tx: number; ty: number };
 
 type ToolMode = 'farm' | 'trench' | 'breed';
 
-type PlayerClip =
-  | 'idle'
-  | 'walk'
-  | 'run'
-  | 'walkCarry'
-  | 'runCarry'
-  | 'pickUp'
-  | 'shoot'
-  | 'swordSlash'
-  | 'punch';
-
-type EquippedToolKey = 'axe' | 'bow_wooden' | 'shotgun_2' | 'shovel';
-
-type ToolProfile = {
-  scale: number;
-  /** Authored model-space point placed exactly in the animated right fist. */
-  grip: readonly [number, number, number];
-  /** Transform from the animated right-hand socket into the tool's grip pose. */
-  carryPosition: readonly [number, number, number];
-  carryRotation: readonly [number, number, number];
-  /** Optional clip-space correction blended in only during a one-shot action. */
-  actionRotation?: readonly [number, number, number];
-  /** Some carry clips are authored for a particular silhouette. */
-  runClip: 'walkCarry' | 'runCarry';
-  /** Calm normalized time in Walk_Carry used as the missing idle-carry pose. */
-  idleTime: number;
-  /** Optional second-hand contact point in the model's local coordinates. */
-  supportGrip?: readonly [number, number, number];
-  /** Override the carry grip for a one-shot action such as digging. */
-  actionSupportGrip?: readonly [number, number, number];
-  /** How strongly the left arm follows the support grip, 0..1. */
-  supportBlend?: number;
-};
-
 const CROP_MODEL_BASE: Record<keyof typeof CROP_DEFS, string> = {
   grass: 'grasscrop',
   dandelion: 'dandelion',
@@ -525,61 +498,6 @@ const PLAINS_ANIMALS: readonly { model: ModelKey; name: string }[] = [
   { model: 'fox', name: 'Thicket Fox' },
   { model: 'donkey', name: 'Dust Donkey' },
 ];
-
-const TOOL_PROFILES: Record<EquippedToolKey, ToolProfile> = {
-  axe: {
-    scale: 1.15,
-    grip: [0, 0.05, 0],
-    carryPosition: [0.14, -0.02, 0.02],
-    // The source axe head is +Y. The old pose left +Y pointing at the ground;
-    // the half-turn makes the head sit above the hands and the handle hang down.
-    carryRotation: [Math.PI, 0, -0.5],
-    actionRotation: [0, Math.PI / 2, -0.55],
-    runClip: 'runCarry',
-    idleTime: 0.36,
-    supportGrip: [0, 0.7, 0],
-    actionSupportGrip: [0, 0.48, 0],
-    supportBlend: 0.56,
-  },
-  bow_wooden: {
-    scale: 0.76,
-    grip: [0, 0, 0],
-    carryPosition: [0, -0.02, 0.03],
-    carryRotation: [0, 0, -0.25],
-    runClip: 'walkCarry',
-    idleTime: 0.3,
-  },
-  shotgun_2: {
-    scale: 0.42,
-    // Trigger-hand grip. Model-space +X runs from the stock into the barrel.
-    grip: [0, -0.28, 0],
-    // The source is an X-axis prop: the negative end is the stock and the
-    // positive end is the barrel. Put the stock in the right hand and use the
-    // fore-end as a real left-hand target instead of letting the gun float from
-    // the wrist or hang upside down.
-    carryPosition: [0.1, 0, 0],
-    carryRotation: [0, 0, 0.5],
-    actionRotation: [0, 0, Math.PI / 2],
-    runClip: 'runCarry',
-    idleTime: 0.32,
-    supportGrip: [1.35, 0.08, 0],
-    supportBlend: 0.58,
-  },
-  shovel: {
-    // The shovel's source is vertical. Rotate it across the body for carry so
-    // the upper shaft sits in the right hand and the lower shaft meets the
-    // left hand; the action pose then returns it toward the soil.
-    scale: 1.1,
-    grip: [0, 1.1, 0],
-    carryPosition: [0.1, -0.02, 0.02],
-    carryRotation: [Math.PI, 0, 1.05],
-    runClip: 'runCarry',
-    idleTime: 0.3,
-    supportGrip: [0, 0.02, 0],
-    actionSupportGrip: [0, -0.12, 0],
-    supportBlend: 0.68,
-  },
-};
 
 const HOMESTEAD_MODEL_KEYS = [
   'house_1',
@@ -619,10 +537,6 @@ const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
  * ground with, slot 3 the red axe. The bucket has its own water slot, and Boulder
  * Roll its own ability slots to the left.
  */
-const SLOT_SHOTGUN = 0;
-const SLOT_SHOVEL = 1;
-const SLOT_AXE = 2;
-
 const TOOLBAR_ASSET_IDS = [
   'tool:shotgun',
   'tool:shovel',
@@ -675,19 +589,8 @@ export class GameRuntime {
   private raf = 0;
 
   private playerRoot!: THREE.Object3D;
-  private playerMixer: THREE.AnimationMixer | null = null;
-  private idleAction: THREE.AnimationAction | null = null;
-  private walkAction: THREE.AnimationAction | null = null;
-  private playerActions: Partial<Record<PlayerClip, THREE.AnimationAction>> = {};
-  private activeLocomotionAction: THREE.AnimationAction | null = null;
-  private oneShotAction: THREE.AnimationAction | null = null;
-  private handBone: THREE.Object3D | null = null;
-  private leftHandBone: THREE.Object3D | null = null;
-  private leftUpperArmBone: THREE.Object3D | null = null;
-  private leftLowerArmBone: THREE.Object3D | null = null;
-  private equippedToolSocket: THREE.Group | null = null;
-  private equippedToolRoot: THREE.Object3D | null = null;
-  private equippedToolKey: EquippedToolKey | null = null;
+  private playerActions!: PlayerActionController;
+  private equipment!: EquipmentController;
   private playerX = WORLD_SIZE / 2;
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
@@ -791,19 +694,8 @@ export class GameRuntime {
     daysReached: 1,
   };
 
-  private readonly supportTarget = new THREE.Vector3();
-  private readonly supportJoint = new THREE.Vector3();
-  private readonly supportEffector = new THREE.Vector3();
-  private readonly supportToTarget = new THREE.Vector3();
-  private readonly supportToEffector = new THREE.Vector3();
-  private readonly supportAxis = new THREE.Vector3();
-  private readonly supportWorldQuaternion = new THREE.Quaternion();
-  private readonly supportParentQuaternion = new THREE.Quaternion();
-  private readonly supportLocalQuaternion = new THREE.Quaternion();
   private readonly playerTargetQuaternion = new THREE.Quaternion();
   private readonly playerUp = new THREE.Vector3(0, 1, 0);
-  private readonly toolTargetEuler = new THREE.Euler();
-  private readonly toolTargetQuaternion = new THREE.Quaternion();
 
   async mount(
     canvas: HTMLCanvasElement,
@@ -925,17 +817,11 @@ export class GameRuntime {
     this.clearLootMarkers();
     this.clearFeedbackBursts();
 
-    this.playerMixer?.stopAllAction();
-    if (this.playerMixer && this.playerRoot) this.playerMixer.uncacheRoot(this.playerRoot);
-    this.playerMixer = null;
+    this.equipment?.dispose();
+    this.playerActions?.dispose();
     this.merchantMixer?.stopAllAction();
     if (this.merchantMixer && this.merchantRoot) this.merchantMixer.uncacheRoot(this.merchantRoot);
     this.merchantMixer = null;
-    if (this.equippedToolSocket) this.equippedToolSocket.removeFromParent();
-    if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
-    this.equippedToolSocket = null;
-    this.equippedToolRoot = null;
-    this.equippedToolKey = null;
     if (this.playerRoot) {
       this.playerRoot.removeFromParent();
       disposeModelClone(this.playerRoot);
@@ -1026,200 +912,9 @@ export class GameRuntime {
     this.playerRoot = root;
     this.playerRoot.position.set(this.playerX, 0, this.playerZ);
     this.world.getSharedActors().add(this.playerRoot);
-    if (animations.length > 0) {
-      this.playerMixer = new THREE.AnimationMixer(root);
-      const idle = animations.find((c) => /idle/i.test(c.name)) ?? animations[0]!;
-      const walk =
-        animations.find((c) => /^walk$/i.test(c.name)) ??
-        animations.find((c) => /walk|run|locomotion/i.test(c.name)) ??
-        animations[1] ??
-        animations[0]!;
-      this.idleAction = this.playerMixer.clipAction(idle);
-      this.walkAction = this.playerMixer.clipAction(walk);
-      const clipAction = (pattern: RegExp): THREE.AnimationAction | undefined => {
-        const clip = animations.find((c) => pattern.test(c.name));
-        return clip ? this.playerMixer!.clipAction(clip) : undefined;
-      };
-      this.playerActions = {
-        idle: this.idleAction,
-        walk: this.walkAction,
-        run: clipAction(/^run$/i),
-        walkCarry: clipAction(/^walk_carry$/i),
-        runCarry: clipAction(/^run_carry$/i),
-        pickUp: clipAction(/^pickup$/i),
-        shoot: clipAction(/^shoot_onehanded$/i),
-        swordSlash: clipAction(/^swordslash$/i),
-        punch: clipAction(/^punch$/i),
-      };
-      this.idleAction.play();
-      this.activeLocomotionAction = this.idleAction;
-    }
-    this.handBone = this.findRightHand(root);
-    this.leftHandBone = this.findPlayerBone(root, /^(fist|hand)[._ -]?l$|left.?hand|hand.?left/i);
-    this.leftUpperArmBone = this.findPlayerBone(root, /^(upper.?arm|arm)[._ -]?l$|left.?upper.?arm/i);
-    this.leftLowerArmBone = this.findPlayerBone(root, /^(lower.?arm|forearm|arm)[._ -]?l$|left.?forearm/i);
-    this.refreshEquippedTool();
-  }
-
-  private findRightHand(root: THREE.Object3D): THREE.Object3D | null {
-    let hand: THREE.Object3D | null = null;
-    root.traverse((obj) => {
-      if (hand || !obj.name) return;
-      if (/^(fist|hand)[._ -]?r$|right.?hand|hand.?right/i.test(obj.name)) hand = obj;
-    });
-    return hand;
-  }
-
-  private findPlayerBone(root: THREE.Object3D, pattern: RegExp): THREE.Object3D | null {
-    let bone: THREE.Object3D | null = null;
-    root.traverse((obj) => {
-      if (bone || !(obj instanceof THREE.Bone) || !obj.name) return;
-      if (pattern.test(obj.name)) bone = obj;
-    });
-    return bone;
-  }
-
-  private refreshEquippedTool(): void {
-    const desired: EquippedToolKey | null =
-      !this.gs || this.gs.toolSlotActive
-        ? null
-        : this.gs.toolbarSlot === SLOT_AXE
-          ? 'axe'
-          : this.gs.toolbarSlot === SLOT_SHOVEL
-            ? 'shovel'
-            : this.gs.toolbarSlot === SLOT_SHOTGUN && this.gs.weapon === 'bow'
-              ? 'bow_wooden'
-              : this.gs.toolbarSlot === SLOT_SHOTGUN && this.gs.weapon === 'shotgun'
-                ? 'shotgun_2'
-                : null;
-    if (desired === this.equippedToolKey && this.equippedToolSocket?.parent === this.handBone) return;
-    this.equippedToolSocket?.removeFromParent();
-    if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
-    this.equippedToolSocket = null;
-    this.equippedToolRoot = null;
-    this.equippedToolKey = null;
-    if (!desired || !this.handBone) return;
-
-    const { root } = cloneModel(desired);
-    root.name = `equipped_${desired}`;
-    const profile = TOOL_PROFILES[desired];
-    const sourceScale = root.scale.x;
-    // The imported root contains a ground-normalisation offset for world props.
-    // Held props instead pivot around a measured model-space grip. Keeping that
-    // conversion on a child prevents hand-pose offsets from corrupting import
-    // scale/orientation and makes every model axis explicit.
-    root.position.set(
-      -profile.grip[0] * sourceScale,
-      -profile.grip[1] * sourceScale,
-      -profile.grip[2] * sourceScale,
-    );
-    const socket = new THREE.Group();
-    socket.name = `tool_socket_${desired}`;
-    socket.position.set(...profile.carryPosition);
-    socket.rotation.set(...profile.carryRotation);
-    socket.scale.setScalar(profile.scale);
-    if (desired === 'axe' || desired === 'shovel') {
-      // Draw the narrow dark props after the body, but retain depth testing so a
-      // correctly placed handle can still pass behind the torso naturally.
-      root.renderOrder = 3;
-      root.traverse((obj) => {
-        if (!(obj instanceof THREE.Mesh)) return;
-        obj.renderOrder = 3;
-      });
-    }
-    socket.add(root);
-    this.handBone.add(socket);
-    this.equippedToolSocket = socket;
-    this.equippedToolRoot = root;
-    this.equippedToolKey = desired;
-  }
-
-  /**
-   * The Cowboy rig has authored carry clips, but the tool props are not part of
-   * that rig. A small two-bone solve keeps the left hand on the fore-end/shaft
-   * after the mixer has posed the body. It is intentionally renderer-only: the
-   * simulation never needs to know where a hand is.
-   */
-  private applySupportHandPose(): void {
-    if (
-      !this.equippedToolRoot ||
-      !this.equippedToolKey ||
-      !this.leftHandBone ||
-      !this.leftUpperArmBone ||
-      !this.leftLowerArmBone
-    ) return;
-
-    const profile = TOOL_PROFILES[this.equippedToolKey];
-    const oneShot = this.oneShotAction;
-    const oneShotActive = oneShot?.isRunning() ?? false;
-    // The one-handed shooting clip is authored around the right arm. Let the
-    // left hand return to the animation rather than pulling it toward the gun.
-    if (oneShotActive && this.equippedToolKey === 'shotgun_2') return;
-    const grip = oneShotActive ? profile.actionSupportGrip : profile.supportGrip;
-    if (!grip) return;
-
-    this.playerRoot.updateMatrixWorld(true);
-    this.equippedToolRoot.updateMatrixWorld(true);
-    this.supportTarget.set(...grip);
-    this.equippedToolRoot.localToWorld(this.supportTarget);
-
-    const blend = (profile.supportBlend ?? 0.7) * (oneShotActive ? 0.58 : 1);
-    for (let i = 0; i < 2; i++) {
-      this.rotateArmJointToward(this.leftLowerArmBone, blend);
-      this.rotateArmJointToward(this.leftUpperArmBone, blend * 0.9);
-    }
-  }
-
-  private updateEquippedToolSocket(dt: number): void {
-    if (!this.equippedToolSocket || !this.equippedToolKey) return;
-    const profile = TOOL_PROFILES[this.equippedToolKey];
-    const actionActive = this.oneShotAction?.isRunning() ?? false;
-    const rotation = actionActive
-      ? profile.actionRotation ?? profile.carryRotation
-      : profile.carryRotation;
-    this.toolTargetEuler.set(...rotation);
-    this.toolTargetQuaternion.setFromEuler(this.toolTargetEuler);
-    this.equippedToolSocket.quaternion.slerp(
-      this.toolTargetQuaternion,
-      1 - Math.exp(-dt * 20),
-    );
-  }
-
-  private rotateArmJointToward(joint: THREE.Object3D, blend: number): void {
-    if (!this.leftHandBone) return;
-    joint.updateMatrixWorld(true);
-    this.leftHandBone.updateMatrixWorld(true);
-    joint.getWorldPosition(this.supportJoint);
-    this.leftHandBone.getWorldPosition(this.supportEffector);
-    this.supportToEffector.subVectors(this.supportEffector, this.supportJoint);
-    this.supportToTarget.subVectors(this.supportTarget, this.supportJoint);
-    const effectorLength = this.supportToEffector.length();
-    const targetLength = this.supportToTarget.length();
-    if (effectorLength < 0.0001 || targetLength < 0.0001) return;
-
-    const cosine = THREE.MathUtils.clamp(
-      this.supportToEffector.dot(this.supportToTarget) / (effectorLength * targetLength),
-      -1,
-      1,
-    );
-    const angle = Math.acos(cosine);
-    this.supportAxis.crossVectors(this.supportToEffector, this.supportToTarget);
-    if (this.supportAxis.lengthSq() < 0.000001 || angle < 0.002) return;
-    this.supportAxis.normalize();
-
-    this.supportWorldQuaternion.setFromAxisAngle(
-      this.supportAxis,
-      Math.min(angle, 0.85) * THREE.MathUtils.clamp(blend, 0, 1),
-    );
-    joint.getWorldQuaternion(this.supportLocalQuaternion);
-    this.supportLocalQuaternion.premultiply(this.supportWorldQuaternion);
-    if (joint.parent) {
-      joint.parent.getWorldQuaternion(this.supportParentQuaternion);
-      this.supportParentQuaternion.invert();
-      this.supportLocalQuaternion.premultiply(this.supportParentQuaternion);
-    }
-    joint.quaternion.copy(this.supportLocalQuaternion);
-    joint.updateMatrixWorld(true);
+    this.playerActions = new PlayerActionController(root, animations);
+    this.equipment = new EquipmentController(root, this.playerActions);
+    this.equipment.refresh(this.gs);
   }
 
   /** The legacy selling stall remains separate from the traveling merchant. */
@@ -1439,14 +1134,14 @@ export class GameRuntime {
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
-    this.cancelPlayerAction();
+    this.playerActions.cancel();
     if (index !== SLOT_SHOTGUN) this.clearShots();
     this.gs.toolbarSlot = index;
     this.gs.toolSlotActive = false;
     if (index === SLOT_SHOTGUN) this.gs.weapon = this.gs.weapon === 'bow' ? 'bow' : 'shotgun';
     if (index === SLOT_AXE) this.gs.weapon = 'axe';
     if (index !== SLOT_SHOVEL) this.toolMode = 'farm';
-    this.refreshEquippedTool();
+    this.equipment.refresh(this.gs);
     this.pushHud(true);
   }
 
@@ -1454,11 +1149,11 @@ export class GameRuntime {
     this.buildingMode = false;
     this.placementAssetId = null;
     this.demolishMode = false;
-    this.cancelPlayerAction();
+    this.playerActions.cancel();
     this.clearShots();
     this.gs.toolSlotActive = true;
     this.toolMode = 'farm';
-    this.refreshEquippedTool();
+    this.equipment.refresh(this.gs);
     this.pushHud(true);
   }
 
@@ -1473,10 +1168,10 @@ export class GameRuntime {
     }
     this.buildingMode = !this.buildingMode;
     this.toolMode = 'farm';
-    this.cancelPlayerAction();
+    this.playerActions.cancel();
     this.clearShots();
     this.gs.toolSlotActive = false;
-    this.refreshEquippedTool();
+    this.equipment.refresh(this.gs);
     setToast(
       this.gs,
       this.buildingMode
@@ -1501,7 +1196,7 @@ export class GameRuntime {
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
-      this.cancelPlayerAction();
+      this.playerActions.cancel();
     }
     this.pushHud(true);
   }
@@ -1669,7 +1364,7 @@ export class GameRuntime {
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
-    this.cancelPlayerAction();
+    this.playerActions.cancel();
     this.clearShots();
     setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
     this.pushHud(true);
@@ -1980,7 +1675,7 @@ export class GameRuntime {
       this.accum -= FIXED_DT;
     }
 
-    this.playerMixer?.update(dt);
+    this.playerActions.update(dt);
     this.merchantMixer?.update(dt);
     for (const a of this.animals) a.actions.mixer?.update(dt);
     this.world.update(dt);
@@ -1989,8 +1684,8 @@ export class GameRuntime {
     this.stepLootMarkers(dt);
     this.stepFeedbackBursts(dt);
 
-    const moving = Math.hypot(this.velX, this.velZ) > 0.4;
-    this.updateAnim(moving);
+    const speed = Math.hypot(this.velX, this.velZ);
+    this.playerActions.updateLocomotion(speed > 0.4, speed, this.equipment.animationProfile);
 
     let leadX = 0;
     let leadZ = 0;
@@ -2009,86 +1704,12 @@ export class GameRuntime {
       this.headingTarget,
     );
     this.playerRoot.quaternion.slerp(this.playerTargetQuaternion, 1 - Math.exp(-dt * 10));
-    this.updateEquippedToolSocket(dt);
-    this.applySupportHandPose();
+    this.equipment.update(dt);
 
     this.world.render();
     this.input.endFrame();
     this.pushHud(false);
   };
-
-  private updateAnim(moving: boolean): void {
-    if (!this.idleAction || !this.walkAction) return;
-    const oneShot = this.oneShotAction;
-    const oneShotActive = oneShot?.isRunning() ?? false;
-    if (oneShotActive) return;
-    const finishedAction = this.oneShotAction;
-    this.oneShotAction = null;
-
-    const speed = Math.hypot(this.velX, this.velZ);
-    const carry = this.equippedToolRoot !== null;
-    const profile = this.equippedToolKey ? TOOL_PROFILES[this.equippedToolKey] : null;
-    const carryAction = profile?.runClip === 'walkCarry'
-      ? this.playerActions.walkCarry ?? this.walkAction
-      : this.playerActions.runCarry ?? this.playerActions.walkCarry ?? this.walkAction;
-    const carryIdle = carry ? this.playerActions.walkCarry ?? this.walkAction : null;
-    const locomotion = moving
-      ? carry
-        ? speed > PLAYER_SPEED * 0.72
-          ? carryAction
-          : this.playerActions.walkCarry ?? this.walkAction
-        : this.playerActions.walk ?? this.walkAction
-      : carry
-        ? carryIdle ?? this.playerActions.idle ?? this.idleAction
-        : this.playerActions.idle ?? this.idleAction;
-    locomotion.enabled = true;
-    const transitionFrom = finishedAction ?? this.activeLocomotionAction;
-    if (finishedAction || locomotion !== this.activeLocomotionAction) {
-      locomotion.paused = false;
-      locomotion.reset().setEffectiveWeight(1).play();
-      if (transitionFrom && transitionFrom !== locomotion) {
-        transitionFrom.paused = false;
-        transitionFrom.crossFadeTo(locomotion, 0.14, true);
-      } else {
-        locomotion.fadeIn(0.14);
-      }
-      this.activeLocomotionAction = locomotion;
-    } else if (!locomotion.isRunning()) {
-      locomotion.play();
-    }
-    // There is no authored Idle_Carry clip. Freeze Walk_Carry at a calm frame
-    // while stationary so both arms remain intentionally posed around a tool
-    // instead of dropping back to the empty-handed idle.
-    if (carry && !moving && locomotion === carryIdle) {
-      locomotion.time = locomotion.getClip().duration * (profile?.idleTime ?? 0.34);
-      locomotion.paused = true;
-    } else {
-      locomotion.paused = false;
-      const speedRatio = THREE.MathUtils.clamp(speed / PLAYER_SPEED, 0.62, 1);
-      locomotion.setEffectiveTimeScale(moving ? speedRatio : 1);
-    }
-  }
-
-  private playPlayerAction(clip: PlayerClip): void {
-    const action = this.playerActions[clip];
-    if (!action) return;
-    this.oneShotAction?.stop();
-    if (this.activeLocomotionAction) {
-      this.activeLocomotionAction.paused = false;
-      this.activeLocomotionAction.fadeOut(0.1);
-    }
-    action.reset();
-    action.setLoop(THREE.LoopOnce, 1);
-    action.clampWhenFinished = true;
-    action.setEffectiveWeight(1).fadeIn(0.1).play();
-    this.oneShotAction = action;
-  }
-
-  private cancelPlayerAction(): void {
-    this.oneShotAction?.fadeOut(0.1);
-    this.oneShotAction = null;
-    this.activeLocomotionAction = null;
-  }
 
   private handleHotkeys(): void {
     if (this.pauseOpen) {
@@ -2114,7 +1735,7 @@ export class GameRuntime {
       cycleWeapon(this.gs);
       this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
       this.gs.toolSlotActive = false;
-      this.refreshEquippedTool();
+      this.equipment.refresh(this.gs);
       setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
     }
     if (this.input.justPressed('KeyU')) this.tryUpgradeHomestead();
@@ -2674,7 +2295,7 @@ export class GameRuntime {
     this.recordOutcome('building', 'completed', 'build');
     placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
     this.economyMetrics.buildingsPlaced++;
-    this.playPlayerAction('pickUp');
+    this.playerActions.play('pickUp');
     this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
@@ -3030,7 +2651,7 @@ export class GameRuntime {
       });
     }
     this.shotCd = SHOTGUN_COOLDOWN;
-    this.playPlayerAction('shoot');
+    this.playerActions.play('shoot');
     this.audio.play('shot');
     this.world.shake(0.06, 0.05);
   }
@@ -3079,7 +2700,7 @@ export class GameRuntime {
       dmg: 2,
     });
     this.shotCd = BOW_COOLDOWN;
-    this.playPlayerAction('shoot');
+    this.playerActions.play('shoot');
     this.audio.play('shot');
   }
 
@@ -3088,9 +2709,9 @@ export class GameRuntime {
     // Do not restart a one-shot halfway through its authored motion when the
     // player holds the mouse down. That turns a readable chop/dig into a
     // jittering pose; let the current swing finish before accepting the next.
-    if (this.oneShotAction?.isRunning()) return false;
+    if (this.playerActions.isOneShotRunning) return false;
     this.meleeCd = MELEE_COOLDOWN;
-    this.playPlayerAction(clip);
+    this.playerActions.play(clip);
     return true;
   }
 
@@ -3232,7 +2853,7 @@ export class GameRuntime {
       return false;
     }
     this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
-    this.playPlayerAction('pickUp');
+    this.playerActions.play('pickUp');
     this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
     this.syncBearTrapModels();
     this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);

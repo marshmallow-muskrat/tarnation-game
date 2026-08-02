@@ -70,7 +70,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Complete the remaining runtime-responsibility work (PERF-05).
+- Continue the remaining runtime-responsibility work (PERF-05).
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -161,7 +161,16 @@ The characterization baseline intentionally preserves current behavior for later
   frame. Asset cloning now uses `SkeletonUtils.clone()` only for scenes containing `SkinnedMesh`.
   The integrated deterministic baseline is 109 tests across 16 files. The built preview reached Day 1
   daylight through Continue and New Adventure with no console errors or warnings. All required unit,
-  smoke, asset, build, strict TypeScript, diff, and production-audit checks pass. PERF-05 is next.
+  smoke, asset, build, strict TypeScript, diff, and production-audit checks pass. PERF-05 follows below.
+
+- PERF-05's first extraction slice moves player animation transitions and held-tool selection/socket
+  posing out of `GameRuntime` into `PlayerActionController` and `EquipmentController`. The fixed-step
+  movement authority, existing clip names, measured grip profiles, support-hand solve, and tool-slot
+  behavior are unchanged; the controllers are renderer-facing and keep `src/sim` pure. Five focused
+  characterization tests cover bucket hiding, toolbar/weapon model mapping, unsupported slots, empty
+  locomotion, and the carry idle/run threshold. The integrated deterministic baseline is now 114 tests
+  across 17 files. Remaining PERF-05 slices are interaction, fox direction, placement, metrics, and
+  HUD responsibility extraction.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
