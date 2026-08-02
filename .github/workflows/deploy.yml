@@ -48,6 +48,15 @@ jobs:
       - name: Run one-hour fixed-step feel soak
         run: npm run feelcheck
 
+      - name: Run deterministic farm and raid performance scenarios
+        run: npm run perfcheck
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run production E2E and visual checks
+        run: npm run e2e:ci
+
       - name: Build production bundle
         run: npm run build
 

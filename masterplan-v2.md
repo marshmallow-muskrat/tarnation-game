@@ -847,6 +847,18 @@ feel, build, strict TypeScript, diff, production-audit, and production-preview s
 - **Visual:** representative deterministic screenshots with reviewed baselines.
 - **Performance:** scripted farm and raid scenarios with stored budgets/traces.
 
+Status: Complete on `agent/qa-01-automated-test-pyramid`. Vitest now runs 328 deterministic unit and
+controller-integration tests across 48 files, with compact typed fresh, midgame, dense-farm, corrupt-save,
+and prior-version fixtures. Playwright runs four production-build journeys covering fresh movement and
+starter-plot work, mature-crop harvest/Codex discovery, merchant purchase/deed placement, save reload,
+raid, settings, and the authored ending; the launch-card screenshot uses a reviewed platform-neutral
+baseline. `npm run perfcheck` enforces fixed budgets for dense farming, raid route fields, and a seeded
+economy cohort and writes an ignored QA report. The deployment workflow runs the deterministic performance
+and browser gates before the final production build/deployment. No production behavior, save schema,
+fixed-step rule, seeded simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
+`GL_CLOSE_PATH_NV` thumbnail-readback warning is filtered as browser-driver noise; all other browser
+warnings, errors, page errors, and failed assertions remain fatal.
+
 ### QA-02 — Continuous integration
 
 Add a GitHub Actions workflow that runs on PRs and main:
@@ -1026,7 +1038,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
-| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
+| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01 complete; QA-02, QA-03, REL-01, and REL-02 remain |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
 Recommended first implementation order:

@@ -99,6 +99,19 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   M9 Audio/feel is released as PR #61 merge `b6325bd`: AUD-01, AUD-02, and FEEL-01 pass their task
   gates; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291)
   passed verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
+- QA-01 is complete on `agent/qa-01-automated-test-pyramid`: the deterministic Vitest baseline is 328
+  passing tests across 48 files, including runtime-controller integration tests and the compact fixed-seed
+  fixture builders already used by the save/farm/economy suites. Four Playwright journeys run against the
+  production build: fresh movement/starter-plot work/settings, mature-crop harvest and Codex discovery,
+  merchant purchase through deed placement plus reload, and deterministic raid/ending dismissal. The
+  reviewed launch-card baseline is platform-neutral. `npm run perfcheck` enforces dense-farm, raid-route,
+  and seeded-economy budgets and writes only ignored QA artifacts. The deployment workflow now runs
+  `npm run perfcheck`, installs Chromium, and runs `npm run e2e:ci` before the final build/deployment step;
+  all other warnings/errors remain fatal, with only the known headless SwiftShader
+  `GL_CLOSE_PATH_NV` thumbnail-readback driver message filtered by the browser harness. The full QA-01
+  verification matrix passed: `test`, `test:ci`, `check`, `assetcheck`, `audiocheck`, `feelcheck`,
+  `perfcheck`, production E2E, strict unused-symbol TypeScript, build, diff check, and production-only
+  `npm audit` (0 vulnerabilities). No production or save behavior changed.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -612,8 +625,9 @@ The characterization baseline intentionally preserves current behavior for later
 ## 5. Release procedure
 
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
-production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`, and
-`npm run build`, then deploys the verified `dist/` bundle through
+production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`,
+`npm run perfcheck`, installs the Playwright Chromium browser, runs `npm run e2e:ci`, and then runs
+`npm run build` before deploying the verified `dist/` bundle through
 `.github/workflows/deploy.yml`. A failed check prevents deployment. Do not use `npm run deploy`; recovery
 must go through a focused, verified `main` change, followed by live smoke testing and a record here.
 
