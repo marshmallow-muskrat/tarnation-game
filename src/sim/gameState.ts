@@ -1,7 +1,16 @@
 /**
  * Shared mutable game state — pure, no renderer/DOM.
  */
-import { BUCKET_CAPACITY, GRID_H, GRID_W, TOOLBAR_SLOTS, TREE_RESPAWN_DAYS, WIN_DAY, WORLD_SIZE } from '../content';
+import {
+  BUCKET_CAPACITY,
+  GRID_H,
+  GRID_W,
+  HOMESTEAD_SPAWN_X,
+  HOMESTEAD_SPAWN_Z,
+  TOOLBAR_SLOTS,
+  TREE_RESPAWN_DAYS,
+  WIN_DAY,
+} from '../content';
 import { createClock, type ClockState, stepClock, type ClockStepResult } from './clock';
 import {
   cloneGrid,
@@ -100,8 +109,8 @@ export function createGameState(seed?: number): GameState {
     rng: mulberry32(s),
     clock: createClock(1, 'day', 0),
     tiles: createEmptyGrid(),
-    playerX: WORLD_SIZE / 2,
-    playerZ: WORLD_SIZE / 2,
+    playerX: HOMESTEAD_SPAWN_X,
+    playerZ: HOMESTEAD_SPAWN_Z,
     weapon: 'shotgun',
     unlockedWeapons: ['shotgun'],
     homesteadTier: 1,

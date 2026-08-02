@@ -19,8 +19,11 @@ import {
   FIXED_DT,
   GRID_H,
   GRID_W,
+  HOMESTEAD_FOOTPRINT,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
+  HOMESTEAD_SPAWN_X,
+  HOMESTEAD_SPAWN_Z,
   HOMESTEAD_SIZE,
   HOMESTEAD_UPGRADE_WOOD,
   MARKET_RANGE,
@@ -193,6 +196,12 @@ import {
   tileIsEnclosed,
   tileKey,
 } from '../sim/placement';
+import {
+  firstPlotHint as formatFirstPlotHint,
+  firstPlotStage,
+  isHomesteadFootprintTile,
+  isFarmableTile,
+} from '../sim/farmBoundary';
 
 type Shot = {
   root: THREE.Object3D;
@@ -424,6 +433,7 @@ export class GameRuntime {
   private merchantX = CENTRAL_CAMP.merchantX;
   private merchantZ = CENTRAL_CAMP.merchantZ;
   private nearMerchant = false;
+  private firstPlotGuideActive = false;
   private fixtureRoots: THREE.Object3D[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
   private buildingRoots = new Map<string, THREE.Object3D>();
@@ -507,6 +517,8 @@ export class GameRuntime {
       }
       this.gs = loaded.state;
     }
+    this.firstPlotGuideActive = options.newAdventure === true;
+    this.world.setStarterPlotVisible(this.firstPlotGuideActive);
     this.syncActionMenuState();
     this.input.attach(canvas);
     this.resize();
@@ -528,6 +540,7 @@ export class GameRuntime {
       tileBlocked: (tx, ty) => (this.gs.tiles[ty]?.[tx]?.state ?? 'grass') !== 'grass',
     });
 
+    this.validatePlayerSpawn(options.newAdventure === true);
     this.spawnPlayer();
     this.spawnStall();
     this.spawnMerchantCamp();
@@ -698,6 +711,65 @@ export class GameRuntime {
     this.equipment.refresh(this.gs);
   }
 
+  /** Keep fresh runs and invalid legacy positions out of the merchant camp. */
+  private validatePlayerSpawn(forceFresh: boolean): void {
+    const currentTile = this.worldToFarmTile(this.playerX, this.playerZ);
+    const currentKey = currentTile ? tileKey(currentTile.tx, currentTile.ty) : '';
+    const placedObstacles = occupiedPlacedTiles(this.gs.placedBuildings);
+    const currentIsSafe =
+      currentTile !== null &&
+      !this.fixtureReservations.has(currentKey) &&
+      !this.fixtureObstacles.has(currentKey) &&
+      !placedObstacles.has(currentKey) &&
+      !isHomesteadFootprintTile(currentTile.tx, currentTile.ty) &&
+      Number.isFinite(this.playerX) &&
+      Number.isFinite(this.playerZ);
+    if (!forceFresh && currentIsSafe) return;
+
+    const candidates: { x: number; z: number }[] = [
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X + 1, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z + 1 },
+      { x: HOMESTEAD_SPAWN_X - 1, z: HOMESTEAD_SPAWN_Z },
+      { x: HOMESTEAD_SPAWN_X, z: HOMESTEAD_SPAWN_Z - 1 },
+    ];
+    for (let radius = 0; radius <= 12; radius++) {
+      for (let dz = -radius; dz <= radius; dz++) {
+        for (let dx = -radius; dx <= radius; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== radius) continue;
+          candidates.push({
+            x: HOMESTEAD_MIN_X + 0.5 + dx + 8,
+            z: HOMESTEAD_MIN_Z + 0.5 + dz + 8,
+          });
+        }
+      }
+    }
+
+    const candidate = candidates.find((point) => this.isSafeSpawnPoint(point.x, point.z));
+    if (!candidate) {
+      // The authored region is large enough that this should never be reached;
+      // retain a deterministic in-region fallback rather than spawning at camp.
+      this.playerX = HOMESTEAD_MIN_X + 1.5;
+      this.playerZ = HOMESTEAD_MIN_Z + 1.5;
+    } else {
+      this.playerX = candidate.x;
+      this.playerZ = candidate.z;
+    }
+    this.gs.playerX = this.playerX;
+    this.gs.playerZ = this.playerZ;
+  }
+
+  private isSafeSpawnPoint(x: number, z: number): boolean {
+    const tile = this.worldToFarmTile(x, z);
+    if (!tile || !isFarmableTile(tile.tx, tile.ty)) return false;
+    if (isHomesteadFootprintTile(tile.tx, tile.ty)) return false;
+    const key = tileKey(tile.tx, tile.ty);
+    if (this.fixtureReservations.has(key) || this.fixtureObstacles.has(key)) return false;
+    if (occupiedPlacedTiles(this.gs.placedBuildings).has(key)) return false;
+    if (this.world.getFarmTrees()?.blocksTilling(tile.tx, tile.ty)) return false;
+    return this.world.distToWater(x, z) >= 1.2;
+  }
+
   /** The legacy selling stall remains separate from the traveling merchant. */
   private spawnStall(): void {
     if (this.stallRoot) return;
@@ -753,6 +825,11 @@ export class GameRuntime {
   private refreshObstacleTopology(): void {
     this.obstacleTiles.clear();
     for (const key of this.fixtureObstacles) this.obstacleTiles.add(key);
+    for (let ty = HOMESTEAD_FOOTPRINT.minZ; ty < HOMESTEAD_FOOTPRINT.minZ + HOMESTEAD_FOOTPRINT.height; ty++) {
+      for (let tx = HOMESTEAD_FOOTPRINT.minX; tx < HOMESTEAD_FOOTPRINT.minX + HOMESTEAD_FOOTPRINT.width; tx++) {
+        this.obstacleTiles.add(tileKey(tx, ty));
+      }
+    }
     for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
     this.topologyVersion++;
     this.foxDirector.clear();
@@ -1846,6 +1923,8 @@ export class GameRuntime {
 
   /** Rock, tree, stump or open water — all of them stop a shovel. */
   private tileBlockedForTilling(tx: number, ty: number): boolean {
+    if (!isFarmableTile(tx, ty)) return true;
+    if (isHomesteadFootprintTile(tx, ty)) return true;
     const trees = this.world.getFarmTrees();
     if (trees?.blocksTilling(tx, ty)) return true;
     const key = tileKey(tx, ty);
@@ -2127,6 +2206,10 @@ export class GameRuntime {
       return;
     }
     const { tx, ty } = tilePos;
+    if (!isFarmableTile(tx, ty)) {
+      setToast(this.gs, 'That ground is outside your homestead', 1.6);
+      return;
+    }
     const tile = getTile(this.gs.tiles, tx, ty);
     const wc = this.farmTileWorld(tx, ty);
     if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) {
@@ -2189,6 +2272,10 @@ export class GameRuntime {
       return;
     }
     const { tx, ty } = tilePos;
+    if (!isFarmableTile(tx, ty)) {
+      setToast(this.gs, 'That ground is outside your homestead', 1.6);
+      return;
+    }
     const tile = getTile(this.gs.tiles, tx, ty);
     if (!tile) return;
     const wc = this.farmTileWorld(tx, ty);
@@ -3778,6 +3865,12 @@ export class GameRuntime {
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
+    }
+    if (this.firstPlotGuideActive) {
+      const stage = firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes);
+      if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
+        return formatFirstPlotHint(stage, seed?.displayName);
+      }
     }
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
