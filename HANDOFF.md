@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the core-loop phase from CORE-01, after the completed ACT-01/02/03/04/05 and
-  PERF-05 runtime responsibility extractions.
+- CORE-01 is complete on the current task branch after the ACT-01/02/03/04/05 and PERF-05
+  responsibility extractions; CORE-02 is next after integration.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -269,6 +269,18 @@ The characterization baseline intentionally preserves current behavior for later
   across 26 files. Production-preview smoke reached Day 1/daylight with Saved status; selecting the
   axe and issuing an empty-field secondary click surfaced the player-facing `No target in front of you`
   rejection. CORE-01 is next.
+
+- CORE-01 now defines one typed 48×48 homestead farm region instead of treating the full 240×240
+  world as tillable. A low renderer-only boundary marks that region, the 10×8 starter plot is kept
+  clear of deterministic decorative scatter and marked during New Adventure, and the short guide
+  advances through tilling, planting, watering, growth, harvesting, and selling from existing tile
+  and progression state. Shovel, bucket, trap, and debug till paths reject new work outside the
+  region; camp reservations, the visible homestead footprint, placed-building obstacles, trees,
+  boulders, and water remain separate blockers. Fresh runs and camp-invalid legacy positions choose
+  the first deterministic safe approach point; existing saves retain out-of-region tile data rather
+  than silently deleting it, but cannot create new work there. The baseline is now 179 deterministic
+  tests across 28 files. Production-preview smoke reached fresh Day 1/daylight with the first-plot
+  guide and Saved status, and browser logs contained no warnings or errors.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

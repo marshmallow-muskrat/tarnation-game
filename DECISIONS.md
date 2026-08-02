@@ -274,3 +274,16 @@ path. Friendly ambient animals have no combat health path: melee, ranged shots, 
 only produce a short hurt/daze response with feedback and no death marker, trophy, or reward. No
 player-health or hunt system is introduced, and no save, simulation, economy, timestep, or seeded-RNG
 rule changes are part of ACT-05.
+
+## 2026-08-01 — Bound new farm work to an authored homestead
+
+CORE-01 keeps the existing 240×240 world for exploration and decorative presentation, but only the
+typed 48×48 homestead region accepts new soil work. Camp reservations, the homestead building
+footprint, placed physical obstacles, trees, boulders, and water remain distinct runtime blockers;
+the new farm-region predicate is only the missing outer boundary. The renderer adds a low,
+non-colliding boundary and a fresh-run 10×8 starter-plot marker, while the guide derives its short
+till/plant/water/grow/harvest/sell prompts from existing tiles and stats rather than adding a saved
+quest schema. Fresh runs use a deterministic validated approach point outside the house and camp;
+loading does not delete legacy worked tiles outside the region, preserving save data while rejecting
+new work there. No seed-consumption, irrigation-tier, economy, building-function, raid, save-schema,
+or ending rule is introduced by CORE-01.

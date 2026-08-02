@@ -7,6 +7,7 @@ import {
   HOMESTEAD_MAX_Z,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
+  STARTER_PLOT,
   WORLD_SIZE,
 } from '../content';
 import { instancedParts, type InstancedPart, type ModelKey } from './Assets';
@@ -278,6 +279,12 @@ export class ScatterChunks {
     const placeOk = (x: number, z: number, allowNearWater = false): boolean => {
       if (x < 1 || z < 1 || x > WORLD_SIZE - 1 || z > WORLD_SIZE - 1) return false;
       if (this.blockedTiles.has(tileKey(Math.floor(x), Math.floor(z)))) return false;
+      if (
+        x >= STARTER_PLOT.minX &&
+        x < STARTER_PLOT.minX + STARTER_PLOT.width &&
+        z >= STARTER_PLOT.minZ &&
+        z < STARTER_PLOT.minZ + STARTER_PLOT.height
+      ) return false;
       // Keep clear around homestead building only (not the whole tillable world)
       if (
         x >= HOMESTEAD_MIN_X + 12 &&
@@ -301,6 +308,12 @@ export class ScatterChunks {
         x <= HOMESTEAD_MAX_X &&
         z >= HOMESTEAD_MIN_Z &&
         z <= HOMESTEAD_MAX_Z;
+      const inStarterPlot =
+        x >= STARTER_PLOT.minX &&
+        x < STARTER_PLOT.minX + STARTER_PLOT.width &&
+        z >= STARTER_PLOT.minZ &&
+        z < STARTER_PLOT.minZ + STARTER_PLOT.height;
+      if (inStarterPlot) continue;
       if (this.distToWater(x, z) < 0.5) continue;
       if (this.blockedTiles.has(tileKey(Math.floor(x), Math.floor(z)))) continue;
       if (inHomestead && hash2(i, 3, seed) > 0.35) continue; // thinner lawn

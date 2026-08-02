@@ -1,11 +1,16 @@
 import * as THREE from 'three';
 import {
   FARM_COLORS,
+  FARM_REGION_MAX_X,
+  FARM_REGION_MAX_Z,
+  FARM_REGION_MIN_X,
+  FARM_REGION_MIN_Z,
   GRID_H,
   GRID_W,
   HOMESTEAD_MIN_X,
   HOMESTEAD_MIN_Z,
   HOMESTEAD_SIZE,
+  STARTER_PLOT,
   WORLD_SIZE,
 } from '../content';
 import type { Tile } from '../sim/farm';
@@ -45,6 +50,8 @@ export class WorldRenderer {
   heroLight!: THREE.PointLight;
 
   private overworldRoot = new THREE.Group();
+  private farmBoundaryRoot!: THREE.Group;
+  private starterPlotRoot!: THREE.Group;
   /** Trenches and breeding beds — dug structures. */
   private structureTiles!: THREE.InstancedMesh;
   private hoverGroup = new THREE.Group();
@@ -120,6 +127,7 @@ export class WorldRenderer {
     this.overworldRoot.add(this.terrain.mesh);
     this.overworldRoot.add(this.terrain.water);
     this.overworldRoot.add(this.terrain.bankScatter);
+    this.buildFarmBoundary();
 
     this.scatter = new ScatterChunks(this.terrain.heightAt, this.terrain.distToWater);
     this.overworldRoot.add(this.scatter.getRoot());
@@ -268,6 +276,144 @@ export class WorldRenderer {
     this.structureTiles.castShadow = true;
     this.structureTiles.count = 0;
     this.overworldRoot.add(this.structureTiles);
+  }
+
+  /**
+   * A low, non-colliding visual boundary makes the homestead footprint legible.
+   * The shovel rule in GameRuntime is the mechanical authority; this marker does
+   * not wall off the market, camp, or the rest of the map.
+   */
+  private buildFarmBoundary(): void {
+    const group = new THREE.Group();
+    group.name = 'authored_homestead_boundary';
+    const postGeometry = new THREE.CylinderGeometry(0.1, 0.13, 0.48, 5);
+    const railGeometry = new THREE.BoxGeometry(4, 0.08, 0.08);
+    const material = standardMaterial(0x9a6a3e, { flatShading: true, roughness: 0.92 });
+    const postCount = 4 * (Math.round((FARM_REGION_MAX_X - FARM_REGION_MIN_X) / 4) + 1);
+    const spanCount = Math.round((FARM_REGION_MAX_X - FARM_REGION_MIN_X) / 4);
+    const posts = new THREE.InstancedMesh(postGeometry, material, postCount);
+    const rails = new THREE.InstancedMesh(railGeometry, material, spanCount * 4);
+    const matrix = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const rotation = new THREE.Quaternion();
+    const scale = new THREE.Vector3(1, 1, 1);
+    const euler = new THREE.Euler();
+    let postIndex = 0;
+    let railIndex = 0;
+
+    const addPost = (x: number, z: number): void => {
+      position.set(x, this.terrain.heightAt(x, z) + 0.24, z);
+      rotation.setFromEuler(euler);
+      matrix.compose(position, rotation, scale);
+      posts.setMatrixAt(postIndex++, matrix);
+    };
+    const addRail = (x: number, z: number, angle: number): void => {
+      position.set(x, this.terrain.heightAt(x, z) + 0.27, z);
+      euler.set(0, angle, 0);
+      rotation.setFromEuler(euler);
+      matrix.compose(position, rotation, scale);
+      rails.setMatrixAt(railIndex++, matrix);
+    };
+
+    for (let i = 0; i <= spanCount; i++) {
+      const offset = i * 4;
+      addPost(FARM_REGION_MIN_X + offset, FARM_REGION_MIN_Z);
+      addPost(FARM_REGION_MIN_X + offset, FARM_REGION_MAX_Z);
+      addPost(FARM_REGION_MIN_X, FARM_REGION_MIN_Z + offset);
+      addPost(FARM_REGION_MAX_X, FARM_REGION_MIN_Z + offset);
+    }
+    for (let i = 0; i < spanCount; i++) {
+      const offset = i * 4 + 2;
+      addRail(FARM_REGION_MIN_X + offset, FARM_REGION_MIN_Z, 0);
+      addRail(FARM_REGION_MIN_X + offset, FARM_REGION_MAX_Z, 0);
+      addRail(FARM_REGION_MIN_X, FARM_REGION_MIN_Z + offset, Math.PI / 2);
+      addRail(FARM_REGION_MAX_X, FARM_REGION_MIN_Z + offset, Math.PI / 2);
+    }
+    posts.count = postIndex;
+    rails.count = railIndex;
+    posts.instanceMatrix.needsUpdate = true;
+    rails.instanceMatrix.needsUpdate = true;
+    posts.computeBoundingSphere();
+    rails.computeBoundingSphere();
+    group.add(posts, rails);
+
+    const markerPositions: number[] = [];
+    const addMarkerSegment = (ax: number, az: number, bx: number, bz: number): void => {
+      markerPositions.push(
+        ax,
+        this.terrain.heightAt(ax, az) + 0.11,
+        az,
+        bx,
+        this.terrain.heightAt(bx, bz) + 0.11,
+        bz,
+      );
+    };
+    const plotMaxX = STARTER_PLOT.minX + STARTER_PLOT.width;
+    const plotMaxZ = STARTER_PLOT.minZ + STARTER_PLOT.height;
+    addMarkerSegment(STARTER_PLOT.minX, STARTER_PLOT.minZ, plotMaxX, STARTER_PLOT.minZ);
+    addMarkerSegment(plotMaxX, STARTER_PLOT.minZ, plotMaxX, plotMaxZ);
+    addMarkerSegment(plotMaxX, plotMaxZ, STARTER_PLOT.minX, plotMaxZ);
+    addMarkerSegment(STARTER_PLOT.minX, plotMaxZ, STARTER_PLOT.minX, STARTER_PLOT.minZ);
+    const markerGeometry = new THREE.BufferGeometry();
+    markerGeometry.setAttribute('position', new THREE.Float32BufferAttribute(markerPositions, 3));
+    const markerMaterial = new THREE.LineBasicMaterial({
+      color: 0xf2c266,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      depthTest: false,
+      toneMapped: false,
+    });
+    const marker = new THREE.LineSegments(markerGeometry, markerMaterial);
+    marker.renderOrder = 6;
+    const markerPostGeometry = new THREE.ConeGeometry(0.12, 0.4, 4);
+    const markerPostMaterial = standardMaterial(0xf2c266, { flatShading: true, roughness: 0.82 });
+    const markerPosts = new THREE.InstancedMesh(markerPostGeometry, markerPostMaterial, 4);
+    const corners = [
+      [STARTER_PLOT.minX, STARTER_PLOT.minZ],
+      [plotMaxX, STARTER_PLOT.minZ],
+      [plotMaxX, plotMaxZ],
+      [STARTER_PLOT.minX, plotMaxZ],
+    ] as const;
+    corners.forEach(([x, z], index) => {
+      position.set(x, this.terrain.heightAt(x, z) + 0.2, z);
+      matrix.compose(position, rotation, scale);
+      markerPosts.setMatrixAt(index, matrix);
+    });
+    markerPosts.instanceMatrix.needsUpdate = true;
+    markerPosts.computeBoundingSphere();
+    const markerFill = new THREE.Mesh(
+      new THREE.PlaneGeometry(STARTER_PLOT.width, STARTER_PLOT.height),
+      new THREE.MeshBasicMaterial({
+        color: 0xf2c266,
+        transparent: true,
+        opacity: 0.08,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.DoubleSide,
+        toneMapped: false,
+      }),
+    );
+    markerFill.rotation.x = -Math.PI / 2;
+    markerFill.position.set(
+      STARTER_PLOT.minX + STARTER_PLOT.width / 2,
+      this.terrain.heightAt(
+        STARTER_PLOT.minX + STARTER_PLOT.width / 2,
+        STARTER_PLOT.minZ + STARTER_PLOT.height / 2,
+      ) + 0.06,
+      STARTER_PLOT.minZ + STARTER_PLOT.height / 2,
+    );
+    markerFill.renderOrder = 5;
+    this.starterPlotRoot = new THREE.Group();
+    this.starterPlotRoot.name = 'starter_plot_guide';
+    this.starterPlotRoot.add(markerFill, marker, markerPosts);
+    group.add(this.starterPlotRoot);
+    this.farmBoundaryRoot = group;
+    this.overworldRoot.add(group);
+  }
+
+  setStarterPlotVisible(visible: boolean): void {
+    this.starterPlotRoot.visible = visible;
   }
 
   /** Overworld trees are drawn here but their state lives in the sim. */
@@ -795,6 +941,7 @@ export class WorldRenderer {
     disposeObjectResources(this.terrain.water, { geometries: true, materials: true, textures: true });
     disposeObjectResources(this.terrain.bankScatter, { geometries: true, materials: true, textures: true });
     disposeObjectResources(this.structureTiles, { geometries: true, materials: true, textures: true });
+    disposeObjectResources(this.farmBoundaryRoot, { geometries: true, materials: true, textures: true });
     disposeObjectResources(this.hoverGroup, { geometries: true, materials: true, textures: true });
     disposeObjectResources(this.motePoints, { geometries: true, materials: true, textures: true });
     disposeObjectResources(this.sky, { geometries: true, materials: true, textures: true });
