@@ -111,5 +111,13 @@ PERF-01 assigns all 109 manifest models to exactly one ordered load group: `boot
 controls, initial crops/trees/fox, ambient animals, fixtures, and homestead tier one are ready before
 the world becomes controllable. Later groups load in bounded four-request batches. Missing models
 retain primitive fallbacks, but first-play progress exposes the affected count and offers a retry;
-catalog icons and build previews re-render when their real model becomes available. Shared icon
-rendering and full GPU disposal remain separate PERF-02/03 work.
+catalog icons and build previews re-render when their real model becomes available. Full GPU
+disposal remains separate PERF-03 work.
+
+## 2026-08-01 — Render model icons through one bounded shared context
+
+`ModelIcon` display canvases now use a single offscreen WebGL renderer to produce 96px thumbnails,
+then copy those pixels into ordinary 2D canvases. A 32-entry least-recently-used cache prevents
+repeated toolbar, inventory, merchant, and building icons from rerendering or creating their own
+contexts. App teardown clears cached thumbnails and disposes the shared renderer. The game renderer
+and the asset-picker renderer remain separate owners; full world GPU/resource disposal is PERF-03.

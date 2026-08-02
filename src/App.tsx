@@ -3,6 +3,7 @@ import { GameRuntime, type HudSnapshot } from './game/GameRuntime';
 import { resetFailedAssets, type AssetLoadProgress } from './game/Assets';
 import { browserSaveStorage, SaveService, type SaveReadResult } from './game/SaveService';
 import { Hud } from './ui/Hud';
+import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
 
 const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
   boot: 'boot assets',
@@ -28,6 +29,8 @@ export function App() {
   const [retryChoice, setRetryChoice] = useState<null | 'continue' | 'new'>(null);
   const [saveRead, setSaveRead] = useState<SaveReadResult>(() => saveService.read());
   const hasSave = saveRead.status === 'ok' && saveRead.hasSave;
+
+  useEffect(() => () => disposeModelIconRenderer(), []);
 
   useEffect(() => {
     setSaveRead(saveService.read());

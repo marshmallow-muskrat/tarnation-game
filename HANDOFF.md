@@ -70,7 +70,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Replace per-icon WebGL renderers and establish complete GPU/runtime disposal ownership.
+- Establish complete GPU/runtime disposal ownership.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -126,7 +126,17 @@ The characterization baseline intentionally preserves current behavior for later
   local production preview showed `first-play` progress at 25/66 on a cold launch and 52/66 after a
   warm reload; both reached Day 1/daylight with Saved HUD state and no console warnings/errors.
   Asset group validation and the integrated deterministic baseline now total 101 tests across 13
-  files. PERF-02 is next; per-icon WebGL renderers remain intentionally unchanged.
+  files. PERF-02 is now integrated below; full GPU/runtime disposal remains separate PERF-03 work.
+
+- PERF-02 replaces the per-`ModelIcon` WebGL renderer with one shared offscreen renderer and a
+  bounded 32-entry least-recently-used cache of 96px thumbnails. Visible icon canvases are 2D
+  displays of those thumbnails, so repeated toolbar, inventory, merchant, and building icons do
+  not allocate additional WebGL contexts. App teardown clears the cache and disposes the shared
+  renderer. The built local preview reached Day 1/daylight with the starter icon set and no console
+  warnings/errors; the source-level renderer audit leaves only the game renderer, this one shared
+  icon renderer, and the intentionally separate asset-picker renderer. The integrated baseline is
+  now 103 deterministic tests across 14 files. PERF-03 is next; world resource ownership remains
+  intentionally unchanged.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

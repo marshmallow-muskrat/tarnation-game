@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
-import { cloneModel, loadModel, type ModelKey } from '../game/Assets';
+import type { ModelKey } from '../game/Assets';
+import { getModelIconThumbnail, paintModelIcon } from './ModelIconRenderer';
 import type { HudSlot, HudSnapshot } from '../game/GameRuntime';
 import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
@@ -33,23 +33,6 @@ type Props = {
 
 type Tip = { slot: HudSlot; x: number; y: number } | null;
 
-type IconView = {
-  rotationY: number;
-  camera: [number, number, number];
-  targetY: number;
-  zoom?: number;
-};
-
-// Tool silhouettes are much easier to read from their broad profile. The
-// default three-quarter view makes the axe and shovel nearly edge-on because
-// their heads are wide on X but very thin on Z.
-const ICON_VIEWS: Partial<Record<ModelKey, IconView>> = {
-  axe: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.28 },
-  shovel: { rotationY: 0, camera: [0, 1.05, 2.65], targetY: 0.48, zoom: 1.12 },
-  shotgun_2: { rotationY: 0, camera: [0, 0.95, 2.85], targetY: 0.48, zoom: 0.68 },
-  bow_wooden: { rotationY: 0, camera: [0, 1.05, 2.8], targetY: 0.5 },
-};
-
 function ModelIcon({
   model,
   className = 'tool-model-icon',
@@ -60,64 +43,23 @@ function ModelIcon({
   size?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [assetVersion, setAssetVersion] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    void loadModel(model).then(() => {
-      if (active) setAssetVersion((version) => version + 1);
-    });
-    return () => {
-      active = false;
-    };
-  }, [model]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-    renderer.setPixelRatio(1);
-    renderer.setSize(size, size, false);
-    renderer.outputColorSpace = THREE.SRGBColorSpace;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.25;
-
-    const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xf3f0df, 0x26382f, 2.2));
-    const key = new THREE.DirectionalLight(0xffe0b0, 3.2);
-    key.position.set(2, 4, 3);
-    scene.add(key);
-
-    const camera = new THREE.PerspectiveCamera(24, 1, 0.01, 50);
-    const { root } = cloneModel(model);
-    const view = ICON_VIEWS[model];
-    root.rotation.y = view?.rotationY ?? -0.55;
-    scene.add(root);
-    root.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(root);
-    const boundsSize = new THREE.Vector3();
-    const center = new THREE.Vector3();
-    box.getSize(boundsSize);
-    box.getCenter(center);
-    root.position.x -= center.x;
-    root.position.z -= center.z;
-    const extent = Math.max(boundsSize.x, boundsSize.y, boundsSize.z, 0.2);
-    const cameraPosition = view?.camera ?? [2.15, 1.35, 2.15];
-    const iconZoom = view?.zoom ?? 1;
-    camera.position.set(
-      (extent * cameraPosition[0]) / iconZoom,
-      (extent * cameraPosition[1]) / iconZoom,
-      (extent * cameraPosition[2]) / iconZoom,
-    );
-    camera.lookAt(0, boundsSize.y * (view?.targetY ?? 0.42), 0);
-    renderer.render(scene, camera);
-
+    let active = true;
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    context?.clearRect(0, 0, size, size);
+    void getModelIconThumbnail(model).then((thumbnail) => {
+      if (active && thumbnail) paintModelIcon(canvas, thumbnail, size);
+    });
     return () => {
-      renderer.dispose();
-      scene.remove(root);
+      active = false;
     };
-  }, [assetVersion, model, size]);
+  }, [model, size]);
 
   return <canvas ref={canvasRef} className={className} aria-hidden="true" />;
 }
