@@ -139,6 +139,7 @@ import { WorldRenderer } from './WorldRenderer';
 import { CropBatches } from './CropBatches';
 import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
+import { approachHeading, LOCOMOTION_GAIT } from './Locomotion';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics, type RuntimeMetricsSnapshot } from './RuntimeMetrics';
@@ -362,6 +363,8 @@ export class GameRuntime {
   private playerZ = WORLD_SIZE / 2;
   private velX = 0;
   private velZ = 0;
+  private movementIntent = false;
+  private playerHeading = 0;
   private headingTarget = 0;
   private nearWater = false;
   private toolMode: ToolMode = 'farm';
@@ -498,6 +501,9 @@ export class GameRuntime {
 
     this.playerX = this.gs.playerX;
     this.playerZ = this.gs.playerZ;
+    this.movementIntent = false;
+    this.playerHeading = 0;
+    this.headingTarget = 0;
 
     this.world.initFarmTrees({
       heightAt: (x, z) => this.world.heightAt(x, z),
@@ -672,6 +678,7 @@ export class GameRuntime {
     this.playerRoot.position.set(this.playerX, 0, this.playerZ);
     this.world.getSharedActors().add(this.playerRoot);
     this.playerActions = new PlayerActionController(root, animations);
+    this.playerActions.setReducedMotion(this.reducedMotion);
     this.equipment = new EquipmentController(root, this.playerActions);
     this.equipment.refresh(this.gs);
   }
@@ -1511,7 +1518,7 @@ export class GameRuntime {
     this.stepFeedbackBursts(dt);
 
     const speed = Math.hypot(this.velX, this.velZ);
-    this.playerActions.updateLocomotion(speed > 0.4, speed, this.equipment.animationProfile);
+    this.playerActions.updateLocomotion(this.movementIntent, speed, this.equipment.animationProfile);
 
     let leadX = 0;
     let leadZ = 0;
@@ -1525,11 +1532,13 @@ export class GameRuntime {
 
     const py = this.world.heightAt(this.playerX, this.playerZ);
     this.playerRoot.position.set(this.playerX, py, this.playerZ);
-    this.playerTargetQuaternion.setFromAxisAngle(
-      this.playerUp,
+    this.playerHeading = approachHeading(
+      this.playerHeading,
       this.headingTarget,
+      LOCOMOTION_GAIT.turnRate * dt,
     );
-    this.playerRoot.quaternion.slerp(this.playerTargetQuaternion, 1 - Math.exp(-dt * 10));
+    this.playerTargetQuaternion.setFromAxisAngle(this.playerUp, this.playerHeading);
+    this.playerRoot.quaternion.copy(this.playerTargetQuaternion);
     this.equipment.update(dt);
 
     this.world.render();
@@ -1594,6 +1603,7 @@ export class GameRuntime {
     if (this.input.justPressed('KeyM')) {
       this.reducedMotion = !this.reducedMotion;
       this.world.setReducedMotion(this.reducedMotion);
+      this.playerActions.setReducedMotion(this.reducedMotion);
       localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
       setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
@@ -1634,26 +1644,31 @@ export class GameRuntime {
     if (this.actionState.currentState === 'disabled') {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     if (this.helpOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     if (this.pauseOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     if (this.gs.inventoryOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     if (this.contextMenu.open) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
     const b = this.world.getWorldBounds();
@@ -1691,6 +1706,7 @@ export class GameRuntime {
     if (this.vendorOpen) {
       this.velX = 0;
       this.velZ = 0;
+      this.movementIntent = false;
       return;
     }
 
@@ -1717,11 +1733,15 @@ export class GameRuntime {
     }
     this.cropBatches?.update(this.gs.simTime);
     for (const c of this.crops) {
-      const s = c.root.scale.x;
-      const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
-      c.root.scale.setScalar(
-        THREE.MathUtils.lerp(s, target, 0.08),
-      );
+      if (this.reducedMotion) {
+        c.root.scale.setScalar(c.baseScale);
+      } else {
+        const s = c.root.scale.x;
+        const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
+        c.root.scale.setScalar(
+          THREE.MathUtils.lerp(s, target, 0.08),
+        );
+      }
     }
 
     if (clock.becameNight) {
@@ -1761,7 +1781,8 @@ export class GameRuntime {
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
     const stick = this.input.getMoveStick();
-    this.actionState.setMovementIntent(Math.hypot(stick.x, stick.y) > 1e-6);
+    this.movementIntent = Math.hypot(stick.x, stick.y) > 1e-6;
+    this.actionState.setMovementIntent(this.movementIntent);
     const movementScale = this.actionState.movementScale;
     const { forward, right } = this.world.getScreenBasis();
     let wishX = right.x * stick.x + forward.x * stick.y;
@@ -1772,7 +1793,10 @@ export class GameRuntime {
       wishZ /= wlen;
       this.velX += wishX * PLAYER_ACCEL * movementScale * dt;
       this.velZ += wishZ * PLAYER_ACCEL * movementScale * dt;
-      this.headingTarget = Math.atan2(wishX, wishZ);
+      const aimLocksHeading =
+        this.actionState.currentState === 'ranged_aim' ||
+        this.actionState.currentState === 'ranged_fire';
+      if (!aimLocksHeading) this.headingTarget = Math.atan2(wishX, wishZ);
     } else {
       const damp = Math.exp(-PLAYER_DAMP * dt);
       this.velX *= damp;
@@ -2900,9 +2924,9 @@ export class GameRuntime {
         this.lootMarkers.splice(i, 1);
         continue;
       }
-      marker.root.position.y =
-        this.world.heightAt(marker.x, marker.z) + 0.18 + Math.sin(marker.age * 4.2) * 0.06;
-      marker.root.rotation.y += dt * 1.8;
+      marker.root.position.y = this.world.heightAt(marker.x, marker.z) + 0.18 +
+        (this.reducedMotion ? 0 : Math.sin(marker.age * 4.2) * 0.06);
+      if (!this.reducedMotion) marker.root.rotation.y += dt * 1.8;
     }
   }
 

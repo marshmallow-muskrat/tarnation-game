@@ -70,7 +70,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the player-control phase from ACT-03 through ACT-05, after the completed ACT-01/02 and
+- Continue the player-control phase from ACT-04 through ACT-05, after the completed ACT-01/02/03 and
   PERF-05 runtime responsibility extractions.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
@@ -232,7 +232,17 @@ The characterization baseline intentionally preserves current behavior for later
   visualization; `npm run assetcheck` validates all records. Eight focused tests characterize the table,
   preserve the existing four transforms, and identify invalid fields. The deterministic baseline is now
   154 tests across 24 files. Production-preview smoke reached Day 1/daylight and opened the field guide
-  without observed console warnings or errors; ACT-03–05 remain separate.
+  without observed console warnings or errors; ACT-03 was the next separate control/animation task.
+
+- ACT-03 adds a pure locomotion policy with intent-aware idle start/stop thresholds, walk/run hysteresis,
+  authored empty-hand and carry clip mapping, measured in-place gait cadence, and a bounded shortest-path
+  heading turn. Aim/fire preserves the aim heading while movement strafes; ordinary movement turns toward
+  its wish direction. The existing 0.14-second crossfade remains the restrained transition because the
+  player asset has no authored start/stop clips. Reduced motion now removes camera shake plus nonessential
+  crop, loot-marker, and ambient-mote motion without changing fixed-step timing. Six focused tests cover
+  the boundaries, hysteresis, residual velocity, clip mapping, cadence, and turn cap. The deterministic
+  baseline is now 160 tests across 25 files. Production-preview smoke reached fresh Day 1/daylight and
+  opened the field guide without observed console warnings or errors; ACT-04–05 remain separate.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

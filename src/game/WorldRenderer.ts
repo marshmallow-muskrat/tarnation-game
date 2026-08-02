@@ -599,6 +599,7 @@ export class WorldRenderer {
     if (this.reducedMotion) {
       this.shakeTime = 0;
       this.shakeAmp = 0;
+      this.shakeOffset.set(0, 0, 0);
       return;
     }
     this.shakeTime = duration;
@@ -615,6 +616,7 @@ export class WorldRenderer {
     if (enabled) {
       this.shakeTime = 0;
       this.shakeAmp = 0;
+      this.shakeOffset.set(0, 0, 0);
     }
   }
 
@@ -746,7 +748,7 @@ export class WorldRenderer {
       this.scene.fog.color.lerp(this.fogTarget, 1 - Math.exp(-dt * 2.2));
     }
     this.terrain.updateWater(this.time, dt);
-    this.updateMotes(dt);
+    if (!this.reducedMotion) this.updateMotes(dt);
 
     const target = this.toolHoverActive ? this.hoverTargetAlpha : 0;
     this.hoverAlpha = THREE.MathUtils.damp(this.hoverAlpha, target, 12, dt);

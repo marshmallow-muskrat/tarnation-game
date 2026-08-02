@@ -1,5 +1,12 @@
 import * as THREE from 'three';
 import { PLAYER_SPEED } from '../content';
+import {
+  LOCOMOTION_GAIT,
+  locomotionClipFor,
+  locomotionModeFor,
+  locomotionTimeScale,
+  type LocomotionMode,
+} from './Locomotion';
 
 export type PlayerClip =
   | 'idle'
@@ -23,10 +30,15 @@ export function chooseLocomotionAction(
   speed: number,
   carryProfile: CarryAnimationProfile | null,
   playerSpeed = PLAYER_SPEED,
-): Extract<PlayerClip, 'idle' | 'walk' | 'walkCarry' | 'runCarry'> {
-  if (!moving) return carryProfile ? 'walkCarry' : 'idle';
-  if (!carryProfile) return 'walk';
-  return speed > playerSpeed * 0.72 ? carryProfile.runClip : 'walkCarry';
+  previousMode: LocomotionMode | null = null,
+): Extract<PlayerClip, 'idle' | 'walk' | 'run' | 'walkCarry' | 'runCarry'> {
+  const inferredMode = previousMode ?? (moving
+    ? speed >= playerSpeed * 0.72 ? 'run' : 'walk'
+    : 'idle');
+  return locomotionClipFor(
+    locomotionModeFor(moving, speed, inferredMode, playerSpeed),
+    carryProfile,
+  );
 }
 
 /**
@@ -43,6 +55,8 @@ export class PlayerActionController {
   private readonly actions: Partial<Record<PlayerClip, THREE.AnimationAction>> = {};
   private activeLocomotionAction: THREE.AnimationAction | null = null;
   private oneShotAction: THREE.AnimationAction | null = null;
+  private locomotionMode: LocomotionMode = 'idle';
+  private reducedMotion = false;
   private disposed = false;
 
   constructor(root: THREE.Object3D, animations: readonly THREE.AnimationClip[]) {
@@ -84,6 +98,10 @@ export class PlayerActionController {
     return this.oneShotAction?.isRunning() ?? false;
   }
 
+  setReducedMotion(enabled: boolean): void {
+    this.reducedMotion = enabled;
+  }
+
   update(dt: number): void {
     if (this.disposed) return;
     this.mixer?.update(dt);
@@ -101,18 +119,18 @@ export class PlayerActionController {
     this.oneShotAction = null;
 
     const carry = carryProfile !== null;
-    const carryAction = carryProfile?.runClip === 'walkCarry'
-      ? this.actions.walkCarry ?? this.walkAction
-      : this.actions.runCarry ?? this.actions.walkCarry ?? this.walkAction;
     const carryIdle = carry ? this.actions.walkCarry ?? this.walkAction : null;
-    const selected = chooseLocomotionAction(moving, speed, carryProfile, playerSpeed);
+    this.locomotionMode = locomotionModeFor(moving, speed, this.locomotionMode, playerSpeed);
+    const selected = locomotionClipFor(this.locomotionMode, carryProfile);
     const locomotion = selected === 'runCarry'
-      ? carryAction
+      ? this.actions.runCarry ?? this.actions.walkCarry ?? this.walkAction
       : selected === 'walkCarry'
         ? carryIdle ?? this.walkAction
-        : selected === 'walk'
-          ? this.actions.walk ?? this.walkAction
-          : this.actions.idle ?? this.idleAction;
+        : selected === 'run'
+          ? this.actions.run ?? this.actions.walk ?? this.walkAction
+          : selected === 'walk'
+            ? this.actions.walk ?? this.walkAction
+            : this.actions.idle ?? this.idleAction;
 
     locomotion.enabled = true;
     const transitionFrom = finishedAction ?? this.activeLocomotionAction;
@@ -121,9 +139,9 @@ export class PlayerActionController {
       locomotion.reset().setEffectiveWeight(1).play();
       if (transitionFrom && transitionFrom !== locomotion) {
         transitionFrom.paused = false;
-        transitionFrom.crossFadeTo(locomotion, 0.14, true);
+        transitionFrom.crossFadeTo(locomotion, LOCOMOTION_GAIT.transitionSeconds, true);
       } else {
-        locomotion.fadeIn(0.14);
+        locomotion.fadeIn(LOCOMOTION_GAIT.transitionSeconds);
       }
       this.activeLocomotionAction = locomotion;
     } else if (!locomotion.isRunning()) {
@@ -132,13 +150,15 @@ export class PlayerActionController {
 
     // There is no authored Idle_Carry clip. Freeze Walk_Carry at the same calm
     // frame used by the old runtime while stationary with a held tool.
-    if (carry && !moving && locomotion === carryIdle) {
+    if ((carry && this.locomotionMode === 'idle' && locomotion === carryIdle) ||
+      (this.reducedMotion && this.locomotionMode === 'idle')) {
       locomotion.time = locomotion.getClip().duration * (carryProfile?.idleTime ?? 0.34);
       locomotion.paused = true;
     } else {
       locomotion.paused = false;
-      const speedRatio = THREE.MathUtils.clamp(speed / playerSpeed, 0.62, 1);
-      locomotion.setEffectiveTimeScale(moving ? speedRatio : 1);
+      locomotion.setEffectiveTimeScale(
+        locomotionTimeScale(selected, speed, playerSpeed),
+      );
     }
   }
 
@@ -163,6 +183,7 @@ export class PlayerActionController {
     this.oneShotAction?.fadeOut(0.1);
     this.oneShotAction = null;
     this.activeLocomotionAction = null;
+    this.locomotionMode = 'idle';
   }
 
   dispose(): void {
@@ -172,5 +193,6 @@ export class PlayerActionController {
     this.mixer?.uncacheRoot(this.root);
     this.activeLocomotionAction = null;
     this.oneShotAction = null;
+    this.locomotionMode = 'idle';
   }
 }

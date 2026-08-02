@@ -230,3 +230,17 @@ enables the renderer-only model-axis and support-point visualization; it is off 
 procedural resources are disposed with the held clone. `assetcheck` and deterministic Vitest coverage
 reject invalid profile fields without loading Three.js assets. No save, simulation, timestep, input,
 pricing, or gameplay rule changed in ACT-02.
+
+## 2026-08-01 — Use a bounded, renderer-facing locomotion policy
+
+ACT-03 keeps fixed-step movement and seeded simulation authority in `GameRuntime`, while the
+renderer-facing locomotion policy owns idle/walk/run hysteresis, in-place clip cadence, and bounded
+heading turns. Intent starts locomotion only after a small speed boundary, release preserves the
+current gait until residual velocity settles, and run entry/exit use separate thresholds so the clip
+does not chatter. Ranged aim/fire keeps the aim heading while movement strafes; ordinary movement
+updates the target heading. The player glTF's Walk/Run/Carry clips have constant root translations,
+so cadence is normalized with measured gait ratios rather than invented root motion. The existing
+0.14-second crossfade is retained as restrained start/stop anticipation because the asset has no
+authored start/stop clips. Reduced motion freezes nonessential renderer bob, motes, and shake while
+leaving fixed-step timing and gameplay outcomes unchanged. No save, simulation, input binding, or
+economy rule changes in ACT-03.
