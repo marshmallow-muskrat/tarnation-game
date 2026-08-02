@@ -54,6 +54,14 @@ describe('fox navigation flow fields', () => {
     expect(navigation.route(5, 5, 2, 2, 3, blocked).status).toBe('unreachable');
   });
 
+  it('does not treat a water or building tile in the goal set as an authored wildlife exception', () => {
+    const blocked = new Set([tileKey(4, 4)]);
+    const navigation = new FoxNavigation();
+
+    navigation.advance(100_000);
+    expect(navigation.route(2, 2, 4, 4, 6, blocked).status).toBe('unreachable');
+  });
+
   it('caps route-field work per fixed-step budget instead of scanning the whole map', () => {
     const navigation = new FoxNavigation();
     navigation.request(120, 120, 4, new Set());

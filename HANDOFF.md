@@ -111,7 +111,21 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   loader and shadowed lighting profile. The pure GLB validator checks all 97 unique active files;
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
-  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 is next.
+  `git diff --check`, and `npm audit --omit=dev` pass. ART-03 is integrated below; ART-04 is next.
+
+- ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
+  obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
+  from clear-ground tools, interaction-only trees/rocks remain tool and placement targets without
+  becoming walls, reservations protect camp land without changing actor pathing or enclosure, and
+  decorative content stays non-authoritative. Runtime topology now includes water, fixtures,
+  homestead, closed placed structures, and safe boundary exits for fox routing; ambient animals use
+  continuous water/building checks; placement rejects live tree/rock tiles; and scatter masks worked
+  land, fixtures, interaction props, structures, and future authored paths with deterministic
+  clearance. The deterministic baseline is now 266 tests across 38 files. `npm run test`,
+  `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol
+  TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. A fresh local browser smoke reached
+  Day 1/daylight and Saved status with no console errors. The deployment workflow already runs
+  `npm run test:ci` before asset validation and build.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
@@ -122,6 +136,12 @@ The characterization baseline intentionally preserves current behavior for later
   truth. The current held-tool GLBs have no embedded grip/support marker nodes, so the typed
   equipment profiles remain the honest marker source; hardcoded tool-icon framing and broader
   presentation cleanup remain later M7 work.
+- Before ART-03, the actor obstacle set excluded water and ambient animals selected unconstrained
+  headings, so fox routes/flee exits and friendly wildlife could cross water or physical structures.
+  This was a genuine collision-policy defect and is now corrected without adding a save field. Soft
+  worked ground remains intentionally traversable by actors, interaction-only trees/rocks do not
+  become walls, and the empty central camp reservation remains walkable; those are deliberate policy
+  contracts rather than unfinished collision.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB

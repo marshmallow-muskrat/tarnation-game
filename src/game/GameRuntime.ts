@@ -226,6 +226,7 @@ import {
   tileIsEnclosed,
   tileKey,
 } from '../sim/placement';
+import { blocksFor, buildScatterOccupancy } from '../sim/occupancy';
 import {
   firstPlotHint as formatFirstPlotHint,
   firstPlotStage,
@@ -411,7 +412,7 @@ export class GameRuntime {
     playerTile: () => this.worldToFarmTile(this.playerX, this.playerZ),
     gameState: () => this.gs,
     fixtureReservations: () => this.fixtureReservations,
-    terrainAllowed: (tx, ty) => this.world.distToWater(tx + 0.5, ty + 0.5) >= 2.5,
+    terrainAllowed: (tx, ty) => this.canPlaceOnTile(tx, ty),
     woodCount: () => woodCount(this.gs),
     homesteadX: () => HOMESTEAD_X,
     homesteadZ: () => HOMESTEAD_Z,
@@ -504,6 +505,12 @@ export class GameRuntime {
     tileKey(Math.floor(CENTRAL_CAMP.merchantX), Math.floor(CENTRAL_CAMP.merchantZ)),
   ]);
   private obstacleTiles = new Set<string>();
+  private waterObstacleTiles = new Set<string>();
+  private waterObstacleTilesReady = false;
+  private softOccupancy = new Set<string>();
+  private interactionOnlyOccupancy = new Set<string>();
+  /** No authored path layer exists yet; the shared policy accepts one without adding gameplay. */
+  private pathOccupancy = new Set<string>();
   private interactiveOccupancy = new Set<string>();
   private topologyVersion = 0;
   private occupancyVersion = 0;
@@ -514,6 +521,7 @@ export class GameRuntime {
     isEnclosed: (tx, ty) => this.isEnclosed(tx, ty),
     topologyVersion: () => this.topologyVersion,
     obstacleTiles: () => this.obstacleTiles,
+    isWalkable: (x, z) => this.canWildlifeOccupy(x, z),
   } satisfies FoxDirectionWorld);
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
@@ -521,6 +529,7 @@ export class GameRuntime {
 
   private animals: PlainsAnimal[] = [];
   private animalsSeeded = false;
+  private wildlifeExitTiles: { tx: number; ty: number }[] = [];
 
   private popups: HudPopup[] = [];
   private popupId = 1;
@@ -612,8 +621,8 @@ export class GameRuntime {
       if (assetDefinition(placed.id)?.gate && placed.gateOpen) this.gateCloseTimers.set(placed, 3.5);
     }
     this.syncBearTrapModels();
-    this.seedPlainsAnimals();
     this.refreshObstacleTopology();
+    this.seedPlainsAnimals();
     this.refreshTrenchWater();
     this.syncWorldTiles();
     this.rebuildCrops();
@@ -886,27 +895,58 @@ export class GameRuntime {
       }
     }
     for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
+    this.refreshWaterObstacleTiles();
+    for (const key of this.waterObstacleTiles) this.obstacleTiles.add(key);
+    this.refreshWildlifeExitTiles();
     this.topologyVersion++;
     this.foxDirector.invalidateNavigation();
     this.refreshInteractiveOccupancy();
   }
 
-  /**
-   * Decorative scatter has no gameplay authority, but it must not draw through
-   * camp reservations, placed footprints, or worked/cropped tiles.
-   */
-  private refreshInteractiveOccupancy(): void {
-    this.interactiveOccupancy.clear();
-    for (const key of this.fixtureReservations) this.interactiveOccupancy.add(key);
-    for (const key of this.obstacleTiles) this.interactiveOccupancy.add(key);
+  /** Build the renderer-only scatter mask from the shared occupancy classes. */
+  private refreshInteractiveOccupancy(refreshTrees = true): void {
+    this.softOccupancy.clear();
     for (let ty = 0; ty < GRID_H; ty++) {
       for (let tx = 0; tx < GRID_W; tx++) {
         const tile = this.gs.tiles[ty]?.[tx];
         if (tile && (tile.state !== 'grass' || tile.bearTrap === true || tile.bearTrapClosed === true)) {
-          this.interactiveOccupancy.add(tileKey(tx, ty));
+          this.softOccupancy.add(tileKey(tx, ty));
         }
       }
     }
+    if (refreshTrees) {
+      this.interactionOnlyOccupancy.clear();
+      const trees = this.world.getFarmTrees();
+      if (trees) {
+        for (let ty = 0; ty < GRID_H; ty++) {
+          for (let tx = 0; tx < GRID_W; tx++) {
+            if (trees.blocksTilling(tx, ty)) this.interactionOnlyOccupancy.add(tileKey(tx, ty));
+          }
+        }
+      }
+    }
+    this.publishInteractiveOccupancy();
+  }
+
+  private refreshInteractionOnlyTile(tx: number, ty: number): void {
+    const key = tileKey(tx, ty);
+    const trees = this.world.getFarmTrees();
+    if (trees?.blocksTilling(tx, ty)) this.interactionOnlyOccupancy.add(key);
+    else this.interactionOnlyOccupancy.delete(key);
+    this.publishInteractiveOccupancy();
+  }
+
+  private publishInteractiveOccupancy(): void {
+    this.interactiveOccupancy = buildScatterOccupancy(
+      {
+        'hard-obstacle': this.obstacleTiles,
+        'soft-obstacle': this.softOccupancy,
+        'interaction-only': this.interactionOnlyOccupancy,
+        reservation: this.fixtureReservations,
+        paths: this.pathOccupancy,
+      },
+      { 'hard-obstacle': 1, 'interaction-only': 1, paths: 1 },
+    );
     this.occupancyVersion++;
     this.world.setInteractiveOccupancy(this.interactiveOccupancy, this.occupancyVersion);
   }
@@ -923,11 +963,10 @@ export class GameRuntime {
       const key = tileKey(tx, ty);
       const tile = this.gs.tiles[ty]![tx]!;
       const occupied = tile.state !== 'grass' || tile.bearTrap === true || tile.bearTrapClosed === true;
-      if (occupied) this.interactiveOccupancy.add(key);
-      else this.interactiveOccupancy.delete(key);
+      if (occupied) this.softOccupancy.add(key);
+      else this.softOccupancy.delete(key);
     }
-    this.occupancyVersion++;
-    this.world.setInteractiveOccupancy(this.interactiveOccupancy, this.occupancyVersion);
+    this.publishInteractiveOccupancy();
   }
 
   private syncBuildings(): void {
@@ -1495,6 +1534,7 @@ export class GameRuntime {
       tiles: this.gs.tiles,
       placed: otherPlaced,
       fixtures: this.fixtureReservations,
+      terrainAllowed: (tx, ty) => this.canPlaceOnTile(tx, ty),
     });
     if (!status.valid) {
       setToast(this.gs, `Cannot rotate: ${status.reason}`, 1.8);
@@ -2133,9 +2173,10 @@ export class GameRuntime {
     if (!isFarmableTile(tx, ty)) return true;
     if (isHomesteadFootprintTile(tx, ty)) return true;
     const trees = this.world.getFarmTrees();
-    if (trees?.blocksTilling(tx, ty)) return true;
+    if (blocksFor('interaction-only', 'tools') && trees?.blocksTilling(tx, ty)) return true;
     const key = tileKey(tx, ty);
-    if (this.fixtureReservations.has(key) || this.obstacleTiles.has(key)) return true;
+    if (blocksFor('reservation', 'tools') && this.fixtureReservations.has(key)) return true;
+    if (blocksFor('hard-obstacle', 'tools') && this.obstacleTiles.has(key)) return true;
     return this.world.distToWater(tx + 0.5, ty + 0.5) < 0.8;
   }
 
@@ -2165,15 +2206,77 @@ export class GameRuntime {
     const tile = this.worldToFarmTile(x, z);
     if (!tile) return false;
     const key = tileKey(tile.tx, tile.ty);
-    if (!this.obstacleTiles.has(key)) {
+    const current = this.worldToFarmTile(this.playerX, this.playerZ);
+    const sameCurrentTile = current !== null && current.tx === tile.tx && current.ty === tile.ty;
+    if (this.isWaterPoint(x, z) && !this.isWaterPoint(this.playerX, this.playerZ)) return false;
+    if (!blocksFor('hard-obstacle', 'player') || !this.obstacleTiles.has(key)) {
       return true;
     }
     // Save/footprint migrations can occasionally load an actor inside a newly
     // solid tile. Permit motion within that one tile so the player can leave,
     // while still refusing entry into any other obstacle.
-    const current = this.worldToFarmTile(this.playerX, this.playerZ);
-    if (current && current.tx === tile.tx && current.ty === tile.ty) return true;
+    if (sameCurrentTile) return true;
     return this.openGateAt(tile.tx, tile.ty);
+  }
+
+  private isWaterPoint(x: number, z: number): boolean {
+    return this.world.distToWater(x, z) < 0;
+  }
+
+  private refreshWaterObstacleTiles(): void {
+    if (this.waterObstacleTilesReady) return;
+    for (let ty = 0; ty < GRID_H; ty++) {
+      for (let tx = 0; tx < GRID_W; tx++) {
+        if (this.isWaterTile(tx, ty)) this.waterObstacleTiles.add(tileKey(tx, ty));
+      }
+    }
+    this.waterObstacleTilesReady = true;
+  }
+
+  private refreshWildlifeExitTiles(): void {
+    this.wildlifeExitTiles = [];
+    const addIfSafe = (tx: number, ty: number): void => {
+      if (this.canWildlifeOccupy(tx + 0.5, ty + 0.5)) this.wildlifeExitTiles.push({ tx, ty });
+    };
+    for (let tx = 0; tx < GRID_W; tx++) {
+      addIfSafe(tx, 0);
+      addIfSafe(tx, GRID_H - 1);
+    }
+    for (let ty = 1; ty < GRID_H - 1; ty++) {
+      addIfSafe(0, ty);
+      addIfSafe(GRID_W - 1, ty);
+    }
+  }
+
+  private nearestWildlifeExit(x: number, z: number): { tx: number; ty: number; x: number; z: number } | null {
+    let best: { tx: number; ty: number; x: number; z: number } | null = null;
+    let bestDistance = Infinity;
+    for (const tile of this.wildlifeExitTiles) {
+      const point = this.farmTileWorld(tile.tx, tile.ty);
+      const distance = Math.hypot(x - point.x, z - point.z);
+      if (distance >= bestDistance) continue;
+      bestDistance = distance;
+      best = { ...tile, x: point.x, z: point.z };
+    }
+    return best;
+  }
+
+  private isWaterTile(tx: number, ty: number): boolean {
+    return this.isWaterPoint(tx + 0.5, ty + 0.5);
+  }
+
+  /** Continuous actor occupancy keeps wildlife from sliding through a hard tile between grid centers. */
+  private canWildlifeOccupy(x: number, z: number): boolean {
+    const tile = this.worldToFarmTile(x, z);
+    if (!tile || this.isWaterPoint(x, z)) return false;
+    return !blocksFor('hard-obstacle', 'wildlife') || !this.obstacleTiles.has(tileKey(tile.tx, tile.ty));
+  }
+
+  /** Placement keeps the existing water margin and now also rejects live tree/rock interaction tiles. */
+  private canPlaceOnTile(tx: number, ty: number): boolean {
+    if (this.world.distToWater(tx + 0.5, ty + 0.5) < 2.5) return false;
+    const trees = this.world.getFarmTrees();
+    return !blocksFor('interaction-only', 'placement') || !trees || !trees.blocksTilling(tx, ty);
   }
 
   private openGateAt(tx: number, ty: number): boolean {
@@ -2696,6 +2799,7 @@ export class GameRuntime {
       addToInventory(this.gs, ITEM_WOOD, 1);
       this.gs.stats.woodGathered += 1;
       trees.invalidateTile(tx, ty);
+      this.refreshInteractionOnlyTile(tx, ty);
       this.world.markShadowsDirty();
       this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
       this.audio.play('tool');
@@ -2723,6 +2827,7 @@ export class GameRuntime {
     if (!addToInventory(this.gs, ITEM_WOOD, FARM_TREE_WOOD)) return true;
     markTreeChopped(this.gs, tx, ty);
     trees.invalidateTile(tx, ty);
+    this.refreshInteractionOnlyTile(tx, ty);
     this.world.markShadowsDirty();
     this.gs.stats.woodGathered += FARM_TREE_WOOD;
     this.runtimeMetrics.recordTreeFelled();
@@ -3557,10 +3662,11 @@ export class GameRuntime {
       totalWeirdness(this.gs.tiles),
     ).filter((spawn) => !this.isEnclosed(Math.floor(spawn.x), Math.floor(spawn.y)));
     for (const sp of spawns) {
+      const safeSpawn = this.nearestWildlifeExit(sp.x, sp.y);
       const { root, animations } = cloneModel('fox');
       const profile = foxRoleProfile(sp.kind);
-      const x = sp.x;
-      const z = sp.y;
+      const x = safeSpawn?.x ?? sp.x;
+      const z = safeSpawn?.z ?? sp.y;
       const baseScale = root.scale.x;
       this.styleFoxModel(root, profile);
       const accessoryRoot = this.createFoxAccessory(profile);
@@ -4117,11 +4223,11 @@ export class GameRuntime {
       if (w.state === 'flee') {
         this.playFoxAction(w, 'walk');
         const edge = nearestEdgePoint(w.x, w.z);
+        const exit = this.nearestWildlifeExit(edge.x, edge.y);
+        if (!exit) continue;
         const sp = this.foxDirector.speedFor(w.kind) * (w.carryingProduce ? 1.15 : 1.3);
-        const edgeTx = THREE.MathUtils.clamp(Math.round(edge.x), 0, WORLD_SIZE - 1);
-        const edgeTy = THREE.MathUtils.clamp(Math.round(edge.y), 0, WORLD_SIZE - 1);
-        const route = this.foxDirector.moveTowardTile(w, edgeTx, edgeTy, sp, dt);
-        const dist = Math.hypot(edge.x - w.x, edge.y - w.z);
+        const route = this.foxDirector.moveTowardTile(w, exit.tx, exit.ty, sp, dt);
+        const dist = Math.hypot(exit.x - w.x, exit.z - w.z);
         if (route.atGoal || dist < 0.5) {
           w.dead = true;
           this.stopMixer(w.actions.mixer, w.root);
@@ -4258,7 +4364,17 @@ export class GameRuntime {
         x = 20 + this.gs.rng() * (WORLD_SIZE - 40);
         z = 20 + this.gs.rng() * (WORLD_SIZE - 40);
         tries++;
-      } while (tries < 40 && this.world.distToWater(x, z) < 4);
+      } while (tries < 40 && !this.canWildlifeOccupy(x, z));
+      if (!this.canWildlifeOccupy(x, z)) {
+        outer: for (let fallbackZ = 4; fallbackZ < WORLD_SIZE - 4; fallbackZ += 4) {
+          for (let fallbackX = 4; fallbackX < WORLD_SIZE - 4; fallbackX += 4) {
+            if (!this.canWildlifeOccupy(fallbackX + 0.5, fallbackZ + 0.5)) continue;
+            x = fallbackX + 0.5;
+            z = fallbackZ + 0.5;
+            break outer;
+          }
+        }
+      }
       const { root, animations } = cloneModel(animal.model);
       const baseScale = root.scale.x;
       root.position.set(x, this.world.heightAt(x, z), z);
@@ -4310,6 +4426,28 @@ export class GameRuntime {
     a.actions.active = next;
   }
 
+  /** Move an ambient animal without allowing a continuous step through water or a building. */
+  private moveAmbientAnimal(a: PlainsAnimal, dx: number, dz: number, dt: number, speed = a.speed): boolean {
+    const distance = Math.hypot(dx, dz);
+    if (distance <= 0) return true;
+    const stepX = (dx / distance) * speed * dt;
+    const stepZ = (dz / distance) * speed * dt;
+    const candidates = [
+      [a.x + stepX, a.z + stepZ],
+      [a.x + stepX, a.z],
+      [a.x, a.z + stepZ],
+    ] as const;
+    for (const [x, z] of candidates) {
+      if (!this.canWildlifeOccupy(x, z)) continue;
+      a.x = x;
+      a.z = z;
+      return true;
+    }
+    a.targetHeading += Math.PI * 0.75;
+    a.timer = Math.min(a.timer, 0.8);
+    return false;
+  }
+
   private stepAnimals(dt: number): void {
     for (const a of this.animals) {
       a.timer -= dt;
@@ -4319,9 +4457,8 @@ export class GameRuntime {
         this.playAnimalAction(a, 'hurt');
         const dx = a.x - this.playerX;
         const dz = a.z - this.playerZ;
-        const len = Math.hypot(dx, dz) || 1;
-        a.x += (dx / len) * a.speed * 2.2 * dt;
-        a.z += (dz / len) * a.speed * 2.2 * dt;
+        const fleeSpeed = a.speed * 2.2;
+        this.moveAmbientAnimal(a, dx, dz, dt, fleeSpeed);
         a.heading = Math.atan2(dx, dz);
         if (a.timer <= 0) {
           a.state = 'walk';
@@ -4337,8 +4474,7 @@ export class GameRuntime {
         }
         if (a.state === 'walk') {
           a.heading = THREE.MathUtils.damp(a.heading, a.targetHeading, 3, dt);
-          a.x += Math.sin(a.heading) * a.speed * dt;
-          a.z += Math.cos(a.heading) * a.speed * dt;
+          this.moveAmbientAnimal(a, Math.sin(a.heading), Math.cos(a.heading), dt);
         }
       }
       a.x = THREE.MathUtils.clamp(a.x, 4, WORLD_SIZE - 4);
