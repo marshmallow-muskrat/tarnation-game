@@ -7,6 +7,7 @@ import { Hud } from './ui/Hud';
 import { disposeModelIconRenderer } from './ui/ModelIconRenderer';
 import { useModalFocusScope } from './ui/modal';
 import type { GameSettingKey, GameSettingValue } from './game/Settings';
+import { FIRST_TEN_MINUTE_LAUNCH_COPY } from './sim/onboarding';
 
 const ASSET_GROUP_LABELS: Record<AssetLoadProgress['group'], string> = {
   boot: 'boot assets',
@@ -169,6 +170,7 @@ export function App() {
             <p className="launch-copy">
               Grow a homestead, protect the harvest, and build a town one deliberate piece at a time.
             </p>
+            <p className="launch-controls">{FIRST_TEN_MINUTE_LAUNCH_COPY}</p>
             <div className="launch-actions">
               <button type="button" onClick={() => beginAdventure('continue')} disabled={!hasSave}>
                 Continue

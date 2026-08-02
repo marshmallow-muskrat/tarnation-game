@@ -257,6 +257,7 @@ import {
   isHomesteadFootprintTile,
   isFarmableTile,
 } from '../sim/farmBoundary';
+import { firstTenMinuteGuide } from '../sim/onboarding';
 
 type Shot = {
   root: THREE.Object3D;
@@ -504,6 +505,9 @@ export class GameRuntime {
   private merchantZ = CENTRAL_CAMP.merchantZ;
   private nearMerchant = false;
   private firstPlotGuideActive = false;
+  /** Runtime-only onboarding facts; never persisted as a second quest state. */
+  private firstTenMinuteMovementStarted = false;
+  private firstTenMinuteMerchantSeen = false;
   private raidWarningDay = -1;
   private fixtureRoots: RenderedRoot[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
@@ -598,6 +602,8 @@ export class GameRuntime {
       this.gs = loaded.state;
     }
     this.firstPlotGuideActive = options.newAdventure === true;
+    this.firstTenMinuteMovementStarted = false;
+    this.firstTenMinuteMerchantSeen = false;
     this.winShownLocal = false;
     this.settlementCelebrated = false;
     this.raidWarningDay = -1;
@@ -1371,6 +1377,12 @@ export class GameRuntime {
       return;
     }
     this.vendorOpen = true;
+    if (
+      this.firstPlotGuideActive &&
+      firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes) === 'complete'
+    ) {
+      this.firstTenMinuteMerchantSeen = true;
+    }
     this.vendorMessage = '';
     this.helpOpen = false;
     this.codexOpen = false;
@@ -2267,6 +2279,8 @@ export class GameRuntime {
   }
 
   private movePlayer(dt: number, minX: number, maxX: number, minZ: number, maxZ: number): void {
+    const previousX = this.playerX;
+    const previousZ = this.playerZ;
     const stick = this.input.getMoveStick();
     this.movementIntent = Math.hypot(stick.x, stick.y) > 1e-6;
     this.actionState.setMovementIntent(this.movementIntent);
@@ -2303,6 +2317,12 @@ export class GameRuntime {
     else this.velZ = 0;
     this.gs.playerX = this.playerX;
     this.gs.playerZ = this.playerZ;
+    if (
+      this.firstPlotGuideActive &&
+      Math.hypot(this.playerX - previousX, this.playerZ - previousZ) > 1e-5
+    ) {
+      this.firstTenMinuteMovementStarted = true;
+    }
   }
 
   private worldToFarmTile(wx: number, wz: number): { tx: number; ty: number } | null {
@@ -4704,9 +4724,18 @@ export class GameRuntime {
   private pushHud(force: boolean): void {
     if (!this.gs || !this.hudPresenter.hasListener) return;
     this.maybeShowSettlementGoal();
+    const selected = selectedSeed(this.gs);
+    const onboarding = this.firstPlotGuideActive
+      ? firstTenMinuteGuide({
+          movementStarted: this.firstTenMinuteMovementStarted,
+          firstPlotStage: firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes),
+          merchantSeen: this.firstTenMinuteMerchantSeen,
+          seedName: selected?.displayName,
+        })
+      : null;
     this.hudPresenter.push(force, {
       state: this.gs,
-      hint: this.interactionHint(selectedSeed(this.gs), selectedSeedPacket(this.gs)),
+      hint: this.interactionHint(selected, selectedSeedPacket(this.gs)),
       buildingMode: this.buildingMode,
       selectedBuildIndex: this.placement.currentIndex,
       placement: () => {
@@ -4737,6 +4766,7 @@ export class GameRuntime {
       marketDistance: Math.round(Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ)),
       popups: this.popups,
       save: this.saveFeedback,
+      onboarding,
       winShownLocal: this.winShownLocal,
     });
   }

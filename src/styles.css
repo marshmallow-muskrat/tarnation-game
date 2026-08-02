@@ -218,6 +218,64 @@ body,
   color: var(--teal);
 }
 
+.onboarding-guide {
+  margin: 10px 0 8px;
+  padding: 10px 11px;
+  border: 1px solid var(--teal-deep);
+  border-radius: 7px;
+  background: rgba(15, 43, 39, 0.72);
+}
+
+.onboarding-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.onboarding-heading .label {
+  margin-bottom: 0;
+  color: var(--teal);
+}
+
+.onboarding-heading > span {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.onboarding-guide h2 {
+  margin: 4px 0 5px;
+  color: var(--ink);
+  font-family: var(--serif);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.onboarding-instruction,
+.onboarding-next,
+.onboarding-support {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.onboarding-instruction {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.onboarding-next {
+  margin-top: 7px;
+  color: var(--teal);
+  font-size: 12px;
+}
+
+.onboarding-support {
+  margin-top: 8px;
+  color: var(--faint);
+  font-size: 12px;
+}
+
 .help-toggle {
   width: 100%;
   margin-top: 2px;
@@ -1616,6 +1674,14 @@ kbd {
   max-width: 350px;
   color: var(--muted);
   line-height: 1.5;
+}
+
+.launch-controls {
+  margin: -12px auto 16px;
+  max-width: 350px;
+  color: var(--faint);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .launch-actions {

@@ -220,4 +220,26 @@ describe('HUD presenter', () => {
 
     expect(received!.bindings.find((binding) => binding.action === 'primary')?.display).toBe('L');
   });
+
+  it('passes the transient first-steps guide through without making it save state', () => {
+    const context = makeContext();
+    context.onboarding = {
+      id: 'movement',
+      step: 1,
+      total: 8,
+      title: 'Get your bearings',
+      instruction: 'Move to the highlighted starter plot.',
+      nextGoal: 'Next · work one tile.',
+    };
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.onboarding).toEqual(context.onboarding);
+    expect(Object.keys(createGameState(123))).not.toContain('onboarding');
+  });
 });

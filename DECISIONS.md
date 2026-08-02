@@ -601,3 +601,17 @@ stays fixed because a partial day-length preference would desynchronize crop gro
 cooldowns, and economy pacing under the fixed timestep. No save field, migration, seeded RNG,
 `src/sim/` rule, or asset path changed. Synthesized audio remains a fallback on the effects bus until
 AUD-01 authors the production music, ambience, and UI buses; onboarding remains UX-05.
+
+## 2026-08-01 — Keep the first ten minutes derived and non-modal
+
+UX-05 adds an authored eight-beat guide in `src/sim/onboarding.ts` for launch/movement, the existing
+starter-plot action transitions, crop protection, market sale, and the first merchant choice. The
+guide consumes the existing starter-plot state plus two runtime-only facts (whether the player has
+moved and whether the merchant has been opened); it is not a second quest system and adds no save
+field, migration, RNG, economy, or fixed-step rule. A compact non-modal HUD card keeps the current
+Save status, settlement objective, Help button, market compass, and pause/Settings route available,
+while launch copy names only the immediate movement control and starter-plot destination. The grow
+beat explicitly explains that foxes raid after dusk and names harvesting or a bear trap as the next
+counter. The implementation is covered by deterministic transition tests and a documented five-
+participant study protocol; no participant findings are fabricated, so the external study and any
+resulting revision remain required before UX-05/M8 release completion.
