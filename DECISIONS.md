@@ -699,3 +699,14 @@ transition is already correct. The final test polls the persisted state rather t
 guess or a production debug hook. Run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
 passed the full quality workflow for `b4d4c9b`. No production behavior, save schema, fixed timestep, seeded
 simulation, or asset bundle changed.
+
+## 2026-08-02 — Make production diagnostics explicit, bounded, and player-initiated
+
+QA-03 adds a Help-panel export rather than a public runtime inspection handle. Vite injects the package
+version, exact Git commit, and stable build ID; the export collects only browser/GPU capability summaries,
+save version and non-sensitive counts, the fixed seed, bounded recent action/outcome/day-transition events,
+bounded asset fallback failures, and aggregate frame/fixed-step performance. A pure sanitizer removes control
+characters, clamps numeric values, caps text and arrays, deduplicates asset failures, and serializes the
+explicit schema deterministically. Full save contents, personal data, unbounded logs, `window.tarn`, and
+mutation/debug escape hatches remain absent. No save field, simulation rule, fixed timestep, seeded RNG,
+economy rule, or asset path changed.
