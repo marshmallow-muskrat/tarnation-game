@@ -83,6 +83,8 @@ export class FarmTrees {
   private readonly _q = new THREE.Quaternion();
   private readonly _s = new THREE.Vector3();
   private readonly _e = new THREE.Euler();
+  private readonly pickRaycaster = new THREE.Raycaster();
+  private readonly pickNdc = new THREE.Vector2();
 
   constructor(hooks: FarmTreeHooks) {
     this.hooks = hooks;
@@ -184,9 +186,9 @@ export class FarmTrees {
 
   /** Pick a standing tree instance directly from the cursor. */
   pickTree(ndcX: number, ndcY: number, camera: THREE.Camera): { tx: number; ty: number } | null {
-    const raycaster = new THREE.Raycaster();
-    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-    const hits = raycaster.intersectObject(this.root, true);
+    this.pickNdc.set(ndcX, ndcY);
+    this.pickRaycaster.setFromCamera(this.pickNdc, camera);
+    const hits = this.pickRaycaster.intersectObject(this.root, true);
     for (const hit of hits) {
       const targets = (hit.object as THREE.InstancedMesh).userData.farmTreeTargets as
         | TreeInstanceTarget[]

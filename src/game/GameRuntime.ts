@@ -82,7 +82,6 @@ import {
   clearBreedingParents,
   destroyCrop,
   digTrench,
-  findCropTiles,
   getTile,
   harvestTile,
   hasRepelNearby,
@@ -142,6 +141,8 @@ import {
   type SaveFeedbackState,
 } from './SaveTiming';
 import { WorldRenderer } from './WorldRenderer';
+import { CropBatches } from './CropBatches';
+import { FoxNavigation } from './FoxNavigation';
 import { getEconomyCapability } from './EconomyCapability';
 import type { BuildingId, PlacedBuilding } from '../sim/save';
 import {
@@ -157,7 +158,6 @@ import {
 import { CENTRAL_CAMP, CENTRAL_CAMP_FIXTURES } from '../content/mapData';
 import {
   calculateEnclosedTiles,
-  GRID_DIRECTIONS_8,
   fixtureObstacleTiles,
   fixtureTiles,
   footprintTiles,
@@ -356,6 +356,7 @@ type Fox = {
   path: { tx: number; ty: number }[];
   pathGoalKey: string;
   pathTimer: number;
+  pathTopologyVersion: number;
 };
 
 type FoxActions = {
@@ -468,6 +469,8 @@ type BuildingPlacement = {
   rotation: number;
 };
 
+type DirtyTile = { tx: number; ty: number };
+
 type ToolMode = 'farm' | 'trench' | 'breed';
 
 type PlayerClip =
@@ -511,6 +514,9 @@ const CROP_MODEL_BASE: Record<keyof typeof CROP_DEFS, string> = {
   carrot: 'carrot',
   lettuce: 'lettuce',
 };
+
+/** Bounded reverse-BFS work per fixed simulation step. */
+const FOX_NAVIGATION_BUDGET = 4096;
 
 const PLAINS_ANIMALS: readonly { model: ModelKey; name: string }[] = [
   { model: 'stag', name: 'Marsh Stag' },
@@ -720,6 +726,10 @@ export class GameRuntime {
   private shotCd = 0;
   private meleeCd = 0;
   private crops: CropActor[] = [];
+  private cropFallbacks = new Map<string, CropActor>();
+  private cropTargets = new Map<string, { x: number; y: number }>();
+  private cropTargetSnapshot: { x: number; y: number }[] = [];
+  private cropBatches: CropBatches | null = null;
   private stallRoot: THREE.Object3D | null = null;
   private stallX = 0;
   private stallZ = 0;
@@ -744,6 +754,11 @@ export class GameRuntime {
     ...fixtureObstacleTiles(CENTRAL_CAMP_FIXTURES),
     tileKey(Math.floor(CENTRAL_CAMP.merchantX), Math.floor(CENTRAL_CAMP.merchantZ)),
   ]);
+  private obstacleTiles = new Set<string>();
+  private interactiveOccupancy = new Set<string>();
+  private topologyVersion = 0;
+  private occupancyVersion = 0;
+  private readonly foxNavigation = new FoxNavigation();
   private enclosedTiles = new Uint8Array(GRID_W * GRID_H) as Uint8Array<ArrayBufferLike>;
   private saveTimer = 0;
   private saveFeedback: SaveFeedback = { state: 'saved', message: 'Save ready' };
@@ -847,13 +862,16 @@ export class GameRuntime {
     this.spawnPlayer();
     this.spawnStall();
     this.spawnMerchantCamp();
+    this.cropBatches = new CropBatches();
+    this.world.getFarmActors().add(this.cropBatches.getRoot());
     this.syncBuildings();
     for (const placed of this.gs.placedBuildings) {
       if (assetDefinition(placed.id)?.gate && placed.gateOpen) this.gateCloseTimers.set(placed, 3.5);
     }
     this.syncBearTrapModels();
     this.seedPlainsAnimals();
-    this.world.syncFarmTiles(this.gs.tiles);
+    this.refreshObstacleTopology();
+    this.syncWorldTiles();
     this.rebuildCrops();
     this.recalculateEnclosure();
     this.world.snapCamera(this.playerX, this.playerZ);
@@ -901,6 +919,8 @@ export class GameRuntime {
     this.clearFoxes(false);
     this.clearAnimals();
     this.clearCrops();
+    this.cropBatches?.dispose();
+    this.cropBatches = null;
     this.clearDeathMarkers();
     this.clearLootMarkers();
     this.clearFeedbackBursts();
@@ -1251,6 +1271,55 @@ export class GameRuntime {
       }
     }
     this.world.markShadowsDirty();
+  }
+
+  /** Cache movement obstacles once per placement/gate topology change. */
+  private refreshObstacleTopology(): void {
+    this.obstacleTiles.clear();
+    for (const key of this.fixtureObstacles) this.obstacleTiles.add(key);
+    for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
+    this.topologyVersion++;
+    this.foxNavigation.clear();
+    this.refreshInteractiveOccupancy();
+  }
+
+  /**
+   * Decorative scatter has no gameplay authority, but it must not draw through
+   * camp reservations, placed footprints, or worked/cropped tiles.
+   */
+  private refreshInteractiveOccupancy(): void {
+    this.interactiveOccupancy.clear();
+    for (const key of this.fixtureReservations) this.interactiveOccupancy.add(key);
+    for (const key of this.obstacleTiles) this.interactiveOccupancy.add(key);
+    for (let ty = 0; ty < GRID_H; ty++) {
+      for (let tx = 0; tx < GRID_W; tx++) {
+        const tile = this.gs.tiles[ty]?.[tx];
+        if (tile && (tile.state !== 'grass' || tile.bearTrap === true || tile.bearTrapClosed === true)) {
+          this.interactiveOccupancy.add(tileKey(tx, ty));
+        }
+      }
+    }
+    this.occupancyVersion++;
+    this.world.setInteractiveOccupancy(this.interactiveOccupancy, this.occupancyVersion);
+  }
+
+  /** Push a tile-state mutation to both the terrain and deterministic scatter. */
+  private syncWorldTiles(dirtyTiles?: readonly DirtyTile[]): void {
+    this.world.syncFarmTiles(this.gs.tiles);
+    if (!dirtyTiles) {
+      this.refreshInteractiveOccupancy();
+      return;
+    }
+    for (const { tx, ty } of dirtyTiles) {
+      if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) continue;
+      const key = tileKey(tx, ty);
+      const tile = this.gs.tiles[ty]![tx]!;
+      const occupied = tile.state !== 'grass' || tile.bearTrap === true || tile.bearTrapClosed === true;
+      if (occupied) this.interactiveOccupancy.add(key);
+      else this.interactiveOccupancy.delete(key);
+    }
+    this.occupancyVersion++;
+    this.world.setInteractiveOccupancy(this.interactiveOccupancy, this.occupancyVersion);
   }
 
   private syncBuildings(): void {
@@ -1724,6 +1793,7 @@ export class GameRuntime {
       return this.closeContextMenu();
     }
     placed.rotation = next;
+    this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -1744,6 +1814,7 @@ export class GameRuntime {
     placed.gateOpen = placed.gateOpen !== true;
     if (placed.gateOpen) this.gateCloseTimers.set(placed, 3.5);
     else this.gateCloseTimers.delete(placed);
+    this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -1773,6 +1844,7 @@ export class GameRuntime {
     this.gateCloseTimers.delete(placed);
     this.gs.placedBuildings.splice(index, 1);
     addToInventory(this.gs, deed, 1);
+    this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -1818,17 +1890,18 @@ export class GameRuntime {
           }
         }
         this.world.getFarmTrees()?.rebuildAll();
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncWorldTiles();
         return n;
       },
       skipDay: () => {
         this.gs.clock = { ...this.gs.clock, day: this.gs.clock.day + 1 };
         const res = onNewDay(this.gs);
+        this.refreshCropTargetsFromTiles();
         this.clearDeathMarkers();
         this.clearLootMarkers();
         this.clearFeedbackBursts();
         this.world.getFarmTrees()?.rebuildAll();
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncWorldTiles();
         this.pushHud(true);
         return { lost: res.lostTilth.length, regrown: res.regrown.length };
       },
@@ -2172,13 +2245,14 @@ export class GameRuntime {
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
 
     if (clock.matured.length) {
-      this.rebuildCrops();
-      this.world.syncFarmTiles(this.gs.tiles);
+      for (const m of clock.matured) this.syncCropTile(m.x, m.y);
+      this.syncWorldTiles(clock.matured.map(({ x, y }) => ({ tx: x, ty: y })));
       for (const m of clock.matured) {
         const c = this.crops.find((x) => x.tx === m.x && x.ty === m.y);
         if (c) c.root.scale.setScalar(c.baseScale * 1.3);
       }
     }
+    this.cropBatches?.update(this.gs.simTime);
     for (const c of this.crops) {
       const s = c.root.scale.x;
       const target = c.baseScale * (1 + Math.sin(this.gs.simTime * 1.1 + c.tx) * 0.015);
@@ -2199,6 +2273,7 @@ export class GameRuntime {
       this.clearLootMarkers();
       this.clearFeedbackBursts();
       const { lostTilth, regrown } = onNewDay(this.gs);
+      this.refreshCropTargetsFromTiles();
       setToast(
         this.gs,
         lostTilth.length
@@ -2210,7 +2285,7 @@ export class GameRuntime {
         this.world.getFarmTrees()?.rebuildAll();
         this.world.markShadowsDirty();
       }
-      this.world.syncFarmTiles(this.gs.tiles);
+      this.syncWorldTiles();
       this.persist();
       if (checkWin(this.gs) && !this.gs.winShown) {
         if (this.economyMetrics.outcomes.settlement_goal.completed === 0) {
@@ -2268,8 +2343,8 @@ export class GameRuntime {
   private tileBlockedForTilling(tx: number, ty: number): boolean {
     const trees = this.world.getFarmTrees();
     if (trees?.blocksTilling(tx, ty)) return true;
-    if (this.fixtureReservations.has(tileKey(tx, ty))) return true;
-    if (occupiedPlacedTiles(this.gs.placedBuildings).has(tileKey(tx, ty))) return true;
+    const key = tileKey(tx, ty);
+    if (this.fixtureReservations.has(key) || this.obstacleTiles.has(key)) return true;
     return this.world.distToWater(tx + 0.5, ty + 0.5) < 0.8;
   }
 
@@ -2298,9 +2373,8 @@ export class GameRuntime {
   private canPlayerOccupy(x: number, z: number): boolean {
     const tile = this.worldToFarmTile(x, z);
     if (!tile) return false;
-    const occupied = occupiedPlacedTiles(this.gs.placedBuildings);
     const key = tileKey(tile.tx, tile.ty);
-    if (!occupied.has(key) && !this.fixtureObstacles.has(key)) {
+    if (!this.obstacleTiles.has(key)) {
       return true;
     }
     // Save/footprint migrations can occasionally load an actor inside a newly
@@ -2323,6 +2397,7 @@ export class GameRuntime {
       if (!footprintTiles(asset, origin, placed.rotation).some((tile) => tile.tx === tx && tile.ty === ty)) continue;
       placed.gateOpen = true;
       this.gateCloseTimers.set(placed, 3.5);
+      this.refreshObstacleTopology();
       this.syncBuildings();
       this.recalculateEnclosure();
       this.persist();
@@ -2363,6 +2438,7 @@ export class GameRuntime {
       changed = true;
     }
     if (!changed) return;
+    this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -2599,6 +2675,7 @@ export class GameRuntime {
     placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
     this.economyMetrics.buildingsPlaced++;
     this.playPlayerAction('pickUp');
+    this.refreshObstacleTopology();
     this.syncBuildings();
     this.recalculateEnclosure();
     this.persist();
@@ -2684,7 +2761,13 @@ export class GameRuntime {
             t2.watered = true;
           }
         }
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncWorldTiles([
+          { tx, ty },
+          { tx: tx + 1, ty },
+          { tx: tx - 1, ty },
+          { tx, ty: ty + 1 },
+          { tx, ty: ty - 1 },
+        ]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 5, 0.24);
         this.audio.play('tool');
         this.persist();
@@ -2696,7 +2779,7 @@ export class GameRuntime {
       if (this.meleeCd > 0) return;
       if (makeBreedingBed(this.gs.tiles, tx, ty)) {
         this.beginMeleeAction('pickUp');
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0xd79358, 6, 0.26);
         this.audio.play('build');
         setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
@@ -2708,7 +2791,7 @@ export class GameRuntime {
           const child = crossbreed(parents.a, parents.b, this.gs.rng);
           addSeedToInventory(this.gs, child);
           this.gs.tiles[ty]![tx]!.state = 'tilled';
-          this.world.syncFarmTiles(this.gs.tiles);
+          this.syncWorldTiles([{ tx, ty }]);
           this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 7, 0.28);
           this.audio.play('reward');
           setToast(this.gs, `Hybrid: ${child.displayName}!`, 3.5);
@@ -2727,7 +2810,7 @@ export class GameRuntime {
       if (tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) {
         this.recordAction('till');
         this.beginMeleeAction('pickUp');
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8a5a38, 5, 0.24);
         this.audio.play('tool');
         this.persist();
@@ -2748,8 +2831,8 @@ export class GameRuntime {
         this.recordOutcome('plant', 'completed');
         this.economyMetrics.cropsPlanted++;
         this.beginMeleeAction('pickUp');
-        this.rebuildCrops();
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncCropTile(tx, ty);
+        this.syncWorldTiles([{ tx, ty }]);
         this.spawnFeedbackBurst(wc.x, wc.z, 0x8ccf6a, 5, 0.2);
         this.audio.play('tool');
         this.persist();
@@ -2774,8 +2857,8 @@ export class GameRuntime {
         this.economyMetrics.cropsHarvested += res.count;
         this.gs.stats.cropsHarvested += res.count;
         addSeedToInventory(this.gs, { ...res.seed, traits: { ...res.seed.traits } });
-        this.rebuildCrops();
-        this.world.syncFarmTiles(this.gs.tiles);
+        this.syncCropTile(tx, ty);
+        this.syncWorldTiles([{ tx, ty }]);
         this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
         this.spawnFeedbackBurst(wc.x, wc.z, 0xf2c266, 6, 0.24);
         this.audio.play('reward');
@@ -2799,7 +2882,7 @@ export class GameRuntime {
     }
     if (waterTile(this.gs.tiles, tx, ty, this.gs.simTime)) {
       this.recordAction('water');
-      this.world.syncFarmTiles(this.gs.tiles);
+      this.syncWorldTiles([{ tx, ty }]);
       const wc = this.farmTileWorld(tx, ty);
       this.spawnFeedbackBurst(wc.x, wc.z, 0x69b8dc, 4, 0.2);
       this.audio.play('water');
@@ -3150,7 +3233,7 @@ export class GameRuntime {
     }
     this.gs.bearTrapCooldown = BEAR_TRAP_COOLDOWN;
     this.playPlayerAction('pickUp');
-    this.world.syncFarmTiles(this.gs.tiles);
+    this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
     this.syncBearTrapModels();
     this.spawnFeedbackBurst(wc.x, wc.z, 0xd2a86a, 6, 0.26);
     this.audio.play('trap');
@@ -3565,6 +3648,7 @@ export class GameRuntime {
         path: [],
         pathGoalKey: '',
         pathTimer: 0,
+        pathTopologyVersion: -1,
       });
     }
     this.world.markShadowsDirty();
@@ -3642,13 +3726,7 @@ export class GameRuntime {
     return best;
   }
 
-  /**
-   * Move raid animals on the same 8-neighbour tile graph used by enclosure
-   * flood-fill. This is deliberately small and cached per fox: the map is
-   * static between placement/gate events, so a short-lived BFS is enough to
-   * keep foxes from visibly walking through a wall without pathfinding every
-   * frame.
-   */
+  /** Move raid animals on the shared, incrementally expanded 8-neighbour field. */
   private moveFoxTowardTile(
     w: Fox,
     goalTx: number,
@@ -3669,45 +3747,31 @@ export class GameRuntime {
     }
     if (
       w.pathGoalKey !== goalKey ||
+      w.pathTopologyVersion !== this.topologyVersion ||
       w.pathTimer <= 0 ||
       (w.path.length === 0 && (current.tx !== goalTx || current.ty !== goalTy))
     ) {
-      const blocked = new Set(this.fixtureObstacles);
-      for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) blocked.add(key);
-      blocked.delete(tileKey(current.tx, current.ty));
-      blocked.delete(goalKey);
-      const queue = [{ tx: current.tx, ty: current.ty }];
-      const parents = new Map<string, string | null>([[tileKey(current.tx, current.ty), null]]);
-      for (let index = 0; index < queue.length; index++) {
-        const node = queue[index]!;
-        if (node.tx === goalTx && node.ty === goalTy) break;
-        for (const [dx, dy] of GRID_DIRECTIONS_8) {
-          const tx = node.tx + dx;
-          const ty = node.ty + dy;
-          if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) continue;
-          const key = tileKey(tx, ty);
-          if (parents.has(key) || blocked.has(key)) continue;
-          parents.set(key, tileKey(node.tx, node.ty));
-          queue.push({ tx, ty });
-        }
-      }
-      if (!parents.has(goalKey)) {
+      const route = this.foxNavigation.route(
+        current.tx,
+        current.ty,
+        goalTx,
+        goalTy,
+        this.topologyVersion,
+        this.obstacleTiles,
+      );
+      w.pathGoalKey = goalKey;
+      w.pathTopologyVersion = this.topologyVersion;
+      if (route.status === 'pending') {
         w.path = [];
-        w.pathGoalKey = goalKey;
+        w.pathTimer = 0.05;
+        return { atGoal: false, hasPath: true };
+      }
+      if (route.status === 'unreachable') {
+        w.path = [];
         w.pathTimer = 0.45;
         return { atGoal: false, hasPath: false };
       }
-      const path: { tx: number; ty: number }[] = [];
-      let cursor: string | null = goalKey;
-      while (cursor !== null) {
-        const [tx, ty] = cursor.split(',').map(Number);
-        path.push({ tx, ty });
-        cursor = parents.get(cursor) ?? null;
-      }
-      path.reverse();
-      path.shift();
-      w.path = path;
-      w.pathGoalKey = goalKey;
+      w.path = route.path;
       w.pathTimer = 0.45;
     } else {
       w.pathTimer -= dt;
@@ -3738,7 +3802,8 @@ export class GameRuntime {
   }
 
   private stepFoxes(dt: number): void {
-    const crops = findCropTiles(this.gs.tiles);
+    const crops = this.cropTargetList();
+    this.foxNavigation.advance(FOX_NAVIGATION_BUDGET);
     for (const w of [...this.foxes]) {
       if (w.dead) continue;
       w.actions.mixer?.update(dt);
@@ -3756,7 +3821,7 @@ export class GameRuntime {
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           w.root.rotation.y = Math.atan2(this.playerX - w.x, this.playerZ - w.z);
           this.playFoxAction(w, 'idle');
-          this.world.syncFarmTiles(this.gs.tiles);
+          this.syncWorldTiles([{ tx: bearTrap.tx, ty: bearTrap.ty }]);
           this.syncBearTrapModels();
           this.spawnFeedbackBurst(w.x, w.z, 0xd2a86a, 8, 0.3);
           this.audio.play('trap');
@@ -3879,21 +3944,21 @@ export class GameRuntime {
               t.structureHp -= 1;
               if (t.structureHp <= 0) {
                 t.state = 'grass';
-                this.world.syncFarmTiles(this.gs.tiles);
+                this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
               }
             }
             w.state = 'flee';
           } else if (w.kind === 'nibbler') {
-            nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
-            this.world.syncFarmTiles(this.gs.tiles);
-            this.rebuildCrops();
+            const nibbled = nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
+            if (nibbled) this.syncCropTile(w.targetTx, w.targetTy);
+            this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
             w.targetTx = -1;
             if (this.gs.rng() < 0.4) w.state = 'flee';
           } else if (w.kind === 'hauler') {
             if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
               w.haulSeed = true;
-              this.world.syncFarmTiles(this.gs.tiles);
-              this.rebuildCrops();
+              this.syncCropTile(w.targetTx, w.targetTy);
+              this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
             }
             w.state = 'flee';
           } else {
@@ -3911,9 +3976,10 @@ export class GameRuntime {
         w.eatTimer -= dt;
         w.root.scale.y = w.baseScale * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
         if (w.eatTimer <= 0) {
-          destroyCrop(this.gs.tiles, w.targetTx, w.targetTy);
-          this.world.syncFarmTiles(this.gs.tiles);
-          this.rebuildCrops();
+          if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
+            this.syncCropTile(w.targetTx, w.targetTy);
+          }
+          this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
           w.state = 'flee';
           w.root.scale.setScalar(w.baseScale);
         }
@@ -3999,47 +4065,117 @@ export class GameRuntime {
     w.pathTimer = 0;
   }
 
-  private rebuildCrops(): void {
-    this.clearCrops();
-    let n = 0;
-    const maxVis = 800;
-    for (let ty = 0; ty < GRID_H && n < maxVis; ty++) {
-      for (let tx = 0; tx < GRID_W && n < maxVis; tx++) {
-        const t = this.gs.tiles[ty]![tx]!;
-        if (t.state !== 'planted' && t.state !== 'mature') continue;
-        const stage = t.state === 'mature' ? 2 : t.stage;
-        const base = CROP_MODEL_BASE[t.seed?.species ?? 'beet'];
-        const suffix = stage === 2 ? 4 : stage + 1;
-        const key = `${base}_${suffix}` as ModelKey;
-        const { root } = cloneModel(key);
-        const baseScale = root.scale.x;
-        const wc = this.farmTileWorld(tx, ty);
-        root.position.set(wc.x, this.world.heightAt(wc.x, wc.z), wc.z);
-        const col = t.seed ? CROP_DEFS[t.seed.species]?.color : undefined;
-        if (col) {
-          root.traverse((o) => {
-            if (o instanceof THREE.Mesh && o.material instanceof THREE.MeshStandardMaterial) {
-              const source = o.material;
-              o.material = markMaterialOwner(source.clone(), 'clone');
-              disposeCloneOwnedMaterials([source]);
-              o.material.color.set(col);
-            }
-          });
-        }
-        this.world.getFarmActors().add(root);
-        this.crops.push({ root, baseScale, tx, ty, stage });
-        n++;
-      }
+  private cropTargetList(): { x: number; y: number }[] {
+    this.cropTargetSnapshot.length = 0;
+    for (const target of this.cropTargets.values()) this.cropTargetSnapshot.push(target);
+    return this.cropTargetSnapshot;
+  }
+
+  /** Reconcile one farm tile with its batched or primitive crop representation. */
+  private syncCropTile(tx: number, ty: number, rebuildBatch = true): void {
+    const key = tileKey(tx, ty);
+    this.cropBatches?.removeTile(key);
+    const fallback = this.cropFallbacks.get(key);
+    if (fallback) {
+      fallback.root.removeFromParent();
+      disposeModelClone(fallback.root);
+      this.cropFallbacks.delete(key);
+      const index = this.crops.indexOf(fallback);
+      if (index >= 0) this.crops.splice(index, 1);
     }
+
+    const tile = getTile(this.gs.tiles, tx, ty);
+    if (!tile || (tile.state !== 'planted' && tile.state !== 'mature') || !tile.seed) {
+      this.cropTargets.delete(key);
+      return;
+    }
+    this.cropTargets.set(key, { x: tx, y: ty });
+
+    const stage = tile.state === 'mature' ? 2 : tile.stage;
+    const base = CROP_MODEL_BASE[tile.seed.species] ?? CROP_MODEL_BASE.beet;
+    const suffix = stage === 2 ? 4 : stage + 1;
+    const modelKey = `${base}_${suffix}` as ModelKey;
+    const color = CROP_DEFS[tile.seed.species]?.color;
+    const wc = this.farmTileWorld(tx, ty);
+    const batched = this.cropBatches?.upsert(
+      {
+        tileKey: key,
+        tx,
+        ty,
+        x: wc.x,
+        y: this.world.heightAt(wc.x, wc.z),
+        z: wc.z,
+        modelKey,
+        tint: color,
+        baseScale: 1,
+      },
+      rebuildBatch,
+    ) ?? false;
+    if (batched) {
+      this.world.markShadowsDirty();
+      return;
+    }
+
+    // Preserve primitive fallbacks when a crop asset is unavailable.
+    const { root } = cloneModel(modelKey);
+    const baseScale = root.scale.x;
+    root.position.set(wc.x, this.world.heightAt(wc.x, wc.z), wc.z);
+    if (color) {
+      root.traverse((object) => {
+        if (object instanceof THREE.Mesh && object.material instanceof THREE.MeshStandardMaterial) {
+          const source = object.material;
+          object.material = markMaterialOwner(source.clone(), 'clone');
+          disposeCloneOwnedMaterials([source]);
+          object.material.color.set(color);
+        }
+      });
+    }
+    this.world.getFarmActors().add(root);
+    const actor = { root, baseScale, tx, ty, stage };
+    this.crops.push(actor);
+    this.cropFallbacks.set(key, actor);
     this.world.markShadowsDirty();
   }
 
+  private rebuildCrops(): void {
+    this.clearCrops();
+    this.refreshCropTargetsFromTiles();
+    let n = 0;
+    const maxVisible = 800;
+    for (let ty = 0; ty < GRID_H && n < maxVisible; ty++) {
+      for (let tx = 0; tx < GRID_W && n < maxVisible; tx++) {
+        const tile = this.gs.tiles[ty]![tx]!;
+        if (tile.state !== 'planted' && tile.state !== 'mature') continue;
+        this.syncCropTile(tx, ty, false);
+        n++;
+      }
+    }
+    this.cropBatches?.update(this.gs.simTime, true);
+    this.world.markShadowsDirty();
+  }
+
+  private refreshCropTargetsFromTiles(): void {
+    this.cropTargets.clear();
+    for (let ty = 0; ty < GRID_H; ty++) {
+      for (let tx = 0; tx < GRID_W; tx++) {
+        const tile = this.gs.tiles[ty]![tx]!;
+        if ((tile.state === 'planted' || tile.state === 'mature') && tile.seed) {
+          this.cropTargets.set(tileKey(tx, ty), { x: tx, y: ty });
+        }
+      }
+    }
+  }
+
   private clearCrops(): void {
+    this.cropBatches?.clear();
     for (const crop of this.crops) {
       crop.root.removeFromParent();
       disposeModelClone(crop.root);
     }
     this.crops = [];
+    this.cropFallbacks.clear();
+    this.cropTargets.clear();
+    this.cropTargetSnapshot.length = 0;
   }
 
   private seedPlainsAnimals(): void {

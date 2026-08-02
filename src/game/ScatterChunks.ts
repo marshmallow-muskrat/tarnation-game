@@ -13,6 +13,7 @@ import { instancedParts, type InstancedPart, type ModelKey } from './Assets';
 import { standardMaterial } from './materials';
 import { hash2 } from './noise';
 import { TERRAIN_SEED } from './terrain';
+import { tileKey } from '../sim/placement';
 
 type ChunkKey = string;
 
@@ -56,6 +57,9 @@ export class ScatterChunks {
   private lastCz = Number.NaN;
   private heightAt: (x: number, z: number) => number;
   private distToWater: (x: number, z: number) => number;
+  private readonly blockedTiles = new Set<string>();
+  private readonly dirtyChunks = new Set<ChunkKey>();
+  private occupancyVersion = -1;
 
   // Primitive fallbacks stay here for missing or failed assets.
   private readonly geoBlade = new THREE.BoxGeometry(0.04, 0.35, 0.04);
@@ -88,6 +92,37 @@ export class ScatterChunks {
 
   getRoot(): THREE.Group {
     return this.root;
+  }
+
+  /**
+   * Mask decorative scatter against the current interactive occupancy. Only live
+   * chunks containing a changed tile are rebuilt; unchanged chunks keep their
+   * existing InstancedMesh buffers and deterministic placements.
+   */
+  setInteractiveOccupancy(blocked: ReadonlySet<string>, version: number): void {
+    if (this.disposed || version === this.occupancyVersion) return;
+    this.dirtyChunks.clear();
+    for (const key of this.blockedTiles) {
+      if (!blocked.has(key)) this.dirtyChunks.add(chunkKeyForTile(key));
+    }
+    for (const key of blocked) {
+      if (!this.blockedTiles.has(key)) this.dirtyChunks.add(chunkKeyForTile(key));
+    }
+    this.blockedTiles.clear();
+    for (const key of blocked) this.blockedTiles.add(key);
+    this.occupancyVersion = version;
+    for (const key of this.dirtyChunks) this.rebuild(key);
+  }
+
+  private rebuild(key: ChunkKey): void {
+    const existing = this.live.get(key);
+    if (!existing) return;
+    this.root.remove(existing.group);
+    this.live.delete(key);
+    const [cx, cz] = key.split(',').map(Number) as [number, number];
+    const chunk = this.buildChunk(cx, cz);
+    this.live.set(key, chunk);
+    this.root.add(chunk.group);
   }
 
   dispose(): void {
@@ -242,6 +277,7 @@ export class ScatterChunks {
 
     const placeOk = (x: number, z: number, allowNearWater = false): boolean => {
       if (x < 1 || z < 1 || x > WORLD_SIZE - 1 || z > WORLD_SIZE - 1) return false;
+      if (this.blockedTiles.has(tileKey(Math.floor(x), Math.floor(z)))) return false;
       // Keep clear around homestead building only (not the whole tillable world)
       if (
         x >= HOMESTEAD_MIN_X + 12 &&
@@ -266,6 +302,7 @@ export class ScatterChunks {
         z >= HOMESTEAD_MIN_Z &&
         z <= HOMESTEAD_MAX_Z;
       if (this.distToWater(x, z) < 0.5) continue;
+      if (this.blockedTiles.has(tileKey(Math.floor(x), Math.floor(z)))) continue;
       if (inHomestead && hash2(i, 3, seed) > 0.35) continue; // thinner lawn
       const y = this.heightAt(x, z);
       const yaw = hash2(i, 4, seed) * Math.PI * 2;
@@ -390,4 +427,11 @@ export class ScatterChunks {
 
     return { key, cx, cz, group };
   }
+}
+
+function chunkKeyForTile(key: string): ChunkKey {
+  const comma = key.indexOf(',');
+  const tx = Number(key.slice(0, comma));
+  const ty = Number(key.slice(comma + 1));
+  return `${Math.floor(tx / CHUNK_SIZE)},${Math.floor(ty / CHUNK_SIZE)}`;
 }

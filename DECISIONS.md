@@ -132,3 +132,16 @@ asset references use a release callback so a retired fallback remains alive unti
 gone. App teardown invalidates abandoned async loads and releases the cache, while repeated React
 development remounts and New Adventure cycles create fresh world/input/runtime owners without changing
 simulation or save behavior. The asset-picker remains a separate explicitly scoped renderer owner.
+
+## 2026-08-01 — Make world updates incremental without changing simulation rules
+
+PERF-04 keeps all gameplay state and deterministic rules in their existing pure simulation modules.
+Raid navigation now uses shared reverse route fields keyed by target and an explicit movement-topology
+version; fields expand under a fixed per-step budget and are cleared when buildings or gates change.
+Crop visuals reconcile only changed tiles and use instance groups for compatible model/stage/tint
+combinations, with primitive fallback roots retained for missing assets. Decorative scatter receives a
+versioned occupancy mask for camp reservations, physical buildings, and worked/cropped tiles and
+rebuilds only affected live chunks. Renderer scratch objects are reused, shadow updates use quantized
+player/light anchors, and asset cloning selects native `Object3D.clone()` for static scenes while
+reserving `SkeletonUtils.clone()` for rigged scenes. No `src/sim` behavior, save format, timestep, or
+seeded RNG behavior changes in this task.
