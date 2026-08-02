@@ -89,7 +89,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  the next dependency-ready milestone is M7 Presentation.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; the next dependency-ready milestone is
+  M8 UX/accessibility.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -112,7 +113,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
-  ART-05 is integrated; the M7 production release and live evidence remain pending.
+  ART-05 is integrated; the M7 production release and live evidence are recorded below.
 
 - ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
   obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
@@ -157,6 +158,14 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the later UX/presentation cleanup rather than being changed in ART-05. The deployment workflow
   already runs `npm run test:ci` before asset validation and build.
 
+- M7 Presentation is released as PR #50 merge `76b9efd` after the integrated 284-test suite, simulation
+  checks, asset validation, production build, strict unused-symbol TypeScript, diff check, and production
+  audit passed. Automatic workflow [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
+  verified the exact merge SHA and deployed <https://tarnation.pages.dev/>. Fresh production smoke passed
+  Continue, Day 1/daylight, Saved status, the visible settlement objective, starter defense controls,
+  and Help modal open/close; no console warnings or errors were observed. The existing Help copy's
+  legacy `?legacy` and F12 grid-debug instructions remain a documented M8 UX follow-up.
+
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
@@ -165,7 +174,7 @@ The characterization baseline intentionally preserves current behavior for later
   the market stall, caravan, barrel, haystack, or bucket, so the authored props remain the source of
   truth. The current held-tool GLBs have no embedded grip/support marker nodes, so the typed
   equipment profiles remain the honest marker source; hardcoded tool-icon framing and broader
-  presentation cleanup remain later M7 work.
+  presentation cleanup remains later UX cleanup.
 - Before ART-03, the actor obstacle set excluded water and ambient animals selected unconstrained
   headings, so fox routes/flee exits and friendly wildlife could cross water or physical structures.
   This was a genuine collision-policy defect and is now corrected without adding a save field. Soft
@@ -570,3 +579,9 @@ Deployment record:
   Day 1/daylight HUD launch, Saved status, settlement objective, Help modal, and visible Q/B/weapon
   defense controls with no console errors or warnings. Existing legacy/F12 debug copy in the Help
   modal remains a documented later presentation/UX follow-up.
+- `76b9efd` — M7 presentation: ART-01–05 — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
+  verified the exact merge commit, ran simulation checks, the 284-test deterministic suite, asset
+  validation, and production build, then deployed automatically. Fresh production smoke passed
+  Continue, Day 1/daylight, Saved status, settlement objective, starter defense controls, and Help
+  modal open/close with no console warnings or errors.
