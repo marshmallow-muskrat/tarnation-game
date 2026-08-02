@@ -875,6 +875,18 @@ Add a GitHub Actions workflow that runs on PRs and main:
 
 No deployment proceeds from red CI. Protect `main` and require review once the workflow is stable.
 
+Status: Complete on `agent/qa-02-continuous-integration`. `.github/workflows/qa.yml` runs on every pull
+request and push to `main` with locked `npm ci`, strict unused-symbol typecheck, simulation checks,
+deterministic unit/integration tests, asset/audio/feel validation, performance budgets, production-only
+dependency audit, production build, Chromium E2E/visual checks, and failure-only artifact retention for
+reports, screenshots, traces, and videos. The existing deployment workflow repeats the strict typecheck
+and production audit so its own verified deployment path cannot bypass those release-critical checks.
+No formatter or linter is configured in the repository yet, so no made-up lint command was added; that
+remains a tooling follow-up. The full dependency audit currently reports six dev-tool advisories in the
+Wrangler-era toolchain; the production dependency tree is clean and the upgrade is deferred to REL-01.
+GitHub branch-protection/review settings remain a final release-boundary action under the authorized
+autonomous task loop and are not changed by this code PR.
+
 ### QA-03 — Production diagnostics
 
 - Keep a sanitized local diagnostics export: version/commit, browser/GPU, save metadata, fixed seed,
@@ -1038,7 +1050,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
-| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01 complete; QA-02, QA-03, REL-01, and REL-02 remain |
+| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01 and QA-02 complete; QA-03, REL-01, and REL-02 remain |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
 Recommended first implementation order:

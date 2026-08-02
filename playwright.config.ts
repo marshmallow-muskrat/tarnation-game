@@ -1,15 +1,17 @@
 import { defineConfig } from '@playwright/test';
 
+const isCi = Boolean(process.env.CI || process.env.PLAYWRIGHT_CI);
+
 /** Production-build browser coverage used by QA-01 and the release gate. */
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.e2e.ts',
   snapshotPathTemplate: '{testDir}/__screenshots__/{testFileName}/{arg}{ext}',
   fullyParallel: false,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
+  forbidOnly: isCi,
+  retries: isCi ? 2 : 0,
   workers: 1,
-  reporter: process.env.CI
+  reporter: isCi
     ? [['line'], ['html', { outputFolder: 'qa-artifacts/playwright-report', open: 'never' }]]
     : 'list',
   timeout: 60_000,

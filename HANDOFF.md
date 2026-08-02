@@ -112,6 +112,16 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   verification matrix passed: `test`, `test:ci`, `check`, `assetcheck`, `audiocheck`, `feelcheck`,
   `perfcheck`, production E2E, strict unused-symbol TypeScript, build, diff check, and production-only
   `npm audit` (0 vulnerabilities). No production or save behavior changed.
+- QA-02 is complete on `agent/qa-02-continuous-integration`: `.github/workflows/qa.yml` runs for every
+  pull request and push to `main`, starts from locked `npm ci`, runs strict typecheck, simulation,
+  deterministic unit/integration, asset/audio/feel, performance, production-only audit, production build,
+  and `npm run e2e:ci`, then retains `qa-artifacts/**` and `test-results/**` for 14 days on failure. The
+  E2E CI script enables the configured line and HTML reporters. The deployment workflow repeats strict
+  typecheck and production audit before its build/deployment path. No formatter/linter is configured yet;
+  the six full-audit dev-tool advisories remain the explicit REL-01 upgrade follow-up while
+  `npm audit --omit=dev` reports 0 vulnerabilities. The repository currently has no GitHub branch-protection
+  rule; release PRs remain the enforced process, with protection and the single final human review to be
+  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
