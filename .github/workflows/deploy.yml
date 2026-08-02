@@ -45,6 +45,9 @@ jobs:
       - name: Validate authored audio and provenance
         run: npm run audiocheck
 
+      - name: Run one-hour fixed-step feel soak
+        run: npm run feelcheck
+
       - name: Build production bundle
         run: npm run build
 

@@ -16,6 +16,7 @@ import {
 import type { Tile } from '../sim/farm';
 import {
   CAMERA_WORLD_EDGE_MARGIN,
+  cameraShakeAmplitude,
   clampCameraCoordinate,
   clampCameraZoom,
   cameraFrustum,
@@ -99,7 +100,10 @@ export class WorldRenderer {
   private readonly screenAngleFrom = new THREE.Vector3();
   private readonly screenAngleTarget = new THREE.Vector3();
   private shakeTime = 0;
+  private shakeDuration = 0;
   private shakeAmp = 0;
+  /** Renderer-only deterministic jitter; never consumes the seeded sim RNG. */
+  private shakeSeed = 0x6f4a_2c11;
   private time = 0;
 
   private actors = new THREE.Group();
@@ -718,11 +722,11 @@ export class WorldRenderer {
 
     if (this.shakeTime > 0) {
       this.shakeTime -= dt;
-      const a = this.shakeAmp * (this.shakeTime > 0 ? 1 : 0);
+      const a = cameraShakeAmplitude(this.shakeTime, this.shakeDuration, this.shakeAmp);
       this.shakeOffset.set(
-        (Math.random() - 0.5) * a,
-        (Math.random() - 0.5) * a * 0.4,
-        (Math.random() - 0.5) * a,
+        (this.nextShakeRandom() - 0.5) * a,
+        (this.nextShakeRandom() - 0.5) * a * 0.4,
+        (this.nextShakeRandom() - 0.5) * a,
       );
     } else {
       this.shakeOffset.set(0, 0, 0);
@@ -754,12 +758,17 @@ export class WorldRenderer {
   shake(duration: number, amplitude: number): void {
     if (this.reducedMotion || !this.cameraShakeEnabled) {
       this.shakeTime = 0;
+      this.shakeDuration = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);
       return;
     }
-    this.shakeTime = duration;
-    this.shakeAmp = amplitude;
+    const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+    const safeAmplitude = Number.isFinite(amplitude) && amplitude > 0 ? amplitude : 0;
+    if (safeDuration === 0 || safeAmplitude === 0) return;
+    this.shakeTime = Math.max(this.shakeTime, safeDuration);
+    this.shakeDuration = Math.max(this.shakeDuration, safeDuration);
+    this.shakeAmp = Math.max(this.shakeAmp, safeAmplitude);
   }
 
   adjustZoom(delta: number): number {
@@ -771,6 +780,7 @@ export class WorldRenderer {
     this.reducedMotion = enabled;
     if (enabled) {
       this.shakeTime = 0;
+      this.shakeDuration = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);
     }
@@ -780,9 +790,15 @@ export class WorldRenderer {
     this.cameraShakeEnabled = enabled;
     if (!enabled) {
       this.shakeTime = 0;
+      this.shakeDuration = 0;
       this.shakeAmp = 0;
       this.shakeOffset.set(0, 0, 0);
     }
+  }
+
+  private nextShakeRandom(): number {
+    this.shakeSeed = (this.shakeSeed * 1664525 + 1013904223) >>> 0;
+    return this.shakeSeed / 0x1_0000_0000;
   }
 
   getScreenBasis(): { forward: THREE.Vector3; right: THREE.Vector3 } {

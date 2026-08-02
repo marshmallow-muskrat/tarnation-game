@@ -3,6 +3,7 @@ import {
   CAMERA_ZOOM_MAX,
   CAMERA_ZOOM_MIN,
   CAMERA_WORLD_EDGE_MARGIN,
+  cameraShakeAmplitude,
   clampCameraCoordinate,
   clampCameraZoom,
   cameraFrustum,
@@ -49,6 +50,13 @@ describe('camera composition and readable lighting', () => {
     expect(quantizeShadowAnchor(10.11)).toBe(10);
     expect(quantizeShadowAnchor(10.14)).toBe(10.25);
     expect(quantizeShadowAnchor(-2.38)).toBe(-2.5);
+  });
+
+  it('eases camera shake out instead of holding a constant amplitude until a hard stop', () => {
+    expect(cameraShakeAmplitude(0.4, 0.4, 0.2)).toBeCloseTo(0.2);
+    expect(cameraShakeAmplitude(0.2, 0.4, 0.2)).toBeCloseTo(0.05);
+    expect(cameraShakeAmplitude(0, 0.4, 0.2)).toBe(0);
+    expect(cameraShakeAmplitude(0.2, 0, 0.2)).toBe(0);
   });
 
   it('keeps daylight fully lit until the existing authored dusk ramp begins', () => {

@@ -796,7 +796,7 @@ retain the oscillator cues only as a missing/blocked-asset fallback. The provena
 `npm run audiocheck` validate all 24 shipped WAV files. The deterministic baseline is 319 tests
 across 46 files; full simulation, asset, audio, build, strict TypeScript, diff, and production audit
 checks pass, and production-preview smoke triggered the audio bootstrap with no browser warnings or
-errors. FEEL-01 remains a separate follow-up task.
+errors. M9 release verification remains.
 
 ### AUD-02 — Mix for information
 
@@ -813,13 +813,23 @@ events, pans fox threats from their relative world position, and sends meaningfu
 through the existing HUD toast/status channel. The mix remains renderer-only: seeded RNG, fixed-step
 simulation, saves, and `src/sim/` are unchanged. The deterministic baseline is 321 tests across 46
 files; full simulation, asset, audio, build, strict TypeScript, diff, production audit, and
-production-preview smoke checks pass. FEEL-01 remains.
+production-preview smoke checks pass. M9 release verification remains.
 
 ### FEEL-01 — Cohesive feedback pass
 
 - Tune animation, audio, VFX, camera, and UI as one event timeline.
 - Remove redundant feedback before adding more.
 - Test at normal play speed for an hour; premium feel is consistency and restraint, not effect count.
+
+Status: Complete on `agent/feel-01-cohesive-feedback`. The fixed action state machine remains the
+animation start/contact/fire authority, while a typed renderer presentation timeline keeps semantic
+VFX, authored audio, camera shake, and hit pause on the same impact boundary. Repeated bundles are
+coalesced, melee misses no longer add impact shake/pause, and defeat feedback is emitted once instead
+of being layered again by the melee caller. Camera shake now eases out and uses renderer-only
+deterministic jitter; reduced-motion and camera-shake settings remain authoritative. The
+deterministic baseline is 326 tests across 47 files. `npm run feelcheck` covers 216,000 fixed steps
+(one simulated hour) with deterministic bounded output, and full simulation, unit, asset, audio,
+feel, build, strict TypeScript, diff, production-audit, and production-preview smoke checks pass.
 
 ## 16. Phase 10 — Test, CI, observability, and release discipline
 
@@ -1011,7 +1021,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01–02 complete on integration; FEEL-01 remains |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01–02 and FEEL-01 implementation complete; M9 release pending |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
