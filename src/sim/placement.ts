@@ -116,7 +116,7 @@ export function placementStatus(args: {
   rotation: number;
   tiles: Tile[][];
   placed: readonly PlacedBuilding[];
-  fixtures?: Set<string>;
+  fixtures?: ReadonlySet<string>;
   playerTile?: GridTile | null;
   terrainAllowed?: (tx: number, ty: number) => boolean;
 }): PlacementStatus {

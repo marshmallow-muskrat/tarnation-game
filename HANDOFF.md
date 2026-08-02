@@ -182,8 +182,16 @@ The characterization baseline intentionally preserves current behavior for later
   navigation-field ownership, and actor separation into `FoxDirector`; the raid state machine and
   gameplay callbacks remain in `GameRuntime`. Four focused tests cover exposed-target choice, role
   speeds, blocked-tile routing, and the current overlap/separation behavior. The integrated
-  deterministic baseline is now 125 tests across 19 files. Remaining PERF-05 slices are placement,
-  metrics, and HUD responsibility extraction.
+  deterministic baseline is now 125 tests across 19 files.
+
+- PERF-05's fourth extraction slice moves placeable catalog selection, deed/legacy rotation state,
+  placement preview coordinates, and player-visible validation reasons into `PlacementCoordinator`.
+  Placement commit, demolition, gates, and save/economy mutations remain in `GameRuntime`; the
+  coordinator has no DOM, Three.js, or simulation mutation dependency. Five focused tests cover
+  heading/deed orientation, cancellation state, distance/reservation/terrain/player-footprint
+  rejection, occupied assets, and the legacy wood-versus-deed payment boundary. The deterministic
+  baseline is now 130 tests across 20 files. Remaining PERF-05 slices are metrics and HUD
+  responsibility extraction.
 
 - Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
   exactly the same position, the existing separation fallback treats them as one unit apart before
