@@ -17,6 +17,7 @@ import { quotePurchase } from '../sim/economy';
 import { seedMechanismDescription } from '../sim/genetics';
 import { seedPacketCapacity } from '../sim/buildings';
 import { settlementObjective, type SettlementObjective } from '../sim/settlement';
+import type { FirstTenMinuteGuide } from '../sim/onboarding';
 import { assetDefinition, deedAssetId, shopAssets, type AssetCategory, type AssetId, type PurchasableAsset } from '../content/purchasables';
 import type { ModelKey } from './Assets';
 import {
@@ -213,6 +214,7 @@ export type HudSnapshot = {
     message: string;
   };
   objective: SettlementObjective;
+  onboarding: FirstTenMinuteGuide | null;
   win: null | {
     daysSurvived: number;
     cropsHarvested: number;
@@ -249,6 +251,7 @@ export type HudPresenterContext = {
   marketDistance: number;
   popups: readonly HudPopup[];
   save: SaveFeedback;
+  onboarding?: FirstTenMinuteGuide | null;
   winShownLocal: boolean;
 };
 
@@ -523,6 +526,7 @@ export class HudPresenter {
       toast: state.toast,
       save: { ...context.save },
       objective,
+      onboarding: context.onboarding ?? null,
       win:
         objective.complete && !state.winShown && !context.winShownLocal
           ? {

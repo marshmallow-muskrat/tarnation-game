@@ -50,4 +50,21 @@ describe('first plot guide', () => {
     tiles[STARTER_PLOT.minZ - 1]![STARTER_PLOT.minX] = tileAt('tilled');
     expect(firstPlotStage(tiles, 0, 0)).toBe('till');
   });
+
+  it('uses the active bindings in first-plot prompts instead of forcing the default keys', () => {
+    expect(firstPlotHint('plant', 'Beet', {
+      shovel: 'L',
+      bucket: 'T',
+      previousSeed: 'Comma',
+      nextSeed: 'Period',
+      primary: 'Space',
+    })).toContain('Comma Period');
+    expect(firstPlotHint('water', 'Beet', {
+      shovel: 'L',
+      bucket: 'T',
+      previousSeed: 'Comma',
+      nextSeed: 'Period',
+      primary: 'Space',
+    })).toContain('T bucket');
+  });
 });

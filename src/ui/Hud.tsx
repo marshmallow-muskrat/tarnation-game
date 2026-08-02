@@ -6,6 +6,7 @@ import type { ItemId } from '../sim/items';
 import type { AssetCategory, AssetId } from '../content/purchasables';
 import type { InputAction } from '../game/InputBindings';
 import type { GameSettingKey, GameSettingValue } from '../game/Settings';
+import { FIRST_TEN_MINUTE_SUPPORT_COPY } from '../sim/onboarding';
 import { useModalFocusScope } from './modal';
 
 type FocusedPanel = 'help' | 'codex' | 'vendor' | 'build' | 'inventory' | 'context' | 'settings';
@@ -268,6 +269,20 @@ export function Hud({
             ))}
           </ul>
         </section>
+        {hud.onboarding && (
+          <section className="onboarding-guide" aria-labelledby="onboarding-title">
+            <div className="onboarding-heading">
+              <p className="label">First steps</p>
+              <span aria-label={`Step ${hud.onboarding.step} of ${hud.onboarding.total}`}>
+                {hud.onboarding.step}/{hud.onboarding.total}
+              </span>
+            </div>
+            <h2 id="onboarding-title">{hud.onboarding.title}</h2>
+            <p className="onboarding-instruction">{hud.onboarding.instruction}</p>
+            <p className="onboarding-next">{hud.onboarding.nextGoal}</p>
+            <p className="onboarding-support">{FIRST_TEN_MINUTE_SUPPORT_COPY}</p>
+          </section>
+        )}
         <p
           className={`save-status ${hud.save.state === 'failed' ? 'failed' : ''}`}
           role={hud.save.state === 'failed' ? 'alert' : 'status'}
