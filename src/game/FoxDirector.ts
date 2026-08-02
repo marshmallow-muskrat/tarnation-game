@@ -55,6 +55,8 @@ export type FoxDirectionWorld = {
   isEnclosed(tx: number, ty: number): boolean;
   topologyVersion(): number;
   obstacleTiles(): ReadonlySet<string>;
+  /** Continuous point check for water and other hard actor blockers. */
+  isWalkable?: (x: number, z: number) => boolean;
 };
 
 /** Owns fox target selection, route following, and actor separation. */
@@ -119,7 +121,19 @@ export class FoxDirector {
     const goalKey = tileKey(goalTx, goalTy);
     const current = this.world.worldToFarmTile(fox.x, fox.z);
     if (!current) return { atGoal: false, hasPath: false };
+    if (this.world.obstacleTiles().has(goalKey)) {
+      fox.path = [];
+      fox.pathTimer = 0.45;
+      return { atGoal: false, hasPath: false };
+    }
     const goalPosition = this.world.farmTileWorld(goalTx, goalTy);
+    const moveTo = (x: number, z: number): boolean => {
+      if (this.world.isWalkable && !this.world.isWalkable(x, z)) return false;
+      fox.x = x;
+      fox.z = z;
+      fox.root.position.set(fox.x, this.world.heightAt(fox.x, fox.z), fox.z);
+      return true;
+    };
     if (current.tx === goalTx && current.ty === goalTy) {
       const dx = goalPosition.x - fox.x;
       const dz = goalPosition.z - fox.z;
@@ -129,9 +143,9 @@ export class FoxDirector {
       const remaining = Math.max(0, speed * dt);
       if (distance > 0 && remaining > 0) {
         const travel = Math.min(distance, remaining);
-        fox.x += (dx / distance) * travel;
-        fox.z += (dz / distance) * travel;
-        fox.root.position.set(fox.x, this.world.heightAt(fox.x, fox.z), fox.z);
+        if (!moveTo(fox.x + (dx / distance) * travel, fox.z + (dz / distance) * travel)) {
+          return { atGoal: false, hasPath: false };
+        }
         fox.root.rotation.y = Math.atan2(dx, dz);
       }
       return {
@@ -180,20 +194,28 @@ export class FoxDirector {
       const dz = target.z - fox.z;
       const distance = Math.hypot(dx, dz);
       if (distance < 0.0001) {
-        fox.x = target.x;
-        fox.z = target.z;
+        if (!moveTo(target.x, target.z)) {
+          fox.path = [];
+          fox.pathTimer = 0.45;
+          return { atGoal: false, hasPath: false };
+        }
         fox.path.shift();
         continue;
       }
       if (remaining < distance) {
-        fox.x += (dx / distance) * remaining;
-        fox.z += (dz / distance) * remaining;
-        fox.root.position.set(fox.x, this.world.heightAt(fox.x, fox.z), fox.z);
+        if (!moveTo(fox.x + (dx / distance) * remaining, fox.z + (dz / distance) * remaining)) {
+          fox.path = [];
+          fox.pathTimer = 0.45;
+          return { atGoal: false, hasPath: false };
+        }
         fox.root.rotation.y = Math.atan2(dx, dz);
         return { atGoal: false, hasPath: true };
       }
-      fox.x = target.x;
-      fox.z = target.z;
+      if (!moveTo(target.x, target.z)) {
+        fox.path = [];
+        fox.pathTimer = 0.45;
+        return { atGoal: false, hasPath: false };
+      }
       remaining -= distance;
       fox.path.shift();
     }
@@ -252,6 +274,10 @@ export class FoxDirector {
   }
 
   separate(foxes: Fox[]): void {
+    const safePositions = new Map<Fox, { x: number; z: number }>();
+    for (const fox of foxes) {
+      if (!fox.dead && fox.state !== 'trapped') safePositions.set(fox, { x: fox.x, z: fox.z });
+    }
     for (let pass = 0; pass < 24; pass++) {
       let changed = false;
       for (let i = 0; i < foxes.length; i++) {
@@ -284,6 +310,13 @@ export class FoxDirector {
     }
     for (const fox of foxes) {
       if (fox.dead || fox.state === 'trapped') continue;
+      if (this.world.isWalkable && !this.world.isWalkable(fox.x, fox.z)) {
+        const safe = safePositions.get(fox);
+        if (safe) {
+          fox.x = safe.x;
+          fox.z = safe.z;
+        }
+      }
       fox.x = clamp(fox.x, 2, WORLD_SIZE - 2);
       fox.z = clamp(fox.z, 2, WORLD_SIZE - 2);
       fox.root.position.set(fox.x, this.world.heightAt(fox.x, fox.z), fox.z);

@@ -603,6 +603,12 @@ textures, missing files, duplicate catalog IDs, fallbacks, and expected clips.
 - Prevent wildlife from walking through water/buildings unless it has an authored exception.
 - Rebuild/mask scatter around tilled land, fixtures, paths, and placed structures.
 
+Status: Complete on the integration branch. The typed policy keeps physical water, fixtures,
+homestead, and closed placed structures as hard actor obstacles; worked ground as soft occupancy;
+trees and rocks as interaction-only; camp reservations separate from actor collision; and scatter
+as renderer-only content with structural and authored-path clearance. No authored wildlife exception
+is currently released.
+
 ### ART-04 — Camera and lighting pass
 
 - Keep isometric composition stable and targetable.
@@ -919,7 +925,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
-| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–02 complete; ART-03–05 pending |
+| M7 Presentation | ART-01–05 | M3–M6 | In progress: ART-01–03 complete; ART-04–05 pending |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |

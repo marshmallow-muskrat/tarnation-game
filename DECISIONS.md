@@ -491,3 +491,23 @@ owner during camp rebuilds and teardown. The active picker now audits the 16 sol
 stall, and bucket views under the shared loader and shadowed lighting profile; authored bounds are
 kept within their typed placement footprints. No new external asset or license is introduced, and
 save schema, placement occupancy, economy rules, and deterministic simulation behavior are unchanged.
+
+## 2026-08-01 — Make occupancy classes explicit across actors and decoration
+
+ART-03 defines five shared classes in `src/sim/occupancy.ts`: hard obstacles, soft obstacles,
+decorative content, interaction-only content, and reservations. Physical water, fixed blocking
+fixtures, the homestead footprint, and closed placed structures are hard actor obstacles. Worked
+ground and active traps are soft occupancy: player and wildlife actors may cross them, while clear
+ground tools, placement validation, and scatter avoid them. Trees, boulders, and stumps are
+interaction-only: they remain axe/shovel targets and placement blockers without becoming actor walls.
+The full central camp remains a reservation, so it protects tilling, construction, and decoration
+without trapping the player or changing enclosure topology. Decorative scatter has no gameplay
+authority.
+
+Fox navigation and flee exits use the hard obstacle set plus continuous water/building checks;
+ambient wildlife uses the same point policy and deterministic safe-edge fallback. No released
+asset has an authored exception to the water/building rule. Scatter is rebuilt from the classed
+mask with a one-tile clearance around physical structures and interaction props, plus a future-ready
+path source; no authored path layer exists yet. This changes the previously documented behavior in
+which foxes and ambient animals could cross water or structures, but does not change saves, the
+fixed timestep, seeded simulation, enclosure rules, or the reservation/physical-collision split.
