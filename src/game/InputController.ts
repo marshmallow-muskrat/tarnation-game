@@ -30,6 +30,7 @@ export class InputController {
   private rmb = false;
   private lmbPressed = false;
   private rmbPressed = false;
+  private activePointerId: number | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private onGesture: (() => void) | null = null;
   private onFocusChange: ((focused: boolean) => void) | null = null;
@@ -84,15 +85,24 @@ export class InputController {
       this.canvas.removeEventListener('pointermove', this.onPointerMove);
       this.canvas.removeEventListener('contextmenu', this.onContextMenu);
     }
+    this.clearInteractionState();
     this.canvas = null;
+    this.onGesture = null;
+    this.onFocusChange = null;
+  }
+
+  /** Clear held keyboard/pointer state when a modal or focus boundary takes over. */
+  clearInteractionState(): void {
+    if (this.canvas && this.activePointerId !== null && this.canvas.hasPointerCapture(this.activePointerId)) {
+      this.canvas.releasePointerCapture(this.activePointerId);
+    }
+    this.activePointerId = null;
     this.held.clear();
     this.pressed.clear();
     this.lmb = false;
     this.rmb = false;
     this.lmbPressed = false;
     this.rmbPressed = false;
-    this.onGesture = null;
-    this.onFocusChange = null;
   }
 
   /** Call once per frame after consuming JustPressed flags. */
@@ -161,12 +171,7 @@ export class InputController {
   };
 
   private onBlur = (): void => {
-    this.held.clear();
-    this.pressed.clear();
-    this.lmb = false;
-    this.rmb = false;
-    this.lmbPressed = false;
-    this.rmbPressed = false;
+    this.clearInteractionState();
     this.onFocusChange?.(false);
   };
 
@@ -179,6 +184,7 @@ export class InputController {
   private onPointerDown = (e: PointerEvent): void => {
     this.onGesture?.();
     this.canvas?.focus({ preventScroll: true });
+    this.activePointerId = e.pointerId;
     this.updatePointer(e);
     if (e.button === 0) {
       this.lmb = true;
@@ -193,11 +199,13 @@ export class InputController {
   private onPointerUp = (e: PointerEvent): void => {
     if (e.button === 0) this.lmb = false;
     if (e.button === 2) this.rmb = false;
+    if (this.activePointerId === e.pointerId) this.activePointerId = null;
   };
 
-  private onPointerCancel = (): void => {
+  private onPointerCancel = (e: PointerEvent): void => {
     this.lmb = false;
     this.rmb = false;
+    if (this.activePointerId === e.pointerId) this.activePointerId = null;
   };
 
   private onPointerMove = (e: PointerEvent): void => {
