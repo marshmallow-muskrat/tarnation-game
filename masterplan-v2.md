@@ -656,7 +656,7 @@ Status: Complete on `agent/ux-01-input-contract`. The player-facing keyboard/mou
 typed and remappable; conflicts swap deterministically, malformed persisted bindings reset safely,
 primary/context/placement/demolition routes have keyboard equivalents, inventory use/delete no
 longer depend on double-click/right-click, and live HUD prompts stay synchronized. The full
-deterministic baseline is 292 tests across 42 files; the exact production-preview smoke passed
+deterministic baseline is 293 tests across 42 files; the exact production-preview smoke passed
 after the final label synchronization.
 
 ### UX-02 — Rebuild information hierarchy

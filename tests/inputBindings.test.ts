@@ -17,6 +17,7 @@ describe('keyboard input contract', () => {
     expect(INPUT_BINDING_DEFINITIONS).toHaveLength(INPUT_ACTIONS.length);
     expect(new Set(Object.values(DEFAULT_INPUT_BINDINGS)).size).toBe(INPUT_ACTIONS.length);
     expect(bindingCodes(DEFAULT_INPUT_BINDINGS, 'moveUp')).toEqual(['KeyW', 'ArrowUp']);
+    expect(bindingCodes(DEFAULT_INPUT_BINDINGS, 'pause')).toEqual(['Escape']);
     expect(formatBinding(DEFAULT_INPUT_BINDINGS, 'moveUp')).toBe('W / ↑');
   });
 
@@ -41,6 +42,18 @@ describe('keyboard input contract', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toContain('reserved as an alternate');
+  });
+
+  it('keeps Escape as a cancellation alias and reserves the hidden developer key', () => {
+    const rebound = rebindInput(DEFAULT_INPUT_BINDINGS, 'pause', 'KeyL');
+    expect(rebound.ok).toBe(true);
+    if (!rebound.ok) return;
+    expect(bindingCodes(rebound.bindings, 'pause')).toEqual(['KeyL', 'Escape']);
+
+    const reserved = rebindInput(DEFAULT_INPUT_BINDINGS, 'inventory', 'F12');
+    expect(reserved.ok).toBe(false);
+    if (reserved.ok) return;
+    expect(reserved.reason).toContain('reserved for development');
   });
 
   it('round-trips valid bindings and restores defaults for malformed settings', () => {

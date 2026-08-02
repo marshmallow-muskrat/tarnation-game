@@ -85,6 +85,7 @@ export const INPUT_ALIASES: Readonly<Partial<Record<InputAction, readonly string
   seedNext: ['Period'],
   zoomIn: ['NumpadAdd'],
   zoomOut: ['NumpadSubtract'],
+  pause: ['Escape'],
 };
 
 export type InputBindingDefinition = {
@@ -165,6 +166,9 @@ export function rebindInput(
   const trimmed = code.trim();
   if (!trimmed || trimmed === 'Unidentified') {
     return { ok: false, bindings: cloneInputBindings(bindings), reason: 'Choose a named keyboard key.' };
+  }
+  if (trimmed === 'F12') {
+    return { ok: false, bindings: cloneInputBindings(bindings), reason: 'F12 is reserved for development.' };
   }
 
   const current = bindings[action];

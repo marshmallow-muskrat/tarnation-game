@@ -167,7 +167,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   and Help modal open/close; no console warnings or errors were observed. UX-01 is now complete on
   `agent/ux-01-input-contract`: the typed remappable keyboard contract, deterministic conflict swap,
   safe malformed-settings fallback, non-pointer world/inventory routes, synchronized HUD labels, and
-  explicit inventory use/delete controls are covered by 292 deterministic tests across 42 files.
+  explicit inventory use/delete controls are covered by 293 deterministic tests across 42 files.
   The exact production-preview smoke reached Day 1/daylight, opened Help and its remapping controls,
   and recorded no console warnings or errors. The deployment workflow already runs `npm run test:ci`
   before asset validation and build.
