@@ -12,28 +12,30 @@ type FakeInput = {
   left: boolean;
   right: boolean;
   space: boolean;
+  enter: boolean;
   consumeLmb(): boolean;
   consumeRmb(): boolean;
   justPressed(code: string): boolean;
 };
 
-function inputFor({ left = false, right = false, space = false }: Partial<Pick<FakeInput, 'left' | 'right' | 'space'>> = {}): FakeInput {
+function inputFor({ left = false, right = false, space = false, enter = false }: Partial<Pick<FakeInput, 'left' | 'right' | 'space' | 'enter'>> = {}): FakeInput {
   return {
     left,
     right,
     space,
+    enter,
     consumeLmb() {
       const value = this.left;
       this.left = false;
       return value;
     },
     consumeRmb() {
-      const value = this.right || this.space;
+      const value = this.right;
       this.right = false;
       return value;
     },
-    justPressed(code) {
-      return code === 'Space' && this.space;
+    justPressed(action) {
+      return (action === 'secondary' && this.space) || (action === 'primary' && this.enter);
     },
   };
 }
@@ -115,6 +117,26 @@ describe('interaction routing', () => {
       toolbarSlot: SLOT_AXE,
     });
     expect(log).toEqual(['context', 'combat-attempt', 'combat-axe']);
+  });
+
+  it('routes Enter as the non-pointer primary action for tools and placement', () => {
+    const toolLog: string[] = [];
+    new InteractionSystem(inputFor({ enter: true }), handlers(toolLog)).process({
+      buildingMode: false,
+      demolishMode: false,
+      toolSlotActive: true,
+      toolbarSlot: SLOT_SHOTGUN,
+    });
+    expect(toolLog).toEqual(['tool-attempt', 'bucket']);
+
+    const placementLog: string[] = [];
+    new InteractionSystem(inputFor({ enter: true }), handlers(placementLog)).process({
+      buildingMode: true,
+      demolishMode: false,
+      toolSlotActive: false,
+      toolbarSlot: SLOT_SHOTGUN,
+    });
+    expect(placementLog).toEqual(['place']);
   });
 
   it('uses demolish mode for either pointer button without opening context or combat', () => {

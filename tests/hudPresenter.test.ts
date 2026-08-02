@@ -8,6 +8,7 @@ import {
   type HudPresenterContext,
   type HudSnapshot,
 } from '../src/game/HudPresenter';
+import { DEFAULT_INPUT_BINDINGS } from '../src/game/InputBindings';
 
 function makeContext(state = createGameState(123)): HudPresenterContext {
   return {
@@ -17,6 +18,7 @@ function makeContext(state = createGameState(123)): HudPresenterContext {
     selectedBuildIndex: 0,
     placement: () => ({ valid: false, reason: 'Open build mode to preview a structure' }),
     helpOpen: false,
+    bindings: DEFAULT_INPUT_BINDINGS,
     codexOpen: false,
     codexSelectedKey: null,
     codexCompareKeys: [],
@@ -65,6 +67,10 @@ describe('HUD presenter', () => {
     expect(received!.inventory).toHaveLength(24);
     expect(received!.seedStorage).toEqual({ used: 5, capacity: 24 });
     expect(received!.toolbar.map((slot) => slot.name)).toEqual(['Brown Shotgun', 'Shovel', 'Red Axe']);
+    expect(received!.bindings.find((binding) => binding.action === 'primary')).toMatchObject({
+      label: 'Primary action · work, place, or demolish',
+      display: 'Enter',
+    });
     expect(received!.toolbar[0]!.selected).toBe(true);
     expect(received!.build.options.map((option) => option.name)).toEqual([
       'Fence Section',
@@ -191,5 +197,19 @@ describe('HUD presenter', () => {
     ]);
     expect(received!.codex.status).toContain('Grass selected');
     expect(received!.codex.entries.find((entry) => entry.key === 'known:Grass|grass|0|none')?.compareSelected).toBe(true);
+  });
+
+  it('publishes remapped controls so player-facing prompts can stay synchronized', () => {
+    const context = makeContext();
+    context.bindings = { ...DEFAULT_INPUT_BINDINGS, primary: 'KeyL' };
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received!.bindings.find((binding) => binding.action === 'primary')?.display).toBe('L');
   });
 });

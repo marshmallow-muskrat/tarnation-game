@@ -89,8 +89,9 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  M7 Presentation is now released as PR #50 merge `76b9efd`; the next dependency-ready milestone is
-  M8 UX/accessibility.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is in progress.
+  UX-01 is complete on the task branch `agent/ux-01-input-contract`; UX-02 is the next
+  dependency-ready task.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -153,18 +154,30 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   deterministic baseline is 284 tests across 41 files. `npm run test`, `npm run test:ci`, `npm run check`,
   `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`, and
   `npm audit --omit=dev` pass. Local visual smoke reached Day 1/daylight with HUD, player, homestead,
-  grounded shadows, and controls visible; no console warnings or errors were observed. The existing
-  Help copy still exposes legacy `?legacy` and F12 grid-debug instructions, which remains deferred to
-  the later UX/presentation cleanup rather than being changed in ART-05. The deployment workflow
-  already runs `npm run test:ci` before asset validation and build.
+  grounded shadows, and controls visible; no console warnings or errors were observed. UX-01 later
+  removes the legacy `?legacy` and F12 grid-debug copy from the player-facing Help panel; the hidden
+  developer-only runtime paths remain deferred to UX-02's full scaffolding cleanup. The deployment
+  workflow already runs `npm run test:ci` before asset validation and build.
 
 - M7 Presentation is released as PR #50 merge `76b9efd` after the integrated 284-test suite, simulation
   checks, asset validation, production build, strict unused-symbol TypeScript, diff check, and production
   audit passed. Automatic workflow [30741246426](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30741246426)
   verified the exact merge SHA and deployed <https://tarnation.pages.dev/>. Fresh production smoke passed
   Continue, Day 1/daylight, Saved status, the visible settlement objective, starter defense controls,
-  and Help modal open/close; no console warnings or errors were observed. The existing Help copy's
-  legacy `?legacy` and F12 grid-debug instructions remain a documented M8 UX follow-up.
+  and Help modal open/close; no console warnings or errors were observed. UX-01 is now complete on
+  `agent/ux-01-input-contract`: the typed remappable keyboard contract, deterministic conflict swap,
+  safe malformed-settings fallback, non-pointer world/inventory routes, synchronized HUD labels, and
+  explicit inventory use/delete controls are covered by 293 deterministic tests across 42 files.
+  The exact production-preview smoke reached Day 1/daylight, opened Help and its remapping controls,
+  and recorded no console warnings or errors. The deployment workflow already runs `npm run test:ci`
+  before asset validation and build.
+
+- UX-01 intentionally leaves fresh-game inventory open by default for UX-02 to correct, and keeps the
+  hidden developer-only `?legacy` and F12 runtime paths in place until UX-02's full scaffolding cleanup.
+  Alternate arrow, T, comma/period, and numpad bindings remain reserved for their current actions so
+  remapping cannot create duplicate routes; this is the explicit UX-01 conflict policy. Full modal
+  semantics/focus restoration, settings controls, scaling/contrast coverage, and the first-ten-minutes
+  onboarding study remain deferred to UX-03–UX-05.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

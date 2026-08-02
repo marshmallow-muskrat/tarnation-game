@@ -22,6 +22,13 @@
   box-sizing: border-box;
 }
 
+button:focus-visible,
+summary:focus-visible,
+canvas:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
 html,
 body,
 #root {
@@ -686,6 +693,85 @@ kbd {
   line-height: 1.4;
 }
 
+.help-bindings {
+  margin-top: 14px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
+}
+
+.help-bindings summary {
+  color: var(--teal);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.help-bindings-copy {
+  margin: 10px 0 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.binding-group + .binding-group {
+  margin-top: 12px;
+}
+
+.binding-group .label {
+  color: var(--teal);
+  margin-bottom: 6px;
+}
+
+.binding-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.binding-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.binding-key,
+.binding-reset {
+  min-width: 84px;
+  padding: 4px 7px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.22);
+  color: var(--ink);
+  cursor: pointer;
+  font: 10px ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.binding-key:hover,
+.binding-key.capturing,
+.binding-key:focus-visible {
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.binding-key.capturing {
+  min-width: 180px;
+}
+
+.binding-reset {
+  margin-top: 14px;
+  color: var(--amber);
+  font-family: inherit;
+}
+
+.binding-reset:hover,
+.binding-reset:focus-visible {
+  border-color: var(--amber);
+}
+
 /* -------------------------------------------------------------- seed Codex */
 .codex-panel {
   position: absolute;
@@ -1291,6 +1377,48 @@ kbd {
 .inv-slot {
   cursor: default;
   pointer-events: auto;
+}
+
+.inv-item {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.inv-item:hover,
+.inv-item:focus-visible {
+  background: rgba(152, 216, 201, 0.14);
+}
+
+.inv-delete-trigger {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  background: rgba(7, 13, 12, 0.96);
+  color: var(--faint);
+  cursor: pointer;
+  font: 12px/13px ui-sans-serif, system-ui, sans-serif;
+}
+
+.inv-delete-trigger:hover,
+.inv-delete-trigger:focus-visible {
+  border-color: var(--red);
+  color: #e6a49a;
 }
 
 /* --------------------------------------------------------------- tooltip */

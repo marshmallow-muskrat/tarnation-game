@@ -1,3 +1,5 @@
+import type { InputAction } from './InputBindings';
+
 export const SLOT_SHOTGUN = 0;
 export const SLOT_SHOVEL = 1;
 export const SLOT_AXE = 2;
@@ -5,7 +7,7 @@ export const SLOT_AXE = 2;
 export type InteractionInput = {
   consumeLmb(): boolean;
   consumeRmb(): boolean;
-  justPressed(code: string): boolean;
+  justPressed(action: InputAction): boolean;
 };
 
 export type InteractionMode = {
@@ -56,12 +58,12 @@ export class InteractionSystem {
   ) {}
 
   process(mode: InteractionMode): void {
-    if (this.input.consumeRmb() || this.input.justPressed('Space')) {
+    if (this.input.consumeRmb() || this.input.justPressed('secondary')) {
       if (mode.buildingMode) this.handlers.rotatePlacement();
       else if (mode.demolishMode) this.handlers.destroyAtPointer();
       else if (!this.handlers.openPlacedContext()) this.useCombatAction(mode);
     }
-    if (this.input.consumeLmb()) {
+    if (this.input.consumeLmb() || this.input.justPressed('primary')) {
       if (mode.buildingMode) this.handlers.placeSelectedBuilding();
       else if (mode.demolishMode) this.handlers.destroyAtPointer();
       else this.useSelectedTool(mode);
