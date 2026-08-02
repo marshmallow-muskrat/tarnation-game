@@ -941,6 +941,20 @@ Three.js, save, simulation, economy, or gameplay behavior changed.
 - At least two one-hour external playtests complete without developer intervention.
 - Deployment comes from the exact reviewed commit and is smoke-tested afterward.
 
+Status: Implementation is complete on `agent/rel-02-release-checklist`, with the exact reviewed main
+deployment and live smoke evidence pending the M10 release. The top-left objective panel is now bounded
+and compact while remaining readable; `J` toggles it and `G` toggles the market guide, with both controls
+listed in Help, Settings, and the local controls documentation. The production browser checklist covers
+fresh launch, settings and keyboard routes, persisted movement and farming, merchant pricing/purchase,
+placement and reload, raids, the authored ending, diagnostics export, no public debug handle, and a
+recoverable unsupported-WebGL error. Existing deterministic save/migration, economy, asset/audio,
+resource-disposal, animation-profile, fixed-step performance, and browser-error gates remain green.
+The local release matrix passed with 334 Vitest tests across 49 files, 10/10 production-build E2E tests,
+all simulation/asset/audio/feel/performance checks, strict unused-symbol TypeScript, production build,
+`git diff --check`, `npm audit`, and `npm audit --omit=dev` (0 vulnerabilities). Human animation/accessibility
+signoff and external playtesting: **Deferred by owner until after completion of this update; not performed
+and not claimed.**
+
 ## 17. Core Release Gate
 
 Content expansion is forbidden until all are true:
@@ -1078,7 +1092,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
-| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: QA-01–03 and REL-01 complete; REL-02 remains |
+| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: REL-02 implementation complete; exact main deployment and live smoke pending |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
 Recommended first implementation order:

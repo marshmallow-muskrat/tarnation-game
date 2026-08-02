@@ -1,7 +1,7 @@
 /**
  * Standalone presentation audit for the active catalog and authored props.
  *
- * Run: npm run dev → http://localhost:5173/picker.html
+ * Run: npm run dev → http://localhost:5183/picker.html
  * The picker uses the same manifest loader, lighting profile, target heights,
  * shadows, and authored presentation builders as the game world.
  */

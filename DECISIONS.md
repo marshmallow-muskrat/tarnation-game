@@ -721,3 +721,13 @@ index successfully, and the reviewed Pages deploy command remains `pages deploy 
 --branch=main`. `npm ci`, full `npm audit`, and `npm audit --omit=dev` all passed with zero vulnerabilities.
 Contribution, release-note, all-rights-reserved licensing, and asset/audio provenance ledgers were added.
 No Vite, React, Three.js, save, simulation, economy, or gameplay contract changed.
+
+## 2026-08-02 — Keep the settlement objective readable and dismissible
+
+The player-facing settlement objective remains available by default, but its HUD panel is bounded to a
+compact readable width and viewport height so onboarding copy cannot cover the play space. `J` toggles the
+objective and `G` toggles the market guide; both actions are remappable through the existing Settings/Help
+binding surface and remain runtime-only presentation state, so no save schema or simulation rule changes.
+The release browser suite proves both hide/show routes and the bounded panel width. Human animation/accessibility
+signoff and external playtesting are **Deferred by owner until after completion of this update; not performed
+and not claimed.**

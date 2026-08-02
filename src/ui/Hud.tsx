@@ -259,18 +259,20 @@ export function Hud({
             <p className="value">{hud.seedStorage.used}/{hud.seedStorage.capacity}</p>
           </div>
         </div>
-        <section className="settlement-objective" aria-label="Settlement objective">
-          <p className="label">Settlement objective</p>
-          <p className="settlement-objective-title">{hud.objective.title}</p>
-          <ul>
-            {hud.objective.steps.map((step) => (
-              <li className={step.complete ? 'complete' : ''} key={step.id}>
-                <span aria-hidden>{step.complete ? '✓' : '○'}</span>
-                <span>{step.label}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {hud.objectiveVisible && (
+          <section className="settlement-objective" aria-label="Settlement objective">
+            <p className="label">Settlement objective</p>
+            <p className="settlement-objective-title">{hud.objective.title}</p>
+            <ul>
+              {hud.objective.steps.map((step) => (
+                <li className={step.complete ? 'complete' : ''} key={step.id}>
+                  <span aria-hidden>{step.complete ? '✓' : '○'}</span>
+                  <span>{step.label}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
         {hud.onboarding && (
           <section className="onboarding-guide" aria-labelledby="onboarding-title">
             <div className="onboarding-heading">
@@ -308,14 +310,16 @@ export function Hud({
       </div>
 
       {/* Compass to the market stall */}
-      <div className="market-compass">
-        <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden>
-          <g style={{ transform: `rotate(${hud.marketAngle}rad)`, transformOrigin: '20px 20px' }}>
-            <path d="M20 4 L30 26 L20 20 L10 26 Z" className="compass-arrow" />
-          </g>
-        </svg>
-        <span className="compass-label">Market · {hud.marketDistance}m</span>
-      </div>
+      {hud.marketGuideVisible && (
+        <div className="market-compass" aria-label="Market guide">
+          <svg viewBox="0 0 40 40" width="40" height="40" aria-hidden>
+            <g style={{ transform: `rotate(${hud.marketAngle}rad)`, transformOrigin: '20px 20px' }}>
+              <path d="M20 4 L30 26 L20 20 L10 26 Z" className="compass-arrow" />
+            </g>
+          </svg>
+          <span className="compass-label">Market · {hud.marketDistance}m</span>
+        </div>
+      )}
 
       {/* Floating gather popups */}
       {hud.popups.map((p) => (
@@ -810,6 +814,7 @@ export function Hud({
               <p><kbd>{bindingLabel('interact')}</kbd> Open the merchant shop · permits advance the homestead</p>
               <p><kbd>{bindingLabel('context')}</kbd> Open a placed-asset context menu</p>
               <p><kbd>{bindingLabel('build')}</kbd> Build catalog · <kbd>{bindingLabel('nextBuild')}</kbd> Next building while placing</p>
+              <p><kbd>{bindingLabel('objective')}</kbd> Show/hide settlement objective · <kbd>{bindingLabel('marketGuide')}</kbd> Show/hide market guide</p>
               <p><kbd>{bindingLabel('demolish')}</kbd> Demolish mode · <kbd>{bindingLabel('primary')}</kbd> Destroy hovered asset</p>
               <p><kbd>{bindingLabel('inventory')}</kbd> Inventory · <kbd>{bindingLabel('codex')}</kbd> Seed Codex · <kbd>{bindingLabel('help')}</kbd> This guide</p>
               <p><kbd>{bindingLabel('zoomIn')}</kbd> <kbd>{bindingLabel('zoomOut')}</kbd> Camera zoom · <kbd>{bindingLabel('reducedMotion')}</kbd> Reduced motion</p>

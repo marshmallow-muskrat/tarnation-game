@@ -242,4 +242,19 @@ describe('HUD presenter', () => {
     expect(received!.onboarding).toEqual(context.onboarding);
     expect(Object.keys(createGameState(123))).not.toContain('onboarding');
   });
+
+  it('publishes explicit visibility controls for the settlement objective and market guide', () => {
+    const context = makeContext();
+    context.objectiveVisible = false;
+    context.marketGuideVisible = false;
+    const presenter = new HudPresenter();
+    let received: HudSnapshot | null = null;
+    presenter.setListener((snapshot) => {
+      received = snapshot;
+    });
+
+    presenter.push(true, context);
+
+    expect(received).toMatchObject({ objectiveVisible: false, marketGuideVisible: false });
+  });
 });

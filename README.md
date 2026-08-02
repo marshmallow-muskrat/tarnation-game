@@ -15,7 +15,7 @@ npm run dev
 ```
 
 - Game: <http://localhost:5183/>
-- Asset preview: <http://localhost:5173/picker.html>
+- Asset preview: <http://localhost:5183/picker.html>
 - Typecheck: `npx tsc --noEmit`
 - Production build: `npm run build`
 - Production deploy: automatic after a verified push to `main`
@@ -42,6 +42,8 @@ npm run dev
 | M | Reduced motion |
 | V | Toggle sound feedback |
 | H | Field guide |
+| J | Show/hide settlement objective |
+| G | Show/hide market guide |
 | Left click | Use the selected tool |
 | Right click / Space | Use the selected ranged weapon; rotate in placement; context actions on placed assets |
 | E | Fill the bucket at water or open the merchant shop when nearby |
