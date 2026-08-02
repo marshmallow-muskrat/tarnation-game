@@ -599,8 +599,21 @@ controls, visible focus, color-independent state, and 44px minimum control rows.
 conflict-safe input rebinding is available from Settings as well as Help. The day/night schedule
 stays fixed because a partial day-length preference would desynchronize crop growth, raid timing,
 cooldowns, and economy pacing under the fixed timestep. No save field, migration, seeded RNG,
-`src/sim/` rule, or asset path changed. Synthesized audio remains a fallback on the effects bus until
-AUD-01 authors the production music, ambience, and UI buses; onboarding remains UX-05.
+`src/sim/` rule, or asset path changed. AUD-01 now supplies original authored music, ambience, and UI
+sources with synthesized audio retained only as a missing/blocked-asset fallback; AUD-02 remains the
+separate information-mix pass. Onboarding remains UX-05.
+
+## 2026-08-02 — Author compact audio assets and keep synthesis as a fallback
+
+AUD-01 keeps the Web Audio context optional and lazy: the first user gesture creates the master gain
+root, four typed leaf buses (music, effects, ambience, and UI), and loads the authored event assets
+without delaying boot. Original deterministic WAV files in `public/audio/` cover the current gameplay
+and presentation event families plus day/night music and ambience loops; `CREDITS.md` records that
+they are generated from the repository's retained source script with no third-party license. Day and
+night loop selection follows the existing fixed simulation phase but does not alter timing or RNG.
+Missing, blocked, or decode-failed files use the prior oscillator cue for that event and report one
+recoverable warning, so audio failure cannot block play. No save field, simulation rule, asset model,
+or fixed-step contract changed; AUD-02 remains responsible for the information-priority mix pass.
 
 ## 2026-08-01 — Keep the first ten minutes derived and non-modal
 

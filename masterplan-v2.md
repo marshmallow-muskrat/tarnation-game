@@ -716,8 +716,8 @@ volume controls, mute, reduced motion, independent camera shake, UI/text scale, 
 and the existing conflict-safe keyboard rebinding/reset contract. Settings use labeled controls,
 44px minimum control rows, visible focus, color-independent checkbox states, live status regions,
 and a fixed schedule note because day length is coupled to crop, raid, cooldown, and economy timing.
-The current fallback has no authored music or ambience sources, so synthesized cues remain on the
-effects bus until AUD-01. The deterministic baseline is 303 tests across 44 files. Full test,
+AUD-01 now supplies authored music, ambience, and UI sources with synthesized cues retained only as
+the missing/blocked-asset fallback. The deterministic baseline is 303 tests across 44 files. Full test,
 simulation, asset, build, strict TypeScript, diff, and production-audit checks pass. Production
 preview smoke verified the pausing Settings dialog, accessible labels, focus trap/restoration,
 contrast toggle, and no browser warnings/errors. UX-05 implementation is complete by explicit
@@ -788,6 +788,15 @@ Automation:
 - Build typed audio events and buses: master, music, effects, ambience, UI.
 - Author or license a cohesive set for footsteps by surface, tools by material, water, crops, foxes,
   building, UI, rewards, merchant, day transitions, and save/error states.
+
+Status: Complete on `agent/aud-01-authored-audio`. The runtime now uses a typed event catalog with a
+master bus plus music, effects, ambience, and UI buses; original deterministic WAV assets cover the
+event families above, including day/night loop layers. Assets load lazily after a user gesture and
+retain the oscillator cues only as a missing/blocked-asset fallback. The provenance ledger and
+`npm run audiocheck` validate all 24 shipped WAV files. The deterministic baseline is 319 tests
+across 46 files; full simulation, asset, audio, build, strict TypeScript, diff, and production audit
+checks pass, and production-preview smoke triggered the audio bootstrap with no browser warnings or
+errors. AUD-02 and FEEL-01 remain separate follow-up tasks.
 
 ### AUD-02 — Mix for information
 
@@ -993,7 +1002,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | In progress: AUD-01 complete on the task branch; AUD-02 and FEEL-01 remain |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
