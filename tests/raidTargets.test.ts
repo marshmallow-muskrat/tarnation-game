@@ -92,6 +92,19 @@ describe('raid consequence target policy', () => {
     expect(selectRaidTarget('sapper', [crop(7, 8, 3)])).toMatchObject({ kind: 'crop', x: 7, y: 8 });
   });
 
+  it('treats an open gate as a cleared route while a closed gate remains a sapper target', () => {
+    expect(selectRaidTarget('sapper', [structure('gate', 1, 3), crop(8, 8, 4)])).toMatchObject({
+      kind: 'structure',
+      structure: 'gate',
+      index: 3,
+    });
+    expect(selectRaidTarget('sapper', [crop(8, 8, 4)])).toMatchObject({
+      kind: 'crop',
+      x: 8,
+      y: 8,
+    });
+  });
+
   it('retreats without inventing a player target when no valid consequence remains', () => {
     expect(selectRaidTarget('diggler', [crop(2, 2, 1, false)])).toBeNull();
     expect(selectRaidTarget('hauler', [produce('crop:Beet', 8, 1, 0)])).toBeNull();

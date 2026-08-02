@@ -1,4 +1,5 @@
 import { isDuskNear, type ClockState } from './clock';
+import type { FoxType } from './raid';
 
 export type ArcProgress = {
   day: number;
@@ -8,6 +9,36 @@ export type ArcProgress = {
 };
 
 export const RAID_TELEGRAPH = 'Dusk warning · foxes raid tonight. Harvest ready crops or place a bear trap.';
+
+export type FoxCropLossOutcome = 'nibbled' | 'destroyed' | 'taken_before_harvest';
+
+const FOX_ROLE_LABELS: Record<FoxType, string> = {
+  diggler: 'Diggler',
+  nibbler: 'Nibbler',
+  sapper: 'Sapper',
+  hauler: 'Hauler',
+};
+
+/** Explain a crop loss with the next defensive choice the player can make. */
+export function foxCropLossGuidance(
+  kind: FoxType,
+  cropName: string,
+  outcome: FoxCropLossOutcome,
+): string {
+  const role = FOX_ROLE_LABELS[kind];
+  if (outcome === 'nibbled') {
+    return `${role} nibbled your ${cropName} · fence the plot or set a bear trap before nightfall.`;
+  }
+  if (outcome === 'destroyed') {
+    return `${role} destroyed your ${cropName} · fence the plot or set a bear trap before nightfall.`;
+  }
+  return `${role} took your ${cropName} before harvest · harvest before dusk, fence the plot, or set a bear trap.`;
+}
+
+/** Explain stored-produce theft without implying that farm loss is a reward. */
+export function foxProduceLossGuidance(itemName: string): string {
+  return `Hauler stole ${itemName} from storage · sell it before dusk or set a bear trap.`;
+}
 
 /** The first deliberate post-tutorial choice is visible before the player buys blindly. */
 export function dayTwoChoiceHint(): string {

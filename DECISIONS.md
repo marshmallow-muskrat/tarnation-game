@@ -443,3 +443,19 @@ or occupied slot is skipped rather than forcing two actors onto the same point. 
 remaining fixed-step distance across tile centers without overshooting, and bounded deterministic
 separation resolves exact overlaps to the configured readability gap. No save field, target priority,
 role tuning, or new visual effect is introduced.
+
+## 2026-08-02 — Keep fox preparation readable without making passive defense automatic
+
+FOX-04 keeps the existing dusk telegraph, burrow window, fixed-step action states, role priorities,
+active tool cooldowns, and trophy-on-defeat reward contract. A live `repel_foxes` crop now drives off
+at most two foxes per raid through a runtime-only counter; the cap resets at raid spawn and adds no
+save field, so passive crops soften pressure without clearing a peak wave by themselves. Shotgun,
+bow, melee, boulder, and bear-trap roles remain distinct through their existing typed targets,
+cooldowns, action timings, and HUD recovery cues rather than gaining a second ability system.
+
+Crop bites, crop destruction, pre-harvest hauling, and stored-produce theft now use deterministic
+player-facing guidance that names the fox role and a concrete next defense. Farm loss remains a
+retreat consequence without a reward; only fox defeat enters the existing trophy roll. Empty or
+sealed farms, open routes, unreachable routes, ten-fox waves, and dawn cleanup remain pure
+characterization cases. No save schema, migration, economy price, player-health, or production
+debug behavior changes in FOX-04.

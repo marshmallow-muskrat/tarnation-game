@@ -104,6 +104,7 @@ import {
   crossbreed,
   PORTABLE_LIGHT_RADIUS,
   REPEL_FOX_RADIUS,
+  repellerUsesRemaining,
   RICOCHET_RADIUS,
   seedId,
   seedTraitDescription,
@@ -113,7 +114,14 @@ import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/i
 import { buildCodexCatalog } from '../sim/codex';
 import { purchaseAsset } from '../sim/economy';
 import { progressionLockReason } from '../sim/progression';
-import { dayTwoChoiceHint, multiDayArcHint, RAID_TELEGRAPH, shouldTelegraphRaid } from '../sim/gameArc';
+import {
+  dayTwoChoiceHint,
+  foxCropLossGuidance,
+  foxProduceLossGuidance,
+  multiDayArcHint,
+  RAID_TELEGRAPH,
+  shouldTelegraphRaid,
+} from '../sim/gameArc';
 import {
   type OutcomeKind,
   type OutcomeStatus,
@@ -439,6 +447,8 @@ export class GameRuntime {
 
   private foxes: Fox[] = [];
   private raidTelegraphedRoles = new Set<FoxType>();
+  /** Runtime-only: passive repellers soften a raid without clearing every fox. */
+  private raidRepelUses = 0;
   private deathMarkers: DeathMarker[] = [];
   private lootMarkers: LootMarker[] = [];
   private feedbackBursts: FeedbackBurst[] = [];
@@ -3528,6 +3538,7 @@ export class GameRuntime {
   private spawnRaid(): void {
     this.clearFoxes();
     this.raidTelegraphedRoles.clear();
+    this.raidRepelUses = 0;
     this.clearDeathMarkers();
     this.clearLootMarkers();
     this.clearFeedbackBursts();
@@ -3900,13 +3911,20 @@ export class GameRuntime {
         w.state !== 'trapped' &&
         tpos &&
         hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, REPEL_FOX_RADIUS) &&
+        repellerUsesRemaining(this.raidRepelUses) > 0 &&
         w.state !== 'flee'
       ) {
+        this.raidRepelUses += 1;
         this.clearFoxTarget(w);
         w.state = 'flee';
         this.playFoxAction(w, 'walk');
         this.spawnFeedbackBurst(w.x, w.z, 0xb9e06b, 6, 0.22);
-        setToast(this.gs, 'Repeller crop drove a fox away', 1.4);
+        const remaining = repellerUsesRemaining(this.raidRepelUses);
+        setToast(
+          this.gs,
+          `Repeller crop drove off a fox · ${remaining} repeller use${remaining === 1 ? '' : 's'} left this raid`,
+          1.4,
+        );
       }
 
       if (w.state === 'trapped') {
@@ -3966,7 +3984,7 @@ export class GameRuntime {
           if (target.kind === 'stored_produce') {
             if (takeFromInventory(this.gs, target.id, 1)) {
               w.carryingProduce = true;
-              setToast(this.gs, `A fox stole ${itemInfo(target.id).name}`, 2.2);
+              setToast(this.gs, foxProduceLossGuidance(itemInfo(target.id).name), 2.8);
               this.recordAction('fox_theft');
               this.audio.play('hit');
               this.persist();
@@ -4018,9 +4036,19 @@ export class GameRuntime {
               w.state = 'flee';
             }
           } else if (w.kind === 'nibbler') {
+            const before = getTile(this.gs.tiles, w.targetTx, w.targetTy);
+            const cropName = before?.seed?.displayName ?? 'crop';
             const nibbled = nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
-            if (nibbled) this.syncCropTile(w.targetTx, w.targetTy);
-            else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+            if (nibbled) {
+              this.syncCropTile(w.targetTx, w.targetTy);
+              const after = getTile(this.gs.tiles, w.targetTx, w.targetTy);
+              const cropStillLives = after?.state === 'planted' || after?.state === 'mature';
+              setToast(
+                this.gs,
+                foxCropLossGuidance(w.kind, cropName, cropStillLives ? 'nibbled' : 'destroyed'),
+                2.8,
+              );
+            } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
               const wc = this.farmTileWorld(w.targetTx, w.targetTy);
               this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
               setToast(this.gs, 'Ironroot resisted the fox bite', 1.5);
@@ -4029,11 +4057,13 @@ export class GameRuntime {
             this.clearFoxTarget(w);
             if (this.gs.rng() < 0.4) w.state = 'flee';
           } else if (w.kind === 'hauler') {
+            const before = getTile(this.gs.tiles, w.targetTx, w.targetTy);
+            const cropName = before?.seed?.displayName ?? 'crop';
             if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
               w.carryingProduce = true;
               this.syncCropTile(w.targetTx, w.targetTy);
               this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
-              setToast(this.gs, 'A hauler took a crop before harvest', 2.2);
+              setToast(this.gs, foxCropLossGuidance(w.kind, cropName, 'taken_before_harvest'), 2.8);
               this.persist();
             } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
               const wc = this.farmTileWorld(w.targetTx, w.targetTy);
@@ -4057,8 +4087,11 @@ export class GameRuntime {
         w.eatTimer -= dt;
         w.root.scale.y = w.baseScale * w.silhouetteScale.y * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
         if (w.eatTimer <= 0) {
+          const before = getTile(this.gs.tiles, w.targetTx, w.targetTy);
+          const cropName = before?.seed?.displayName ?? 'crop';
           if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
             this.syncCropTile(w.targetTx, w.targetTy);
+            setToast(this.gs, foxCropLossGuidance(w.kind, cropName, 'destroyed'), 2.8);
             this.persist();
           } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
             const wc = this.farmTileWorld(w.targetTx, w.targetTy);
