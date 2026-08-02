@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FOX_ROLE_PROFILES,
+  foxRoleProfile,
   raidLifecyclePhase,
   selectRaidTarget,
   type RaidTarget,
@@ -32,6 +34,20 @@ function structure(
 }
 
 describe('raid consequence target policy', () => {
+  it('gives every released fox role a distinct readable profile and counter contract', () => {
+    const profiles = Object.values(FOX_ROLE_PROFILES);
+
+    expect(new Set(profiles.map((profile) => profile.silhouette)).size).toBe(4);
+    expect(new Set(profiles.map((profile) => profile.tint)).size).toBe(4);
+    expect(new Set(profiles.map((profile) => profile.accessory)).size).toBe(4);
+    expect(new Set(profiles.map((profile) => profile.audioCue)).size).toBe(4);
+    expect(profiles.every((profile) => profile.telegraph.length > 0 && profile.counter.length > 0)).toBe(true);
+    expect(foxRoleProfile('diggler').movementRule).toBe('burrow');
+    expect(foxRoleProfile('nibbler').movementRule).toBe('sprint');
+    expect(foxRoleProfile('sapper').targetPreference).toBe('structure');
+    expect(foxRoleProfile('hauler').targetPreference).toBe('stored_produce');
+  });
+
   it('makes a hauler threaten stored produce before a nearer field crop', () => {
     const target = selectRaidTarget('hauler', [
       crop(4, 4, 1),

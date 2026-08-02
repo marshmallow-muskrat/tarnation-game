@@ -413,3 +413,18 @@ and re-arms traps. No player-health state, save field, migration, navigation rew
 or balance policy is introduced here. The earlier readable attack-ring decision is superseded by
 this world-target contract; the remaining role silhouette, telegraph, navigation, and preparation
 versus action tuning belong to FOX-02–04.
+
+## 2026-08-01 — Give each released fox type a readable role contract
+
+FOX-02 keeps the accepted fox model and adds renderer-owned role treatment rather than introducing
+new unproven assets: clone-owned material tints, bounded silhouette proportions, and one small
+procedural low-poly accessory per type. Digglers are low and slow with a dirt crest and crop
+burrow rule; nibblers are lean and fast with a collar and direct crop rule; sappers are broad and
+deliberate with a pack and gate/trap/trench preference; haulers are heavy with side satchels and
+stored-produce preference. Each profile carries the player-facing telegraph, counter text, and an
+existing audio cue, and the first role encounter in a raid announces that contract without adding
+a save field.
+
+The accessories are explicitly detached and disposed for live actors and short-lived defeat
+markers. No new model, license, save schema, navigation policy, or raid-pressure tuning is added;
+crowd readability and preparation/action balance remain FOX-03 and FOX-04 work.

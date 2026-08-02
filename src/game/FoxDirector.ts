@@ -1,13 +1,10 @@
 import type { AnimationAction, AnimationMixer, Object3D } from 'three';
 import {
   FOX_SEPARATION,
-  FOX_SPEED,
-  HAULER_SPEED,
-  NIBBLER_SPEED,
   WORLD_SIZE,
 } from '../content';
 import { tileKey } from '../sim/placement';
-import { type FoxType, type RaidTarget } from '../sim/raid';
+import { foxRoleProfile, type FoxType, type RaidTarget } from '../sim/raid';
 import { FoxNavigation } from './FoxNavigation';
 
 const FOX_NAVIGATION_BUDGET = 4096;
@@ -30,6 +27,8 @@ export type Fox = {
   z: number;
   state: FoxState;
   kind: FoxType;
+  silhouetteScale: { x: number; y: number; z: number };
+  accessoryRoot: Object3D | null;
   hp: number;
   timer: number;
   targetTx: number;
@@ -70,9 +69,7 @@ export class FoxDirector {
   }
 
   speedFor(kind: FoxType): number {
-    if (kind === 'nibbler') return NIBBLER_SPEED;
-    if (kind === 'hauler') return HAULER_SPEED;
-    return FOX_SPEED;
+    return foxRoleProfile(kind).speed;
   }
 
   moveTowardTile(

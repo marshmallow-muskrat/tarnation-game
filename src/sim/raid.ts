@@ -2,8 +2,11 @@ import {
   FOX_BASE_COUNT,
   FOX_MAX,
   FOX_PER_NIGHT,
+  FOX_SPEED,
   GRID_W,
   GRID_H,
+  HAULER_SPEED,
+  NIBBLER_SPEED,
   TILE,
   FARM_W,
   FARM_H,
@@ -11,6 +14,88 @@ import {
 import { mulberry32, randInt, type Rng } from './rng';
 
 export type FoxType = 'diggler' | 'nibbler' | 'sapper' | 'hauler';
+
+export type FoxTargetPreference = 'crop' | 'stored_produce' | 'structure';
+export type FoxRoleAccessory = 'dirt_crest' | 'collar' | 'sapper_pack' | 'satchels';
+export type FoxAudioCue = 'hit' | 'tool' | 'build' | 'trap';
+
+export interface FoxRoleProfile {
+  kind: FoxType;
+  label: string;
+  silhouette: 'low_long' | 'lean' | 'broad' | 'heavy';
+  silhouetteScale: { x: number; y: number; z: number };
+  tint: number;
+  accessory: FoxRoleAccessory;
+  speed: number;
+  movementRule: 'burrow' | 'sprint' | 'deliberate' | 'haul';
+  targetPreference: FoxTargetPreference;
+  telegraph: string;
+  counter: string;
+  audioCue: FoxAudioCue;
+}
+
+export const FOX_ROLE_PROFILES: Readonly<Record<FoxType, FoxRoleProfile>> = {
+  diggler: {
+    kind: 'diggler',
+    label: 'Diggler',
+    silhouette: 'low_long',
+    silhouetteScale: { x: 1.12, y: 0.76, z: 1.18 },
+    tint: 0x70452f,
+    accessory: 'dirt_crest',
+    speed: FOX_SPEED * 0.78,
+    movementRule: 'burrow',
+    targetPreference: 'crop',
+    telegraph: 'burrowing toward an exposed crop',
+    counter: 'a fence or bear trap',
+    audioCue: 'tool',
+  },
+  nibbler: {
+    kind: 'nibbler',
+    label: 'Nibbler',
+    silhouette: 'lean',
+    silhouetteScale: { x: 0.82, y: 1.1, z: 0.88 },
+    tint: 0xa45b42,
+    accessory: 'collar',
+    speed: NIBBLER_SPEED,
+    movementRule: 'sprint',
+    targetPreference: 'crop',
+    telegraph: 'sprinting for an exposed crop',
+    counter: 'a fence or bear trap',
+    audioCue: 'hit',
+  },
+  sapper: {
+    kind: 'sapper',
+    label: 'Sapper',
+    silhouette: 'broad',
+    silhouetteScale: { x: 1.12, y: 1.04, z: 1.06 },
+    tint: 0x58626c,
+    accessory: 'sapper_pack',
+    speed: FOX_SPEED * 0.86,
+    movementRule: 'deliberate',
+    targetPreference: 'structure',
+    telegraph: 'testing a gate, trap, or trench',
+    counter: 'keep the gate shut or catch it in a bear trap',
+    audioCue: 'build',
+  },
+  hauler: {
+    kind: 'hauler',
+    label: 'Hauler',
+    silhouette: 'heavy',
+    silhouetteScale: { x: 1.24, y: 1.14, z: 1.12 },
+    tint: 0x824a36,
+    accessory: 'satchels',
+    speed: HAULER_SPEED,
+    movementRule: 'haul',
+    targetPreference: 'stored_produce',
+    telegraph: 'making for stored produce',
+    counter: 'shoot it or catch it in a bear trap',
+    audioCue: 'trap',
+  },
+};
+
+export function foxRoleProfile(kind: FoxType): FoxRoleProfile {
+  return FOX_ROLE_PROFILES[kind];
+}
 
 export type RaidTargetKind = 'crop' | 'stored_produce' | 'structure';
 export type RaidStructureKind = 'gate' | 'trap' | 'trench';
@@ -80,13 +165,14 @@ export function selectRaidTarget(
   kind: FoxType,
   candidates: readonly RaidTarget[],
 ): RaidTarget | null {
+  const role = foxRoleProfile(kind);
   const valid = candidates.filter((candidate) => Number.isFinite(candidate.distance));
   const crops = valid.filter(
     (candidate): candidate is Extract<RaidTarget, { kind: 'crop' }> =>
       candidate.kind === 'crop' && candidate.exposed,
   );
 
-  if (kind === 'hauler') {
+  if (role.targetPreference === 'stored_produce') {
     const stored = valid.filter(
       (candidate): candidate is Extract<RaidTarget, { kind: 'stored_produce' }> =>
         candidate.kind === 'stored_produce' && candidate.count > 0,
@@ -101,7 +187,7 @@ export function selectRaidTarget(
     if (bestStored) return bestStored;
   }
 
-  if (kind === 'sapper') {
+  if (role.targetPreference === 'structure') {
     const structures = valid.filter(
       (candidate): candidate is Extract<RaidTarget, { kind: 'structure' }> => candidate.kind === 'structure',
     );
