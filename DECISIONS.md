@@ -173,3 +173,13 @@ navigation field, target selection, role speed mapping, route following, and act
 audio, feedback, and save/economy callbacks. The director preserves the fixed 4,096-node navigation
 budget, topology invalidation, seeded target/raid behavior, and the current exact-overlap nudge; the
 last behavior is documented as a follow-up rather than silently corrected.
+
+## 2026-08-01 — Keep placement preview policy separate from placement mutations
+
+The fourth PERF-05 extraction slice gives `PlacementCoordinator` ownership of the existing placeable
+catalog, selected building/deed state, quarter-turn rotation, preview center, and player-visible
+placement validation. `GameRuntime` remains responsible for the placement commit, inventory/currency
+transactions, demolition, gate state, and presentation side effects. The coordinator accepts
+read-only reservation and simulation views, so the `src/sim` placement rules remain pure and the
+legacy heading orientation, deed rotation, homestead clearance, and wood-cost behavior are preserved
+without gameplay changes.

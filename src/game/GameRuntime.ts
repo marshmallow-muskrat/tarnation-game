@@ -140,6 +140,7 @@ import { CropBatches } from './CropBatches';
 import { FoxDirector, type Fox, type FoxActions, type FoxDirectionWorld } from './FoxDirector';
 import { EquipmentController } from './EquipmentController';
 import { PlayerActionController, type PlayerClip } from './PlayerActionController';
+import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import {
   InteractionSystem,
   SLOT_AXE,
@@ -147,7 +148,7 @@ import {
   SLOT_SHOVEL,
 } from './InteractionSystem';
 import { getEconomyCapability } from './EconomyCapability';
-import type { BuildingId, PlacedBuilding } from '../sim/save';
+import type { PlacedBuilding } from '../sim/save';
 import {
   assetDefinition,
   deedAssetId,
@@ -427,16 +428,6 @@ type FeedbackBurst = {
   particles: FeedbackParticle[];
 };
 
-type BuildingPlacement = {
-  tile: { tx: number; ty: number } | null;
-  x: number;
-  z: number;
-  valid: boolean;
-  reason: string;
-  asset: PurchasableAsset | null;
-  rotation: number;
-};
-
 type DirtyTile = { tx: number; ty: number };
 
 type ToolMode = 'farm' | 'trench' | 'breed';
@@ -464,28 +455,6 @@ const HOMESTEAD_MODEL_KEYS = [
   'house_4',
   'house_5',
 ] as const;
-
-const PLACEABLE_BUILDING_IDS = [
-  'fence',
-  'fence2',
-  'gate',
-] as const;
-
-const PLACEABLE_BUILDINGS: {
-  id: BuildingId;
-  model: ModelKey;
-  name: string;
-  cost: number;
-}[] = PLACEABLE_BUILDING_IDS.flatMap((id) => {
-  const asset = assetDefinition(id);
-  if (!asset) return [];
-  return [{
-    id,
-    model: asset.modelKey,
-    name: asset.displayName,
-    cost: asset.materialCost.wood ?? asset.price,
-  }];
-});
 
 const HOMESTEAD_X = HOMESTEAD_MIN_X + 8;
 const HOMESTEAD_Z = HOMESTEAD_MIN_Z + 8;
@@ -553,6 +522,19 @@ export class GameRuntime {
     useCombatAxe: () => this.meleeSwing(AXE_DAMAGE),
     emptyToolSlot: (index) => setToast(this.gs, `Slot ${index + 1} is empty`, 1.2),
   });
+  private readonly placement = new PlacementCoordinator({
+    pointerTile: () => this.pointerTile(),
+    playerX: () => this.playerX,
+    playerZ: () => this.playerZ,
+    heading: () => this.headingTarget,
+    playerTile: () => this.worldToFarmTile(this.playerX, this.playerZ),
+    gameState: () => this.gs,
+    fixtureReservations: () => this.fixtureReservations,
+    terrainAllowed: (tx, ty) => this.world.distToWater(tx + 0.5, ty + 0.5) >= 2.5,
+    woodCount: () => woodCount(this.gs),
+    homesteadX: () => HOMESTEAD_X,
+    homesteadZ: () => HOMESTEAD_Z,
+  } satisfies PlacementContext);
   private audio = new AudioFeedback();
   private canvas!: HTMLCanvasElement;
   private accum = 0;
@@ -571,13 +553,10 @@ export class GameRuntime {
   private nearWater = false;
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
-  private placementAssetId: AssetId | null = null;
-  private placementRotation = 0;
   private demolishMode = false;
   private pauseOpen = false;
   private helpOpen = false;
   private reducedMotion = false;
-  private placeableBuildingIndex = 0;
   private debugGrid = false;
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
@@ -1109,7 +1088,7 @@ export class GameRuntime {
   selectSlot(index: number): void {
     if (index < 0 || index >= TOOLBAR_SLOTS) return;
     this.buildingMode = false;
-    this.placementAssetId = null;
+    this.placement.clear();
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
@@ -1126,7 +1105,7 @@ export class GameRuntime {
 
   selectToolSlot(): void {
     this.buildingMode = false;
-    this.placementAssetId = null;
+    this.placement.clear();
     this.demolishMode = false;
     this.playerActions.cancel();
     this.clearShots();
@@ -1137,11 +1116,11 @@ export class GameRuntime {
   }
 
   toggleBuildMode(): void {
-    if (!this.buildingMode && !this.legacyBuildEnabled() && !this.nearMerchant && !this.placementAssetId) {
+    if (!this.buildingMode && !this.legacyBuildEnabled() && !this.nearMerchant && !this.placement.activeDeedAssetId) {
       setToast(this.gs, 'Visit the Traveling Merchant to buy building deeds', 2);
       return;
     }
-    if (!this.buildingMode && !this.legacyBuildEnabled() && this.nearMerchant && !this.placementAssetId) {
+    if (!this.buildingMode && !this.legacyBuildEnabled() && this.nearMerchant && !this.placement.activeDeedAssetId) {
       this.openVendor();
       return;
     }
@@ -1162,8 +1141,7 @@ export class GameRuntime {
   }
 
   selectBuild(index: number): void {
-    if (index < 0 || index >= PLACEABLE_BUILDINGS.length) return;
-    this.placeableBuildingIndex = index;
+    if (!this.placement.select(index)) return;
     if (!this.buildingMode) this.buildingMode = true;
     this.toolMode = 'farm';
     setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[index]!.name}`, 1.2);
@@ -1201,7 +1179,7 @@ export class GameRuntime {
     this.vendorOpen = true;
     this.vendorMessage = '';
     this.buildingMode = false;
-    this.placementAssetId = null;
+    this.placement.clear();
     this.demolishMode = false;
     this.gs.inventoryOpen = false;
     this.closeContextMenu();
@@ -1339,7 +1317,7 @@ export class GameRuntime {
       setToast(this.gs, `No ${asset.displayName} deed`, 1.4);
       return;
     }
-    this.placementAssetId = assetId;
+    if (!this.placement.begin(assetId)) return;
     this.buildingMode = true;
     this.demolishMode = false;
     this.toolMode = 'farm';
@@ -1350,8 +1328,8 @@ export class GameRuntime {
   }
 
   private rotatePlacement(): void {
-    if (!this.buildingMode || !this.placementAssetId) return;
-    this.placementRotation = (this.placementRotation + 1) % 4;
+    if (!this.buildingMode || !this.placement.activeDeedAssetId) return;
+    this.placement.rotate();
     this.pushHud(true);
   }
 
@@ -1360,10 +1338,10 @@ export class GameRuntime {
       this.closeContextMenu();
       return;
     }
-    if (this.buildingMode || this.placementAssetId) {
+    if (this.buildingMode || this.placement.activeDeedAssetId) {
       this.recordOutcome('building', 'cancelled');
       this.buildingMode = false;
-      this.placementAssetId = null;
+      this.placement.clear();
       this.world.setBuildPreview(null);
       setToast(this.gs, 'Placement cancelled', 1.2);
       this.pushHud(true);
@@ -1731,7 +1709,7 @@ export class GameRuntime {
     if (this.input.justPressed('KeyX')) {
       this.demolishMode = !this.demolishMode;
       this.buildingMode = false;
-      this.placementAssetId = null;
+      this.placement.clear();
       this.closeContextMenu();
       setToast(this.gs, this.demolishMode ? 'Demolish mode · click an asset · Esc exits' : 'Demolish mode off', 1.6);
     }
@@ -1751,8 +1729,9 @@ export class GameRuntime {
     }
     if (this.input.justPressed('KeyP')) this.toggleBuildMode();
     if (this.buildingMode && this.input.justPressed('KeyN')) {
-      this.placeableBuildingIndex = (this.placeableBuildingIndex + 1) % PLACEABLE_BUILDINGS.length;
-      setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[this.placeableBuildingIndex]!.name}`, 1.2);
+      const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
+      this.placement.select(nextIndex);
+      setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
     }
 
     if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
@@ -2067,7 +2046,7 @@ export class GameRuntime {
       return;
     }
     if (this.buildingMode) {
-      const placement = this.buildingPlacementStatus();
+      const placement = this.placement.status();
       if (!placement.tile) {
         this.world.setHover(null, null, false);
         this.world.setBuildPreview(null);
@@ -2109,65 +2088,6 @@ export class GameRuntime {
         ? dist <= TOOL_RANGE + 0.6
         : dist <= TOOL_RANGE + 0.6 && !!trees && (trees.hasTree(tile.tx, tile.ty) || trees.hasStump(tile.tx, tile.ty));
     this.world.setHover(tile.tx, tile.ty, usable);
-  }
-
-  private buildingPlacementStatus(): BuildingPlacement {
-    const tile = this.pointerTile();
-    if (!tile) {
-      return {
-        tile: null,
-        x: this.playerX,
-        z: this.playerZ,
-        valid: false,
-        reason: 'Point at a ground tile',
-        asset: null,
-        rotation: this.placementRotation,
-      };
-    }
-    const selected = this.selectedPlacementAsset();
-    if (!selected) {
-      return { tile, x: this.playerX, z: this.playerZ, valid: false, reason: 'No placeable asset selected', asset: null, rotation: this.placementRotation };
-    }
-    const rotation = this.placementAssetId ? this.placementRotation : normalizeOrientation(this.headingTarget);
-    const center = placedCenter(tile, rotation, selected);
-    if (Math.hypot(this.playerX - center.x, this.playerZ - center.z) > BEAR_TRAP_PLACE_RANGE) {
-      return { tile, x: center.x, z: center.z, valid: false, reason: 'Move closer to place', asset: selected, rotation };
-    }
-    const status = placementStatus({
-      asset: selected,
-      origin: tile,
-      rotation,
-      tiles: this.gs.tiles,
-      placed: this.gs.placedBuildings,
-      fixtures: this.fixtureReservations,
-      playerTile: this.worldToFarmTile(this.playerX, this.playerZ),
-      terrainAllowed: (tx, ty) => this.world.distToWater(tx + 0.5, ty + 0.5) >= 2.5,
-    });
-    if (!status.valid) {
-      return { tile, x: center.x, z: center.z, valid: false, reason: status.reason, asset: selected, rotation };
-    }
-    if (!this.placementAssetId && Math.hypot(center.x - HOMESTEAD_X, center.z - HOMESTEAD_Z) < 5) {
-      return { tile, x: center.x, z: center.z, valid: false, reason: 'Leave room around the homestead', asset: selected, rotation };
-    }
-    const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
-    if (!this.placementAssetId && woodCount(this.gs) < legacyCost) {
-      return {
-        tile,
-        x: center.x,
-        z: center.z,
-        valid: false,
-        reason: `Need ${legacyCost} Wood for ${selected.displayName}`,
-        asset: selected,
-        rotation,
-      };
-    }
-    return { tile, x: center.x, z: center.z, valid: true, reason: 'Ready to place', asset: selected, rotation };
-  }
-
-  private selectedPlacementAsset(): PurchasableAsset | null {
-    if (this.placementAssetId) return assetDefinition(this.placementAssetId);
-    const selected = PLACEABLE_BUILDINGS[this.placeableBuildingIndex];
-    return selected ? assetDefinition(selected.id) : null;
   }
 
   private pointerTile(): { tx: number; ty: number } | null {
@@ -2221,7 +2141,7 @@ export class GameRuntime {
 
   private placeSelectedBuilding(): void {
     this.recordOutcome('building', 'attempted');
-    const placement = this.buildingPlacementStatus();
+    const placement = this.placement.status();
     const selected = placement.asset;
     if (!selected || !placement.valid || !placement.tile) {
       this.recordOutcome('building', 'rejected');
@@ -2229,7 +2149,7 @@ export class GameRuntime {
       return;
     }
     const legacyCost = PLACEABLE_BUILDINGS.find((entry) => entry.id === selected.id)?.cost ?? selected.materialCost.wood ?? 0;
-    if (!this.placementAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
+    if (!this.placement.activeDeedAssetId) takeFromInventory(this.gs, ITEM_WOOD, legacyCost);
     else if (!takeFromInventory(this.gs, deedItemId(selected.id), 1)) {
       this.recordOutcome('building', 'rejected');
       setToast(this.gs, `No ${selected.displayName} deed`, 1.6);
@@ -2247,7 +2167,7 @@ export class GameRuntime {
     this.audio.play('build');
     setToast(this.gs, `Built ${selected.displayName}`, 1.6);
     this.buildingMode = false;
-    this.placementAssetId = null;
+    this.placement.clear();
     this.pushHud(true);
   }
 
@@ -3730,7 +3650,7 @@ export class GameRuntime {
   private interactionHint(seed: ReturnType<typeof selectedSeed>): string {
     const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seed?.displayName ?? '—'}) · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
-      const selected = this.selectedPlacementAsset();
+      const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
     }
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
@@ -3802,12 +3722,12 @@ export class GameRuntime {
     }
 
     const buildPlacement = this.buildingMode
-      ? this.buildingPlacementStatus()
+      ? this.placement.status()
       : {
           valid: false,
           reason: 'Open build mode to preview a structure',
           asset: null,
-          rotation: this.placementRotation,
+          rotation: this.placement.currentRotation,
         };
 
     const toolbar: HudToolbarSlot[] = TOOLBAR.map((t, i) => ({
@@ -3845,7 +3765,7 @@ export class GameRuntime {
       toolbar,
       build: {
         active: this.buildingMode,
-        selectedIndex: this.placeableBuildingIndex,
+        selectedIndex: this.placement.currentIndex,
         wood: woodCount(this.gs),
         options: PLACEABLE_BUILDINGS.map((entry, index) => ({
           index,
