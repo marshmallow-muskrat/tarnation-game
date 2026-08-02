@@ -147,7 +147,7 @@ export function App() {
   return (
     <div className="app-shell">
       <div className="game-mount">
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} tabIndex={0} aria-label="Tarnation game canvas" />
       </div>
       {!launchChoice && (
         <div className="launch-overlay">
@@ -251,6 +251,8 @@ export function App() {
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
         onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onToggleHelp={() => runtimeRef.current?.toggleHelp()}
+        onRebindInput={(action, code) => runtimeRef.current?.rebindInput(action, code)}
+        onResetInputBindings={() => runtimeRef.current?.resetInputBindings()}
         onToggleCodex={() => runtimeRef.current?.toggleCodex()}
         onSelectCodex={(key) => runtimeRef.current?.selectCodexEntry(key)}
         onToggleCodexCompare={(key) => runtimeRef.current?.toggleCodexCompare(key)}

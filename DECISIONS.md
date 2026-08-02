@@ -545,3 +545,19 @@ it duplicated the same small contact cue; major combat, ranged, harvest, and set
 their existing audio, popup, hit-pause, and feedback contracts. Invalid placement now gives the same
 red semantic signal as its preview. No save schema, simulation rule, economy value, asset definition,
 fixed timestep, or deployment credential changed.
+
+## 2026-08-01 — Make keyboard/mouse input a typed, remappable contract
+
+UX-01 keeps desktop keyboard/mouse as the only supported input scheme until another scheme passes the
+complete game. Primary bindings are typed pure data shared by `InputController`, `GameRuntime`, the
+HUD, and the field guide. Rebinding persists in browser settings under `tarnation.inputBindings`, not
+in the save schema. An occupied primary key swaps with the edited action's previous key so no action
+becomes unreachable; malformed, duplicate, or unknown persisted entries fall back deterministically
+to safe defaults, while the existing arrow, T, comma/period, and numpad aliases remain reserved for
+their current actions.
+
+`Enter` provides the primary work/place/demolish route and `O` provides placed-asset context; focused
+inventory controls provide explicit use and delete actions so double-click and right-click are never
+the only route. Pointer input remains available, and the fixed timestep, seeded simulation, save
+schema, `src/sim/` purity, and production asset path are unchanged. Full modal semantics, focus
+trapping/restoration, settings coverage, and onboarding remain the scoped UX-02–UX-05 follow-ups.

@@ -153,6 +153,17 @@ import {
 import { AudioFeedback } from './AudioFeedback';
 import { InputController } from './InputController';
 import {
+  formatBinding,
+  formatKeyCode,
+  INPUT_BINDING_DEFINITIONS,
+  INPUT_BINDINGS_STORAGE_KEY,
+  parseInputBindings,
+  rebindInput as rebindInputBinding,
+  resetInputBindings,
+  serializeInputBindings,
+  type InputAction,
+} from './InputBindings';
+import {
   ActionStateMachine,
   DEFAULT_INTERACT_ACTION_TIMING,
   DEFAULT_RANGED_ACTION_TIMING,
@@ -368,6 +379,7 @@ const VENDOR_CATEGORIES = ['Housing', 'Weapons', 'Buildings', 'Upgrades'] as con
 
 export class GameRuntime {
   constructor(private readonly saveService = new SaveService(browserSaveStorage())) {
+    this.input.setBindings(parseInputBindings(localStorage.getItem(INPUT_BINDINGS_STORAGE_KEY)));
     this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
   }
 
@@ -1115,7 +1127,7 @@ export class GameRuntime {
     setToast(
       this.gs,
       this.buildingMode
-        ? `Build mode · choose a structure, then click clear ground`
+        ? `Build mode · choose a structure, then click or use ${this.inputLabel('primary')} on clear ground`
         : 'Build mode off',
       1.6,
     );
@@ -1197,6 +1209,31 @@ export class GameRuntime {
     if (!this.gs.inventoryOpen) this.codexOpen = false;
     this.gs.inventoryOpen = !this.gs.inventoryOpen;
     this.syncActionMenuState();
+    this.pushHud(true);
+  }
+
+  rebindInput(action: InputAction, code: string): void {
+    const result = rebindInputBinding(this.input.getBindings(), action, code);
+    if (!result.ok) {
+      setToast(this.gs, result.reason, 2.2);
+      this.pushHud(true);
+      return;
+    }
+    this.input.setBindings(result.bindings);
+    localStorage.setItem(INPUT_BINDINGS_STORAGE_KEY, serializeInputBindings(result.bindings));
+    const label = INPUT_BINDING_DEFINITIONS.find((definition) => definition.action === action)?.label ?? action;
+    const summary = result.swappedWith
+      ? `${label} → ${formatKeyCode(result.bindings[action])} · another action moved to ${formatKeyCode(result.bindings[result.swappedWith])}`
+      : `${label} → ${formatKeyCode(result.bindings[action])}`;
+    setToast(this.gs, `Control remapped · ${summary}`, 2.4);
+    this.pushHud(true);
+  }
+
+  resetInputBindings(): void {
+    const defaults = resetInputBindings();
+    this.input.setBindings(defaults);
+    localStorage.setItem(INPUT_BINDINGS_STORAGE_KEY, serializeInputBindings(defaults));
+    setToast(this.gs, 'Keyboard controls restored to defaults', 2);
     this.pushHud(true);
   }
 
@@ -1384,7 +1421,7 @@ export class GameRuntime {
     this.toolMode = 'farm';
     this.cancelPlayerActions();
     this.clearShots();
-    setToast(this.gs, `${asset.displayName} placement · right-click rotates · Esc cancels`, 2);
+    setToast(this.gs, `${asset.displayName} placement · ${this.inputLabel('rotateOrCycle')}/${this.inputLabel('secondary')} rotates · ${this.inputLabel('primary')} or click places · ${this.inputLabel('pause')} cancels`, 2);
     this.pushHud(true);
   }
 
@@ -1816,100 +1853,107 @@ export class GameRuntime {
 
   private handleHotkeys(): void {
     if (this.pauseOpen) {
-      if (this.input.justPressed('Escape')) this.cancelActiveState();
+      if (this.input.justPressed('pause')) this.cancelActiveState();
       return;
     }
-    if (this.input.justPressed('KeyK')) {
+    if (this.input.justPressed('codex')) {
       this.toggleCodex();
       return;
     }
     if (this.codexOpen) {
-      if (this.input.justPressed('Escape')) this.cancelActiveState();
+      if (this.input.justPressed('pause')) this.cancelActiveState();
       return;
     }
-    for (let i = 0; i < TOOLBAR_SLOTS; i++) {
-      if (this.input.justPressed(`Digit${i + 1}`)) {
-        this.selectSlot(i);
-        const def = TOOLBAR[i]!;
-        setToast(this.gs, def.empty ? `Slot ${i + 1} — empty` : def.name, 1.2);
-      }
+    const slotActions: readonly InputAction[] = ['slot1', 'slot2', 'slot3'];
+    for (const [i, action] of slotActions.entries()) {
+      if (!this.input.justPressed(action)) continue;
+      this.selectSlot(i);
+      const def = TOOLBAR[i]!;
+      setToast(this.gs, def.empty ? `Slot ${i + 1} — empty` : def.name, 1.2);
     }
-    if (this.input.justPressed('Digit6') || this.input.justPressed('KeyT')) {
+    if (this.input.justPressed('toolSlot')) {
       this.selectToolSlot();
       setToast(this.gs, `Bucket · ${this.gs.bucketFill}/${BUCKET_CAPACITY}`, 1.2);
     }
-    if (this.input.justPressed('KeyQ')) this.useUltimate();
-    if (this.input.justPressed('KeyB')) this.useBearTrap();
-    if (this.input.justPressed('KeyI')) this.toggleInventory();
-    if (this.input.justPressed('KeyH')) this.toggleHelp();
-    if (this.input.justPressed('KeyR')) {
-      cycleWeapon(this.gs);
-      this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
-      this.gs.toolSlotActive = false;
-      this.equipment.refresh(this.gs);
-      setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
+    if (this.input.justPressed('ultimate')) this.useUltimate();
+    if (this.input.justPressed('bearTrap')) this.useBearTrap();
+    if (this.input.justPressed('inventory')) this.toggleInventory();
+    if (this.input.justPressed('help')) this.toggleHelp();
+    if (this.input.justPressed('context') && !this.buildingMode && !this.demolishMode) {
+      if (!this.openPlacedContext()) setToast(this.gs, 'Point at a placed asset to open its context', 1.4);
     }
-    if (this.input.justPressed('KeyV')) {
+    if (this.input.justPressed('rotateOrCycle')) {
+      if (this.buildingMode) {
+        this.rotatePlacement();
+      } else {
+        cycleWeapon(this.gs);
+        this.gs.toolbarSlot = this.gs.weapon === 'axe' ? SLOT_AXE : SLOT_SHOTGUN;
+        this.gs.toolSlotActive = false;
+        this.equipment.refresh(this.gs);
+        setToast(this.gs, `Weapon: ${this.gs.weapon}`, 1.2);
+      }
+    }
+    if (this.input.justPressed('mute')) {
       const muted = this.audio.toggleMuted();
       setToast(this.gs, muted ? 'Sound muted' : 'Sound on', 1.4);
       if (!muted) this.audio.play('ui');
     }
-    if (this.input.justPressed('F12')) {
+    if (this.input.justPressedCode('F12')) {
       this.debugGrid = !this.debugGrid;
       this.world.setGridDebug(this.debugGrid);
       this.equipment.setDebugVisible(this.debugGrid);
       setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
     }
-    if (this.input.justPressed('KeyX')) {
+    if (this.input.justPressed('demolish')) {
       this.demolishMode = !this.demolishMode;
       this.buildingMode = false;
       this.placement.clear();
       this.closeContextMenu();
-      setToast(this.gs, this.demolishMode ? 'Demolish mode · click an asset · Esc exits' : 'Demolish mode off', 1.6);
+      setToast(this.gs, this.demolishMode ? `Demolish mode · ${this.inputLabel('primary')} or click an asset · ${this.inputLabel('pause')} exits` : 'Demolish mode off', 1.6);
     }
-    if (this.input.justPressed('Equal') || this.input.justPressed('NumpadAdd')) {
+    if (this.input.justPressed('zoomIn')) {
       const zoom = this.world.adjustZoom(0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
     }
-    if (this.input.justPressed('Minus') || this.input.justPressed('NumpadSubtract')) {
+    if (this.input.justPressed('zoomOut')) {
       const zoom = this.world.adjustZoom(-0.1);
       setToast(this.gs, `Camera zoom ${zoom.toFixed(1)}×`, 1.2);
     }
-    if (this.input.justPressed('KeyM')) {
+    if (this.input.justPressed('reducedMotion')) {
       this.reducedMotion = !this.reducedMotion;
       this.world.setReducedMotion(this.reducedMotion);
       this.playerActions.setReducedMotion(this.reducedMotion);
       localStorage.setItem('tarnation.reducedMotion', this.reducedMotion ? '1' : '0');
       setToast(this.gs, this.reducedMotion ? 'Reduced motion on' : 'Reduced motion off', 1.6);
     }
-    if (this.input.justPressed('KeyP')) this.toggleBuildMode();
-    if (this.buildingMode && this.input.justPressed('KeyN')) {
+    if (this.input.justPressed('build')) this.toggleBuildMode();
+    if (this.buildingMode && this.input.justPressed('nextBuild')) {
       const nextIndex = (this.placement.currentIndex + 1) % PLACEABLE_BUILDINGS.length;
       this.placement.select(nextIndex);
       setToast(this.gs, `Build: ${PLACEABLE_BUILDINGS[nextIndex]!.name}`, 1.2);
     }
 
-    if (this.input.justPressed('BracketLeft') || this.input.justPressed('Comma')) {
+    if (this.input.justPressed('seedPrevious')) {
       cycleSeed(this.gs, -1);
       const s = selectedSeed(this.gs);
       const packet = selectedSeedPacket(this.gs);
       if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
-    if (this.input.justPressed('BracketRight') || this.input.justPressed('Period')) {
+    if (this.input.justPressed('seedNext')) {
       cycleSeed(this.gs, 1);
       const s = selectedSeed(this.gs);
       const packet = selectedSeedPacket(this.gs);
       if (s) setToast(this.gs, `Seed: ${s.displayName} ×${packet?.count ?? 0}`, 1.2);
     }
 
-    if (this.input.justPressed('Escape')) this.cancelActiveState();
+    if (this.input.justPressed('pause')) this.cancelActiveState();
 
-    const structure: [string, ToolMode, string][] = [
-      ['KeyZ', 'trench', 'Tool: trench dig'],
-      ['KeyC', 'breed', 'Tool: breeding bed'],
+    const structure: [InputAction, ToolMode, string][] = [
+      ['trench', 'trench', 'Tool: trench dig'],
+      ['breed', 'breed', 'Tool: breeding bed'],
     ];
-    for (const [code, mode, label] of structure) {
-      if (!this.input.justPressed(code)) continue;
+    for (const [action, mode, label] of structure) {
+      if (!this.input.justPressed(action)) continue;
       this.selectSlot(SLOT_SHOVEL);
       this.toolMode = mode;
       setToast(this.gs, label, 1.2);
@@ -1971,7 +2015,7 @@ export class GameRuntime {
     this.nearWaterTower = waterTowerProvidesWater(this.gs.placedBuildings, this.playerX, this.playerZ);
     this.nearWater =
       this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE || this.nearWaterTower;
-    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('KeyE')) {
+    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('interact')) {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
       setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 2);
@@ -1982,7 +2026,7 @@ export class GameRuntime {
     this.nearMerchant =
       Math.hypot(this.playerX - this.merchantX, this.playerZ - this.merchantZ) <= MARKET_RANGE;
     this.stepGateTimers(dt);
-    if (this.nearMerchant && this.input.justPressed('KeyE')) this.openVendor();
+    if (this.nearMerchant && this.input.justPressed('interact')) this.openVendor();
     if (this.vendorOpen && !this.nearMerchant) {
       this.vendorOpen = false;
       this.vendorMessage = '';
@@ -2561,11 +2605,11 @@ export class GameRuntime {
 
     const trees = this.world.getFarmTrees();
     if (trees?.hasTree(tx, ty)) {
-      setToast(this.gs, 'You need the axe for that (slot 3)', 1.6);
+      setToast(this.gs, `You need the axe for that (${this.inputLabel('slot3')})`, 1.6);
       return;
     }
     if (trees?.hasStump(tx, ty)) {
-      setToast(this.gs, 'Clear the stump with the axe (slot 3)', 1.6);
+      setToast(this.gs, `Clear the stump with the axe (${this.inputLabel('slot3')})`, 1.6);
       return;
     }
     if (trees?.rockSlot(tx, ty)) {
@@ -4433,16 +4477,21 @@ export class GameRuntime {
     this.popups = this.popups.filter((p) => p.life > 0);
   }
 
+  private inputLabel(action: InputAction): string {
+    return formatBinding(this.input.getBindings(), action);
+  }
+
   private interactionHint(
     seed: ReturnType<typeof selectedSeed>,
     packet: ReturnType<typeof selectedSeedPacket>,
   ): string {
     const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
     const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · C breed · E merchant permits · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
+    const key = (action: InputAction): string => this.inputLabel(action);
+    const controls = `${key('slot1')} shotgun · ${key('slot2')} shovel · ${key('slot3')} axe · ${key('toolSlot')} bucket · ${key('primary')} primary · ${key('secondary')} secondary · ${key('context')} context · ${key('ultimate')} boulder · ${key('bearTrap')} bear trap · ${key('rotateOrCycle')} rotate/weapon · ${key('breed')} breed · ${key('interact')} interact · ${key('build')} build · ${key('demolish')} demolish · ${key('inventory')} inventory · ${key('codex')} Codex · ${key('seedPrevious')} ${key('seedNext')} seed (${seedLabel})${seedEffect} · ${key('zoomIn')} / ${key('zoomOut')} zoom · ${key('reducedMotion')} motion`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
-      return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
+      return `Build: ${selected?.displayName ?? 'asset'} · ${key('rotateOrCycle')}/${key('secondary')} rotate · ${key('primary')} or click place · ${key('pause')} exit`;
     }
     if (this.firstPlotGuideActive) {
       const stage = firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes);
@@ -4457,51 +4506,51 @@ export class GameRuntime {
       placedBuildings: this.gs.placedBuildings,
     });
     if (arcHint && !this.nearMerchant && !this.nearMarket && !this.nearWater) return arcHint;
-    if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
+    if (this.nearMerchant) return `${key('interact')} — open the Traveling Merchant shop`;
     if (this.nearMarket) return 'Market stall — sell for duckettes';
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
-      return this.nearWaterTower ? 'E — fill bucket at the water tower' : 'E — fill bucket';
+      return this.nearWaterTower ? `${key('interact')} — fill bucket at the water tower` : `${key('interact')} — fill bucket`;
     }
-    if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
+    if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · ${key('slot2')} back to shovel`;
 
     const tile = this.pointerTile();
     if (this.gs.toolSlotActive) {
       const irrigationNote = this.gs.irrigationTier >= 3 ? ' · irrigation active' : '';
-      if (!tile) return `6 bucket · point at a planted tile to water${irrigationNote}`;
+      if (!tile) return `${key('toolSlot')} bucket · point at a planted tile to water${irrigationNote}`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
-      if (target?.state === 'planted' && !target.watered) return `6 bucket · click to water${irrigationNote}`;
-      if (target?.state === 'mature') return 'Harvest is ready · switch to the shovel';
-      return '6 bucket · point at a thirsty crop';
+      if (target?.state === 'planted' && !target.watered) return `${key('toolSlot')} bucket · ${key('primary')} or click to water${irrigationNote}`;
+      if (target?.state === 'mature') return `Harvest is ready · switch to ${key('slot2')}`;
+      return `${key('toolSlot')} bucket · point at a thirsty crop`;
     }
 
     if (this.gs.toolbarSlot === SLOT_SHOVEL) {
-      if (!tile) return '2 shovel · point at a farm tile';
+      if (!tile) return `${key('slot2')} shovel · point at a farm tile`;
       const target = getTile(this.gs.tiles, tile.tx, tile.ty);
       const wc = this.farmTileWorld(tile.tx, tile.ty);
       if (Math.hypot(this.playerX - wc.x, this.playerZ - wc.z) > TOOL_RANGE) return 'Move closer to work this tile';
       const trees = this.world.getFarmTrees();
-      if (trees?.hasTree(tile.tx, tile.ty)) return 'Axe required here · switch to slot 3';
-      if (trees?.hasStump(tile.tx, tile.ty)) return 'Clear the stump with the axe · slot 3';
+      if (trees?.hasTree(tile.tx, tile.ty)) return `Axe required here · switch to ${key('slot3')}`;
+      if (trees?.hasStump(tile.tx, tile.ty)) return `Clear the stump with the axe · ${key('slot3')}`;
       if (trees?.rockSlot(tile.tx, tile.ty)) return 'Boulder occupies this tile';
       if (!target) return 'Point at a farm tile';
-      if (target.state === 'grass') return 'Click to till this tile';
+      if (target.state === 'grass') return `${key('primary')} or click to till this tile`;
       if (target.state === 'tilled' || target.state === 'breeding') {
         return seed
-          ? `Click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
+          ? `${key('primary')} or click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
           : 'No seed selected';
       }
-      if (target.state === 'planted' && !target.watered) return 'Use the bucket to water this crop';
-      if (target.state === 'mature') return 'Click to harvest';
+      if (target.state === 'planted' && !target.watered) return `Use ${key('toolSlot')} to water this crop`;
+      if (target.state === 'mature') return `${key('primary')} or click to harvest`;
     }
 
     if (this.gs.toolbarSlot === SLOT_AXE) {
       const trees = tile ? this.world.getFarmTrees() : null;
-      if (tile && trees?.hasTree(tile.tx, tile.ty)) return 'Click to chop this tree';
-      if (tile && trees?.hasStump(tile.tx, tile.ty)) return 'Click to clear this stump';
-      return '3 axe · click a tree to chop';
+      if (tile && trees?.hasTree(tile.tx, tile.ty)) return `${key('primary')} or click to chop this tree`;
+      if (tile && trees?.hasStump(tile.tx, tile.ty)) return `${key('primary')} or click to clear this stump`;
+      return `${key('slot3')} axe · ${key('primary')} or click a tree to chop`;
     }
 
-    if (this.gs.toolbarSlot === SLOT_SHOTGUN) return '1 shotgun · click or right-click to fire';
+    if (this.gs.toolbarSlot === SLOT_SHOTGUN) return `${key('slot1')} shotgun · ${key('primary')}/click or ${key('secondary')} to fire`;
     return controls;
   }
 
@@ -4520,6 +4569,7 @@ export class GameRuntime {
         return { valid: status.valid, reason: status.reason };
       },
       helpOpen: this.helpOpen,
+      bindings: this.input.getBindings(),
       codexOpen: this.codexOpen,
       codexSelectedKey: this.codexSelectedKey,
       codexCompareKeys: this.codexCompareKeys,

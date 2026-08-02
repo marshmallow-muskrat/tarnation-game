@@ -652,6 +652,13 @@ and hit-pause contracts. No simulation, save, economy, asset, or workflow rules 
   context actions.
 - Never require double-click or right-click as the only route.
 
+Status: Complete on `agent/ux-01-input-contract`. The player-facing keyboard/mouse contract is
+typed and remappable; conflicts swap deterministically, malformed persisted bindings reset safely,
+primary/context/placement/demolition routes have keyboard equivalents, inventory use/delete no
+longer depend on double-click/right-click, and live HUD prompts stay synchronized. The full
+deterministic baseline is 292 tests across 42 files; the exact production-preview smoke passed
+after the final label synchronization.
+
 ### UX-02 — Rebuild information hierarchy
 
 - Default fresh inventory closed.
@@ -942,7 +949,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01 complete on its task branch; UX-02–05 pending |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
