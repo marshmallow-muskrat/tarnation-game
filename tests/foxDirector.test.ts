@@ -35,6 +35,8 @@ function makeFox(overrides: Partial<Fox> = {}): Fox {
     z: 10.5,
     state: 'seek',
     kind: 'diggler',
+    silhouetteScale: { x: 1, y: 1, z: 1 },
+    accessoryRoot: null,
     hp: 1,
     timer: 0,
     targetTx: 2,
@@ -93,10 +95,10 @@ describe('fox direction director', () => {
     expect(fox.pathTimer).toBe(0);
   });
 
-  it('keeps the existing role speeds for digglers, nibblers, haulers, and neutral sappers', () => {
+  it('uses the role-specific movement speeds for slow digglers, fast nibblers, deliberate sappers, and haulers', () => {
     const { director } = makeDirector();
-    expect(director.speedFor('diggler')).toBe(FOX_SPEED);
-    expect(director.speedFor('sapper')).toBe(FOX_SPEED);
+    expect(director.speedFor('diggler')).toBeCloseTo(FOX_SPEED * 0.78);
+    expect(director.speedFor('sapper')).toBeCloseTo(FOX_SPEED * 0.86);
     expect(director.speedFor('nibbler')).toBe(NIBBLER_SPEED);
     expect(director.speedFor('hauler')).toBe(HAULER_SPEED);
   });

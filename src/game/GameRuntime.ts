@@ -121,8 +121,11 @@ import {
 import { rollDrop, TROPHY_ODDS } from '../sim/luck';
 import {
   generateWave,
+  foxRoleProfile,
   nearestEdgePoint,
   selectRaidTarget,
+  type FoxRoleProfile,
+  type FoxType,
   type RaidTarget,
 } from '../sim/raid';
 import {
@@ -286,6 +289,7 @@ type AnimalActions = {
 type DeathMarker = {
   root: THREE.Group;
   corpse: THREE.Object3D;
+  accessoryRoot: THREE.Object3D | null;
   age: number;
   lifetime: number;
   fadeAt: number;
@@ -434,6 +438,7 @@ export class GameRuntime {
   };
 
   private foxes: Fox[] = [];
+  private raidTelegraphedRoles = new Set<FoxType>();
   private deathMarkers: DeathMarker[] = [];
   private lootMarkers: LootMarker[] = [];
   private feedbackBursts: FeedbackBurst[] = [];
@@ -1606,7 +1611,7 @@ export class GameRuntime {
           w.timer = 0;
           w.x = this.playerX + (this.gs.rng() - 0.5) * 5;
           w.z = this.playerZ + (this.gs.rng() - 0.5) * 5;
-          w.root.scale.setScalar(w.baseScale);
+          this.setFoxScale(w);
           w.root.position.set(w.x, this.world.heightAt(w.x, w.z), w.z);
           this.playFoxAction(w, 'walk');
         }
@@ -3211,7 +3216,7 @@ export class GameRuntime {
     this.recordOutcome('fox_defense', 'attempted');
     w.hp -= amount;
     if (w.hp > 0) {
-      w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.8, w.baseScale * 1.25);
+      this.setFoxScale(w, 1.25, 0.64);
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
       this.spawnFeedbackBurst(w.x, w.z, 0xffb45c, 4, 0.2);
@@ -3228,7 +3233,17 @@ export class GameRuntime {
     this.spawnFeedbackBurst(w.x, w.z, 0xef7561, 8, 0.32);
     this.audio.play('defeat');
     this.stopMixer(w.actions.mixer, w.root);
-    this.spawnDeathMarker(w.root, w.baseScale, w.x, w.z, w.root.rotation.y, 'fox');
+    this.spawnDeathMarker(
+      w.root,
+      w.accessoryRoot,
+      w.baseScale,
+      w.silhouetteScale,
+      w.x,
+      w.z,
+      w.root.rotation.y,
+      'fox',
+    );
+    w.accessoryRoot = null;
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
     // Dead is dead — drop it now rather than waiting for the next sweep.
     this.foxes = this.foxes.filter((o) => !o.dead);
@@ -3248,14 +3263,20 @@ export class GameRuntime {
   /** Leave a short-lived, grounded carcass marker instead of making a kill pop. */
   private spawnDeathMarker(
     corpse: THREE.Object3D,
+    accessoryRoot: THREE.Object3D | null,
     baseScale: number,
+    silhouetteScale: { x: number; y: number; z: number },
     x: number,
     z: number,
     heading: number,
     kind: 'fox',
   ): void {
     corpse.removeFromParent();
-    corpse.scale.setScalar(baseScale);
+    corpse.scale.set(
+      baseScale * silhouetteScale.x,
+      baseScale * silhouetteScale.y,
+      baseScale * silhouetteScale.z,
+    );
     corpse.position.set(0, 0.06, 0);
     corpse.rotation.set(0, heading, Math.PI / 2);
 
@@ -3301,6 +3322,7 @@ export class GameRuntime {
     this.deathMarkers.push({
       root: group,
       corpse,
+      accessoryRoot,
       age: 0,
       lifetime: 12,
       fadeAt: 9.5,
@@ -3317,6 +3339,11 @@ export class GameRuntime {
 
   private removeDeathMarker(marker: DeathMarker): void {
     marker.root.removeFromParent();
+    if (marker.accessoryRoot) {
+      marker.accessoryRoot.removeFromParent();
+      disposeObjectResources(marker.accessoryRoot, { geometries: true, materials: true });
+      marker.accessoryRoot = null;
+    }
     disposeModelClone(marker.corpse);
     marker.patchMaterial.dispose();
     marker.patchGeometry.dispose();
@@ -3498,6 +3525,7 @@ export class GameRuntime {
 
   private spawnRaid(): void {
     this.clearFoxes();
+    this.raidTelegraphedRoles.clear();
     this.clearDeathMarkers();
     this.clearLootMarkers();
     this.clearFeedbackBursts();
@@ -3509,11 +3537,19 @@ export class GameRuntime {
     ).filter((spawn) => !this.isEnclosed(Math.floor(spawn.x), Math.floor(spawn.y)));
     for (const sp of spawns) {
       const { root, animations } = cloneModel('fox');
+      const profile = foxRoleProfile(sp.kind);
       const x = sp.x;
       const z = sp.y;
       const baseScale = root.scale.x;
+      this.styleFoxModel(root, profile);
+      const accessoryRoot = this.createFoxAccessory(profile);
+      root.add(accessoryRoot);
       root.position.set(x, this.world.heightAt(x, z), z);
-      root.scale.setScalar(baseScale * 0.15);
+      root.scale.set(
+        baseScale * profile.silhouetteScale.x * 0.15,
+        baseScale * profile.silhouetteScale.y * 0.15,
+        baseScale * profile.silhouetteScale.z * 0.15,
+      );
       const foxActions: FoxActions = { mixer: null };
       if (animations.length) {
         const mixer = new THREE.AnimationMixer(root);
@@ -3536,6 +3572,8 @@ export class GameRuntime {
         z,
         state: 'burrow',
         kind: sp.kind,
+        silhouetteScale: { ...profile.silhouetteScale },
+        accessoryRoot,
         hp: 1,
         timer: FOX_BURROW_TIME,
         targetTx: -1,
@@ -3559,10 +3597,90 @@ export class GameRuntime {
     for (const w of this.foxes) {
       if (restoreTraps) this.resetFoxTrap(w);
       this.stopMixer(w.actions.mixer, w.root);
-      w.root.removeFromParent();
-      disposeModelClone(w.root);
+      this.disposeFoxActor(w);
     }
     this.foxes = [];
+  }
+
+  private disposeFoxActor(w: Fox): void {
+    if (w.accessoryRoot) {
+      w.accessoryRoot.removeFromParent();
+      disposeObjectResources(w.accessoryRoot, { geometries: true, materials: true });
+      w.accessoryRoot = null;
+    }
+    w.root.removeFromParent();
+    disposeModelClone(w.root);
+  }
+
+  private styleFoxModel(root: THREE.Object3D, profile: FoxRoleProfile): void {
+    const tint = new THREE.Color(profile.tint);
+    root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      const source = Array.isArray(object.material) ? object.material : [object.material];
+      const copies = source.map((material) => {
+        const copy = markMaterialOwner(material.clone(), 'clone');
+        const colored = copy as THREE.Material & { color?: THREE.Color };
+        if (colored.color) colored.color.lerp(tint, 0.64);
+        return copy;
+      });
+      disposeCloneOwnedMaterials(source);
+      object.material = copies.length === 1 ? copies[0]! : copies;
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+  }
+
+  private createFoxAccessory(profile: FoxRoleProfile): THREE.Group {
+    const group = new THREE.Group();
+    group.name = `fox_accessory_${profile.accessory}`;
+    const material = (color: number): THREE.MeshStandardMaterial =>
+      markMaterialOwner(
+        new THREE.MeshStandardMaterial({ color, roughness: 0.82, metalness: 0.02, flatShading: true }),
+        'clone',
+      );
+    const addMesh = (mesh: THREE.Mesh): void => {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      group.add(mesh);
+    };
+
+    if (profile.accessory === 'dirt_crest') {
+      const geometry = new THREE.ConeGeometry(0.11, 0.24, 5);
+      addMesh(new THREE.Mesh(geometry, material(0x6f4934)));
+      group.children[0]!.position.set(-0.13, 0.25, 0.13);
+      const second = new THREE.Mesh(geometry.clone(), material(0x6f4934));
+      second.position.set(0.13, 0.25, 0.13);
+      second.rotation.z = -0.25;
+      addMesh(second);
+    } else if (profile.accessory === 'collar') {
+      const collar = new THREE.Mesh(
+        new THREE.TorusGeometry(0.16, 0.025, 6, 12),
+        material(0xe0bf61),
+      );
+      collar.rotation.x = Math.PI / 2;
+      collar.position.y = 0.31;
+      addMesh(collar);
+    } else if (profile.accessory === 'sapper_pack') {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.18, 0.14), material(0xd48345));
+      pack.position.set(0, 0.3, -0.2);
+      addMesh(pack);
+    } else {
+      const left = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.12), material(0xc08a52));
+      left.position.set(-0.21, 0.25, 0.02);
+      addMesh(left);
+      const right = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.12), material(0xc08a52));
+      right.position.set(0.21, 0.25, 0.02);
+      addMesh(right);
+    }
+    return group;
+  }
+
+  private setFoxScale(w: Fox, factor = 1, verticalFactor = 1): void {
+    w.root.scale.set(
+      w.baseScale * w.silhouetteScale.x * factor,
+      w.baseScale * w.silhouetteScale.y * factor * verticalFactor,
+      w.baseScale * w.silhouetteScale.z * factor,
+    );
   }
 
   private stopMixer(mixer: THREE.AnimationMixer | null, root: THREE.Object3D): void {
@@ -3642,7 +3760,17 @@ export class GameRuntime {
     w.path = [];
     w.pathGoalKey = '';
     w.pathTimer = 0;
+    this.telegraphFoxRole(w);
     return true;
+  }
+
+  private telegraphFoxRole(w: Fox): void {
+    if (this.raidTelegraphedRoles.has(w.kind)) return;
+    const profile = foxRoleProfile(w.kind);
+    this.raidTelegraphedRoles.add(w.kind);
+    setToast(this.gs, `${profile.label}: ${profile.telegraph} · Counter: ${profile.counter}`, 3);
+    this.spawnFeedbackBurst(w.x, w.z, profile.tint, 5, 0.24);
+    this.audio.play(profile.audioCue);
   }
 
   private raidTargetCandidates(w: Fox, crops: readonly { x: number; y: number }[]): RaidTarget[] {
@@ -3784,10 +3912,10 @@ export class GameRuntime {
       if (w.state === 'burrow') {
         w.timer -= dt;
         const t = 1 - w.timer / FOX_BURROW_TIME;
-        w.root.scale.setScalar(w.baseScale * (0.15 + 0.85 * Math.min(1, t)));
+        this.setFoxScale(w, 0.15 + 0.85 * Math.min(1, t));
         if (w.timer <= 0) {
           w.state = 'seek';
-          w.root.scale.setScalar(w.baseScale);
+          this.setFoxScale(w);
           this.playFoxAction(w, 'walk');
           if (!this.assignFoxTarget(w, crops)) w.state = 'flee';
         }
@@ -3894,7 +4022,7 @@ export class GameRuntime {
           } else {
             w.state = 'eat';
             w.eatTimer = FOX_EAT_TIME;
-            w.root.scale.set(w.baseScale * 1.25, w.baseScale * 0.85, w.baseScale * 1.25);
+            this.setFoxScale(w, 1.25, 0.68);
             this.playFoxAction(w, 'attack');
           }
         }
@@ -3904,7 +4032,7 @@ export class GameRuntime {
       if (w.state === 'eat') {
         this.playFoxAction(w, 'attack');
         w.eatTimer -= dt;
-        w.root.scale.y = w.baseScale * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
+        w.root.scale.y = w.baseScale * w.silhouetteScale.y * (1 + Math.sin(this.gs.simTime * 12) * 0.08);
         if (w.eatTimer <= 0) {
           if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
             this.syncCropTile(w.targetTx, w.targetTy);
@@ -3917,7 +4045,7 @@ export class GameRuntime {
           this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
           this.clearFoxTarget(w);
           w.state = 'flee';
-          w.root.scale.setScalar(w.baseScale);
+          this.setFoxScale(w);
         }
         continue;
       }
@@ -3933,8 +4061,7 @@ export class GameRuntime {
         if (route.atGoal || dist < 0.5) {
           w.dead = true;
           this.stopMixer(w.actions.mixer, w.root);
-          w.root.removeFromParent();
-          disposeModelClone(w.root);
+          this.disposeFoxActor(w);
         }
       }
     }
