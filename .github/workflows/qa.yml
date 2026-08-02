@@ -1,27 +1,26 @@
-name: Verify and deploy production
+name: Quality gates
 
 on:
+  pull_request:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
-  group: cloudflare-pages-production
-  cancel-in-progress: false
+  group: quality-gates-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  deploy:
-    name: Verify and deploy to Cloudflare Pages
+  verify:
+    name: Verify application quality
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
 
     steps:
-      - name: Check out the reviewed commit
+      - name: Check out the proposed or reviewed commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: Set up Node.js
@@ -39,7 +38,7 @@ jobs:
       - name: Run simulation checks
         run: npm run check
 
-      - name: Run deterministic unit characterization suite
+      - name: Run deterministic unit and integration tests
         run: npm run test:ci
 
       - name: Validate assets and catalog
@@ -54,23 +53,27 @@ jobs:
       - name: Run deterministic farm and raid performance scenarios
         run: npm run perfcheck
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
-
-      - name: Run production E2E and visual checks
-        run: npm run e2e:ci
-
       - name: Audit production dependencies
+        # Dev-tool advisories remain the explicitly reviewed REL-01 follow-up;
+        # the shipped dependency tree must stay clean on every PR and main push.
         run: npm audit --omit=dev
 
       - name: Build production bundle
         run: npm run build
 
-      - name: Deploy the verified bundle
-        uses: cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0 # v4.0.0
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run production-build E2E and visual checks
+        run: npm run e2e:ci
+
+      - name: Retain QA artifacts after a failure
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          wranglerVersion: "4.118.0"
-          command: pages deploy dist --project-name=tarnation --branch=main
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          name: quality-gate-artifacts-${{ github.run_id }}
+          path: |
+            qa-artifacts/**
+            test-results/**
+          if-no-files-found: ignore
+          retention-days: 14

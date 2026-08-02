@@ -651,3 +651,83 @@ study protocol. The product owner explicitly waived the study for this release; 
 available for future validation and no participant findings are fabricated. UX-05 can therefore
 close on implementation and deterministic/browser evidence, with M8 release verification still
 pending.
+
+## 2026-08-02 — Make the production build the QA-01 browser contract
+
+QA-01 uses Vitest for deterministic simulation/codecs and small runtime-controller seams, and Playwright
+against `vite preview` for the player-visible journeys that depend on React, canvas input, assets, and
+modal semantics. The browser suite uses compact typed save builders, a reviewed platform-neutral launch
+baseline, one worker, and fixed viewport/timeout settings; it does not inspect browser storage or depend
+on network state. Three scripted performance scenarios enforce named budgets for dense farming, raid route
+fields, and a seeded economy cohort while writing only ignored QA artifacts. The deployment workflow runs
+the performance and production-build browser gates before the final build and deployment. Chromium's
+headless SwiftShader `GL_CLOSE_PATH_NV` thumbnail-readback message is a browser-driver warning rather
+than an application warning, so the harness filters only that exact message and continues to fail on all
+other console warnings/errors and page errors. No production code, save schema, fixed timestep, seeded
+simulation behavior, or bundle asset changed.
+
+## 2026-08-02 — Keep QA-02 CI release-critical and non-deploying
+
+QA-02 adds a separate pull-request/main quality workflow with locked installs, strict typechecking,
+existing simulation/unit/asset/audio/feel/performance gates, a production-only dependency audit, a
+production build, and Playwright E2E. It never receives deployment credentials or deploys a branch. The
+workflow uploads the generated performance report, Playwright HTML report, screenshots, traces, and videos
+only after failure, with a bounded 14-day retention period. The `e2e:ci` script sets a task-specific CI
+flag so local and hosted runs use the same retry, forbid-only, line, and HTML-report behavior. There is
+no formatter or linter script to invoke yet; the six full-audit dev-tool advisories are reviewed as the
+REL-01 dependency-upgrade follow-up while the production dependency tree must remain at zero findings.
+The deployment workflow repeats strict typecheck and production audit. GitHub branch protection and the
+single final human review are intentionally reserved for the Core Release Gate boundary so autonomous task
+and integration work can continue without weakening the required checks.
+
+The first hosted run also exposed two harness portability contracts: the launch-card baseline must be
+platform-specific because system font metrics change its measured height, and modal buttons that synchronously
+rerender a WebGL-backed React HUD can leave Playwright's pointer actionability wait pending. The E2E suite
+now keeps `darwin` and `linux` baselines, splits long journeys at modal boundaries, and uses the UI's real
+keyboard focus paths for pause/settings, merchant dismissal, and ending dismissal before asserting the
+resulting state. This changes no production UI or gameplay behavior.
+
+## 2026-08-02 — Make hosted QA-02 farm coverage observe the save contract
+
+The fresh-game journey now proves movement by reading the active `SaveService` two-slot envelope before and
+after one bounded KeyD input, then using the existing `beforeunload` persistence boundary. Farm control is
+covered by a compact typed fixture that places the player on a known empty starter-plot tile; the mature-crop
+journey's camera-centered click remains the input technique, and the assertion reads the production save until
+the fixed-step contact commits `grass → tilled`. A hosted run exposed that the transient interaction hint can
+appear just after a five-second wait on the slow Linux software-WebGL renderer even though the persisted farm
+transition is already correct. The final test polls the persisted state rather than adding a larger timing
+guess or a production debug hook. Run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+passed the full quality workflow for `b4d4c9b`. No production behavior, save schema, fixed timestep, seeded
+simulation, or asset bundle changed.
+
+## 2026-08-02 — Make production diagnostics explicit, bounded, and player-initiated
+
+QA-03 adds a Help-panel export rather than a public runtime inspection handle. Vite injects the package
+version, exact Git commit, and stable build ID; the export collects only browser/GPU capability summaries,
+save version and non-sensitive counts, the fixed seed, bounded recent action/outcome/day-transition events,
+bounded asset fallback failures, and aggregate frame/fixed-step performance. A pure sanitizer removes control
+characters, clamps numeric values, caps text and arrays, deduplicates asset failures, and serializes the
+explicit schema deterministically. Full save contents, personal data, unbounded logs, `window.tarn`, and
+mutation/debug escape hatches remain absent. No save field, simulation rule, fixed timestep, seeded RNG,
+economy rule, or asset path changed.
+
+## 2026-08-02 — Pin the release toolchain to Wrangler 4 and Node 24
+
+REL-01 upgrades the local and deployment toolchain from Wrangler 3 to stable Wrangler `4.118.0`.
+The deployment workflow is pinned to the `wrangler-action` `v4.0.0` commit and passes the same exact
+CLI version, while `.nvmrc`, package engines, and CI keep contributors on Node 24. The existing Pages
+configuration remains a static `dist` deployment; Wrangler 4 local Pages preview returned the built
+index successfully, and the reviewed Pages deploy command remains `pages deploy dist --project-name=tarnation
+--branch=main`. `npm ci`, full `npm audit`, and `npm audit --omit=dev` all passed with zero vulnerabilities.
+Contribution, release-note, all-rights-reserved licensing, and asset/audio provenance ledgers were added.
+No Vite, React, Three.js, save, simulation, economy, or gameplay contract changed.
+
+## 2026-08-02 — Keep the settlement objective readable and dismissible
+
+The player-facing settlement objective remains available by default, but its HUD panel is bounded to a
+compact readable width and viewport height so onboarding copy cannot cover the play space. `J` toggles the
+objective and `G` toggles the market guide; both actions are remappable through the existing Settings/Help
+binding surface and remain runtime-only presentation state, so no save schema or simulation rule changes.
+The release browser suite proves both hide/show routes and the bounded panel width. Human animation/accessibility
+signoff and external playtesting are **Deferred by owner until after completion of this update; not performed
+and not claimed.**

@@ -31,6 +31,7 @@ import { hash2 } from './noise';
 import { ScatterChunks } from './ScatterChunks';
 import { buildTerrain, SOIL_NONE, SOIL_TILLED, SOIL_WATERED, type TerrainSystem } from './terrain';
 import { disposeCloneOwnedMaterials, disposeModelClone, disposeObjectResources } from './ResourceDisposal';
+import type { DiagnosticsGpuInput } from './Diagnostics';
 
 const _matrix = new THREE.Matrix4();
 const _color = new THREE.Color();
@@ -869,6 +870,52 @@ export class WorldRenderer {
 
   render(): void {
     this.renderer.render(this.scene, this.camera);
+  }
+
+  getDiagnostics(): DiagnosticsGpuInput {
+    const gl = this.renderer.getContext();
+    const parameterNumber = (name: number): number => {
+      try {
+        const value = gl.getParameter(name);
+        return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+      } catch {
+        return 0;
+      }
+    };
+    const parameterText = (name: number): string => {
+      try {
+        const value = gl.getParameter(name);
+        return typeof value === 'string' ? value : 'unknown';
+      } catch {
+        return 'unknown';
+      }
+    };
+    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info') as {
+      UNMASKED_VENDOR_WEBGL?: number;
+      UNMASKED_RENDERER_WEBGL?: number;
+    } | null;
+    const vendor = debugInfo?.UNMASKED_VENDOR_WEBGL
+      ? parameterText(debugInfo.UNMASKED_VENDOR_WEBGL)
+      : parameterText(gl.VENDOR);
+    const renderer = debugInfo?.UNMASKED_RENDERER_WEBGL
+      ? parameterText(debugInfo.UNMASKED_RENDERER_WEBGL)
+      : parameterText(gl.RENDERER);
+    const maxSamples = this.renderer.capabilities.isWebGL2
+      ? parameterNumber((gl as WebGL2RenderingContext).MAX_SAMPLES)
+      : 0;
+    return {
+      webglVersion: parameterText(gl.VERSION),
+      vendor,
+      renderer,
+      webgl2: this.renderer.capabilities.isWebGL2,
+      maxTextureSize: parameterNumber(gl.MAX_TEXTURE_SIZE),
+      maxTextureUnits: parameterNumber(gl.MAX_TEXTURE_IMAGE_UNITS),
+      maxSamples,
+      renderCalls: this.renderer.info.render.calls,
+      renderTriangles: this.renderer.info.render.triangles,
+      geometries: this.renderer.info.memory.geometries,
+      textures: this.renderer.info.memory.textures,
+    };
   }
 
   /** Release procedural world resources and the renderer exactly once. */

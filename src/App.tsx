@@ -265,6 +265,7 @@ export function App() {
         onToggleBuild={() => runtimeRef.current?.toggleBuildMode()}
         onSelectBuild={(i) => runtimeRef.current?.selectBuild(i)}
         onToggleHelp={() => runtimeRef.current?.toggleHelp()}
+        onExportDiagnostics={() => runtimeRef.current?.exportDiagnostics()}
         onToggleSettings={() => runtimeRef.current?.toggleSettings()}
         onUpdateSetting={(key: GameSettingKey, value: GameSettingValue) => runtimeRef.current?.updateSetting(key, value)}
         onResetSettings={() => runtimeRef.current?.resetSettings()}

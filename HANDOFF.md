@@ -12,7 +12,7 @@ defends crops from foxes, upgrades the homestead, and places buildings. The desi
 non-linear progression and future maps/challenge spaces, but the current work is refinement of the
 existing loop.
 
-Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
+Run locally with `npm install && npm run dev`; open `http://localhost:5183/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
 baseline. The production page exposes no runtime debug handle; use deterministic tests and local
@@ -96,8 +96,71 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
   product owner explicitly waived UX-05's five-person external study for this release; its protocol
   remains documented for future validation without fabricated participant findings.
-  M9 Audio/feel is now a release candidate on `agent/m9-release`: AUD-01, AUD-02, and FEEL-01 pass
-  their task gates; the `main` workflow and live smoke verification remain pending.
+  M9 Audio/feel is released as PR #61 merge `b6325bd`: AUD-01, AUD-02, and FEEL-01 pass their task
+  gates; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291)
+  passed verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
+- QA-01 is complete on `agent/qa-01-automated-test-pyramid`: the deterministic Vitest baseline is 328
+  passing tests across 48 files, including runtime-controller integration tests and the compact fixed-seed
+  fixture builders already used by the save/farm/economy suites. Six focused Playwright journeys run against
+  the production build: fresh movement/starter-plot work/settings, mature-crop harvest and Codex discovery,
+  merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
+  reviewed launch-card baselines are platform-specific for Darwin and Linux. `npm run perfcheck` enforces
+  dense-farm, raid-route,
+  and seeded-economy budgets and writes only ignored QA artifacts. The deployment workflow now runs
+  `npm run perfcheck`, installs Chromium, and runs `npm run e2e:ci` before the final build/deployment step;
+  all other warnings/errors remain fatal, with only the known headless SwiftShader
+  `GL_CLOSE_PATH_NV` thumbnail-readback driver message filtered by the browser harness. The full QA-01
+  verification matrix passed: `test`, `test:ci`, `check`, `assetcheck`, `audiocheck`, `feelcheck`,
+  `perfcheck`, production E2E, strict unused-symbol TypeScript, build, diff check, and production-only
+  `npm audit` (0 vulnerabilities). No production or save behavior changed.
+- QA-02 is complete on `agent/qa-02-continuous-integration`: `.github/workflows/qa.yml` runs for every
+  pull request and push to `main`, starts from locked `npm ci`, runs strict typecheck, simulation,
+  deterministic unit/integration, asset/audio/feel, performance, production-only audit, production build,
+  and `npm run e2e:ci`, then retains `qa-artifacts/**` and `test-results/**` for 14 days on failure. The
+  seven production-build journeys now keep fresh launch/settings/persisted movement separate from the
+  fixture-driven camera-centered grass → tilled farm transition, while retaining mature-crop/Codex,
+  merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
+  movement test reads the active production save envelope before and after one bounded KeyD input and lets
+  the real beforeunload path persist it; the farm test reads the checksum-validated save until the fixed-step
+  tool contact commits `grass → tilled`. The E2E CI script enables the configured line and HTML reporters.
+  The deployment workflow runs `npm run test:ci` and `npm run e2e:ci` before the final build/deployment path.
+  The complete local matrix passed with 328 Vitest tests, all simulation/asset/audio/feel/performance gates,
+  strict unused-symbol TypeScript, build, diff check, and `npm audit --omit=dev` (0 vulnerabilities).
+  Hosted run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+  passed for commit `b4d4c9b`. A prior hosted run failed only because a transient UI hint appeared just
+  after a 5-second wait under slow software WebGL; the artifact showed the real plantable state, so the
+  final assertion uses the persisted save contract instead of increasing a timing guess. No production or
+  save behavior changed. No formatter/linter is configured yet; the six full-audit dev-tool advisories
+  remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
+  rule; release PRs remain the enforced process, with protection and the single final human review to be
+  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
+- QA-03 is complete on `agent/qa-03-production-diagnostics`: the pausing Help panel exports a sanitized,
+  deterministic diagnostics JSON containing exact build identity, browser/GPU capabilities, save version and
+  bounded metadata, fixed seed, at most 32 recent action/outcome/transition events, at most 32 unique asset
+  fallback failures, and aggregate frame/fixed-step performance. The export intentionally excludes full save
+  contents, personal data, unbounded logs, and mutation/debug APIs. Production E2E verifies the download and
+  checks that `window.tarn` and F12-only instructions are absent. Local QA-03 verification passed with 333
+  Vitest tests across 49 files, 8/8 production E2E journeys, strict TypeScript, build, simulation/asset/audio/
+  feel/performance checks, diff check, and `npm audit --omit=dev` (0 vulnerabilities). Build identity is
+  injected by Vite from the exact Git commit used for the build.
+- REL-01 is complete on `agent/rel-01-dependency-build-hygiene`: Wrangler is pinned to `4.118.0` in the
+  package manifest/lockfile and the deployment workflow uses the pinned `wrangler-action` v4.0.0 commit
+  with the same CLI version. Node 24 is recorded in `.nvmrc`, package engines, and CI. `npm ci` passed;
+  Wrangler Pages local preview served the built site with HTTP 200; the Pages deploy command resolved;
+  full and production-only audits reported zero vulnerabilities; and contribution, changelog, license,
+  and asset/audio provenance guidance were added. The task changed no Vite/React/Three.js, save,
+  simulation, economy, or gameplay behavior.
+- REL-02 implementation is complete on `agent/rel-02-release-checklist`, pending the exact reviewed M10
+  merge and live smoke. The top-left HUD objective is bounded to a compact readable panel with a scroll
+  cap; `J` toggles the settlement objective and `G` toggles the market guide, and both bindings are exposed
+  through Help, Settings, and README controls. The release E2E covers those controls, panel width, and the
+  recoverable unsupported-WebGL launch path. Integrated local evidence is 334 Vitest tests across 49 files,
+  10/10 production-build E2E tests, simulation/asset/audio/feel/performance gates, strict TypeScript, build,
+  `git diff --check`, full audit, and production-only audit (0 vulnerabilities). Save/migration, economy,
+  diagnostics, fallback, resource-disposal, animation-profile, keyboard/modal, and browser-error coverage
+  remains green. The stale asset-picker documentation link was corrected from port 5173 to the configured
+  Vite port 5183. Human animation/accessibility signoff and external playtesting: **Deferred by owner until
+  after completion of this update; not performed and not claimed.**
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -243,7 +306,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   build. AUD-02 adds typed priority, voice caps, repeat intervals, music/ambience ducking, directional
   fox-threat panning, and HUD captions without changing simulation timing or save data. The
   deterministic baseline is 321 tests across 46 files; all required checks and an audio-mix
-  production-preview smoke pass. FEEL-01 is complete; M9 release verification remains.
+  production-preview smoke pass. FEEL-01 is complete; M9 is released as PR #61 merge `b6325bd`.
 
 - FEEL-01 synchronizes the existing action-state animation start/contact/fire boundary with a typed
   renderer-only presentation timeline. Major impacts now dispatch one bounded semantic VFX/audio/
@@ -252,8 +315,11 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   uses a fixed renderer-only jitter stream, while reduced motion and camera-shake settings remain
   respected. `npm run feelcheck` runs 216,000 fixed steps (one simulated hour) twice and compares the
   bounded result. The deterministic baseline is 326 tests across 47 files; all required checks and
-  production-preview fresh-run/audio-bootstrap smoke pass. The M9 release candidate is awaiting the
-  normal `main` workflow and live smoke verification.
+  production-preview fresh-run/audio-bootstrap smoke pass. M9 is released as PR #61 merge `b6325bd`;
+  workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291)
+  passed verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed
+  on Day 1/daylight with the saved-game journey, HUD, settlement objective, and Saved status visible;
+  canvas interaction produced no browser warning or error logs.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
@@ -608,8 +674,9 @@ The characterization baseline intentionally preserves current behavior for later
 ## 5. Release procedure
 
 Before each commit: check `git status`, run `npx tsc --noEmit`, and build when the change affects
-production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`, and
-`npm run build`, then deploys the verified `dist/` bundle through
+production. Every push to `main` automatically runs `npm run check`, `npm run test:ci`, `npm run assetcheck`,
+`npm run perfcheck`, installs the Playwright Chromium browser, runs `npm run e2e:ci`, and then runs
+`npm run build` before deploying the verified `dist/` bundle through
 `.github/workflows/deploy.yml`. A failed check prevents deployment. Do not use `npm run deploy`; recovery
 must go through a focused, verified `main` change, followed by live smoke testing and a record here.
 

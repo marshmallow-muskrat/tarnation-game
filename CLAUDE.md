@@ -52,7 +52,8 @@ Read [`ASSETS.md`](ASSETS.md) before importing or replacing models. `src/game/Fa
 - Check `git status` before staging. Stage intentional paths; never use `git add -A` blindly.
 - Keep commits small and explain tuning decisions.
 - Run `npx tsc --noEmit` before every commit. Run `npm run build` for release work.
-- Use `window.tarn` in the browser console for runtime inspection.
+- Use deterministic tests and the player-initiated diagnostics export for inspection; do not add a
+  production `window.tarn` handle, F12-only debug path, or public mutation API.
 - Merging into `main` automatically runs checks, builds, and deploys through
   `.github/workflows/deploy.yml`. Do not run a second manual deployment unless recovering from a
   failed workflow. Record the exact production commit, URL, and smoke test in `HANDOFF.md`.

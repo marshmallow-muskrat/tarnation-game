@@ -19,6 +19,8 @@ describe('keyboard input contract', () => {
     expect(bindingCodes(DEFAULT_INPUT_BINDINGS, 'moveUp')).toEqual(['KeyW', 'ArrowUp']);
     expect(bindingCodes(DEFAULT_INPUT_BINDINGS, 'pause')).toEqual(['Escape']);
     expect(formatBinding(DEFAULT_INPUT_BINDINGS, 'moveUp')).toBe('W / ↑');
+    expect(DEFAULT_INPUT_BINDINGS.objective).toBe('KeyJ');
+    expect(DEFAULT_INPUT_BINDINGS.marketGuide).toBe('KeyG');
   });
 
   it('treats remappable keys and retained movement/tool alternates as the same action', () => {

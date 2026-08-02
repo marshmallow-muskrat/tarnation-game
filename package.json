@@ -3,18 +3,25 @@
   "version": "0.3.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "preview:qa": "npm run build && vite preview --host 127.0.0.1 --port 4173",
     "deploy": "npm run build && wrangler pages deploy dist --project-name tarnation",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=dot",
     "test:watch": "vitest",
+    "e2e": "playwright test",
+    "e2e:ci": "PLAYWRIGHT_CI=1 playwright test",
     "check": "tsx scripts/simcheck.ts",
     "assetcheck": "tsx scripts/assetcheck.ts",
     "audiocheck": "tsx scripts/audiocheck.ts",
     "feelcheck": "tsx scripts/feelcheck.ts",
+    "perfcheck": "tsx scripts/perfcheck.ts",
     "economyreport": "tsx scripts/economyreport.ts"
   },
   "dependencies": {
@@ -23,6 +30,8 @@
     "three": "^0.185.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
+    "@types/node": "^24.3.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@types/three": "^0.185.0",
@@ -32,6 +41,6 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.3",
     "vitest": "^4.1.10",
-    "wrangler": "^3.99.0"
+    "wrangler": "4.118.0"
   }
 }

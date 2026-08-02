@@ -796,7 +796,9 @@ retain the oscillator cues only as a missing/blocked-asset fallback. The provena
 `npm run audiocheck` validate all 24 shipped WAV files. The deterministic baseline is 319 tests
 across 46 files; full simulation, asset, audio, build, strict TypeScript, diff, and production audit
 checks pass, and production-preview smoke triggered the audio bootstrap with no browser warnings or
-errors. M9 release verification remains.
+errors. M9 is released as PR #61 merge `b6325bd`; workflow
+[30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed
+verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
 
 ### AUD-02 — Mix for information
 
@@ -813,7 +815,9 @@ events, pans fox threats from their relative world position, and sends meaningfu
 through the existing HUD toast/status channel. The mix remains renderer-only: seeded RNG, fixed-step
 simulation, saves, and `src/sim/` are unchanged. The deterministic baseline is 321 tests across 46
 files; full simulation, asset, audio, build, strict TypeScript, diff, production audit, and
-production-preview smoke checks pass. M9 release verification remains.
+production-preview smoke checks pass. M9 is released as PR #61 merge `b6325bd`; workflow
+[30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed
+verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
 
 ### FEEL-01 — Cohesive feedback pass
 
@@ -843,6 +847,18 @@ feel, build, strict TypeScript, diff, production-audit, and production-preview s
 - **Visual:** representative deterministic screenshots with reviewed baselines.
 - **Performance:** scripted farm and raid scenarios with stored budgets/traces.
 
+Status: Complete on `agent/qa-01-automated-test-pyramid`. Vitest now runs 328 deterministic unit and
+controller-integration tests across 48 files, with compact typed fresh, midgame, dense-farm, corrupt-save,
+and prior-version fixtures. Playwright runs six focused production-build journeys covering fresh movement
+and starter-plot work with settings, mature-crop harvest/Codex discovery, merchant purchase, deed placement
+and save reload, deterministic raid, and the authored ending; the launch-card screenshot uses reviewed
+Darwin and Linux baselines. `npm run perfcheck` enforces fixed budgets for dense farming, raid route fields,
+and a seeded economy cohort and writes an ignored QA report. The deployment workflow runs the deterministic
+performance and browser gates before the final production build/deployment. No production behavior, save
+schema, fixed-step rule, seeded simulation path, or bundle asset changed. Headless Chromium's known SwiftShader
+`GL_CLOSE_PATH_NV` thumbnail-readback warning is filtered as browser-driver noise; all other browser
+warnings, errors, page errors, and failed assertions remain fatal.
+
 ### QA-02 — Continuous integration
 
 Add a GitHub Actions workflow that runs on PRs and main:
@@ -859,12 +875,42 @@ Add a GitHub Actions workflow that runs on PRs and main:
 
 No deployment proceeds from red CI. Protect `main` and require review once the workflow is stable.
 
+Status: Complete on `agent/qa-02-continuous-integration`. `.github/workflows/qa.yml` runs on every pull
+request and push to `main` with locked `npm ci`, strict unused-symbol typecheck, simulation checks,
+deterministic unit/integration tests, asset/audio/feel validation, performance budgets, production-only
+dependency audit, production build, Chromium E2E/visual checks, and failure-only artifact retention for
+reports, screenshots, traces, and videos. The seven production-build journeys separate the fresh launch,
+settings, and persisted movement contract from the fixture-driven camera-centered grass → tilled farm
+contract, while retaining mature-crop/Codex, merchant, building/reload, raid, and ending coverage. The
+deployment workflow runs `npm run test:ci` and `npm run e2e:ci` before the final build/deployment path so
+its verified deployment cannot bypass the deterministic suite or browser gates. The full local matrix
+passed with 328 Vitest tests, all simulation/asset/audio/feel/performance checks, strict TypeScript,
+production build, `npm audit --omit=dev` (0 vulnerabilities), and 7/7 E2E. Hosted run
+[30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879) passed the
+same quality workflow for commit `b4d4c9b`. No formatter or linter is configured in the repository yet,
+so no made-up lint command was added; that remains a tooling follow-up. The full dependency audit
+currently reports six dev-tool advisories in the Wrangler-era toolchain; the production dependency tree
+is clean and the upgrade is deferred to REL-01. GitHub branch-protection/review settings remain a final
+release-boundary action under the authorized autonomous task loop and are not changed by this code PR.
+
 ### QA-03 — Production diagnostics
 
 - Keep a sanitized local diagnostics export: version/commit, browser/GPU, save metadata, fixed seed,
   recent action/state transitions, asset failures, and performance summary.
 - Never include personal data or the full save without explicit player action.
 - Replace `window.tarn` and F12 debug exposure with development-only tooling.
+
+Status: Complete on `agent/qa-03-production-diagnostics`. The Help panel now provides a player-initiated
+diagnostics JSON export with injected version/exact commit/build identity, sanitized browser and GPU
+capabilities, current save version and bounded non-sensitive metadata, the active fixed seed, at most 32
+recent action/outcome/transition events, at most 32 unique asset fallback failures, and aggregate frame/fixed
+step performance data. The pure sanitizer clamps numbers, removes control characters, bounds text and arrays,
+and serializes deterministically; it has no full save fields, personal data, mutation path, or unbounded log.
+The production browser journey verifies the download, build identity, bounded shape, absence of `window.tarn`,
+and absence of F12-only instructions. Local verification passed with 333 deterministic Vitest tests across 49
+files, 8/8 production-build E2E journeys, strict unused-symbol TypeScript, build, and the existing simulation,
+asset, audio, feel, performance, diff, and production audit gates. No save schema, simulation rule, fixed
+timestep, seeded RNG, or gameplay pricing changed.
 
 ### REL-01 — Dependency and build hygiene
 
@@ -875,6 +921,16 @@ No deployment proceeds from red CI. Protect `main` and require review once the w
 - Add `LICENSE`, contribution expectations, changelog/release notes policy, and asset/audio license
   ledgers before public distribution.
 
+Status: Complete on `agent/rel-01-dependency-build-hygiene`. Wrangler is pinned to stable `4.118.0`
+in `package.json` and `package-lock.json`; the deployment workflow uses the pinned Wrangler Action
+`v4.0.0` commit and the same CLI version. Node 24 is pinned through `.nvmrc`, `package.json` engines,
+and existing CI setup. The existing `wrangler.jsonc` Pages configuration and `pages deploy dist
+--project-name=tarnation --branch=main` command resolve under Wrangler 4; `wrangler pages dev dist`
+served the production bundle locally with HTTP 200. `npm ci` reproduced the locked install. Full and
+production-only audits both report zero vulnerabilities. Contribution, changelog/release-note,
+all-rights-reserved licensing, and asset/audio provenance guidance are now explicit. No Vite, React,
+Three.js, save, simulation, economy, or gameplay behavior changed.
+
 ### REL-02 — Release checklist
 
 - Production flags and prices verified; no free/debug paths.
@@ -884,6 +940,20 @@ No deployment proceeds from red CI. Protect `main` and require review once the w
 - Full animation matrix and accessibility checklist signed off by a human.
 - At least two one-hour external playtests complete without developer intervention.
 - Deployment comes from the exact reviewed commit and is smoke-tested afterward.
+
+Status: Implementation is complete on `agent/rel-02-release-checklist`, with the exact reviewed main
+deployment and live smoke evidence pending the M10 release. The top-left objective panel is now bounded
+and compact while remaining readable; `J` toggles it and `G` toggles the market guide, with both controls
+listed in Help, Settings, and the local controls documentation. The production browser checklist covers
+fresh launch, settings and keyboard routes, persisted movement and farming, merchant pricing/purchase,
+placement and reload, raids, the authored ending, diagnostics export, no public debug handle, and a
+recoverable unsupported-WebGL error. Existing deterministic save/migration, economy, asset/audio,
+resource-disposal, animation-profile, fixed-step performance, and browser-error gates remain green.
+The local release matrix passed with 334 Vitest tests across 49 files, 10/10 production-build E2E tests,
+all simulation/asset/audio/feel/performance checks, strict unused-symbol TypeScript, production build,
+`git diff --check`, `npm audit`, and `npm audit --omit=dev` (0 vulnerabilities). Human animation/accessibility
+signoff and external playtesting: **Deferred by owner until after completion of this update; not performed
+and not claimed.**
 
 ## 17. Core Release Gate
 
@@ -1021,8 +1091,8 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Release candidate: AUD-01–02 and FEEL-01 complete on `agent/m9-release`; integrated verification and live smoke pending |
-| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
+| M10 Release hardening | QA-01–03, REL-01–02 | All core phases | In progress: REL-02 implementation complete; exact main deployment and live smoke pending |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
 Recommended first implementation order:
