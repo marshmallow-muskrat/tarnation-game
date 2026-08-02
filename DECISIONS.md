@@ -428,3 +428,18 @@ a save field.
 The accessories are explicitly detached and disposed for live actors and short-lived defeat
 markers. No new model, license, save schema, navigation policy, or raid-pressure tuning is added;
 crowd readability and preparation/action balance remain FOX-03 and FOX-04 work.
+
+## 2026-08-01 — Make fox routes and approach positions physically readable
+
+FOX-03 keeps the existing shared reverse-BFS field and topology-version contract, but gives it one
+shared movement rule: diagonal steps cannot pass between two blocked tiles. Enclosure flood fill uses
+the same guard, so a visually closed corner is not exposed to one system and sealed to the other.
+Topology invalidation remains explicit; ordinary tile-state and actor updates do not discard cached
+fields.
+
+Foxes reserve one deterministic, diagonal-first approach tile around each world target. Reservations
+are released on target completion, trap/repeller retreat, actor disposal, and raid cleanup; a blocked
+or occupied slot is skipped rather than forcing two actors onto the same point. Waypoint motion carries
+remaining fixed-step distance across tile centers without overshooting, and bounded deterministic
+separation resolves exact overlaps to the configured readability gap. No save field, target priority,
+role tuning, or new visual effect is introduced.

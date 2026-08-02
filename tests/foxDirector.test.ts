@@ -8,6 +8,7 @@ import {
   NIBBLER_SPEED,
   WORLD_SIZE,
 } from '../src/content';
+import { tileKey } from '../src/sim/placement';
 import { FoxDirector, type Fox } from '../src/game/FoxDirector';
 
 function fakeRoot() {
@@ -37,6 +38,7 @@ function makeFox(overrides: Partial<Fox> = {}): Fox {
     kind: 'diggler',
     silhouetteScale: { x: 1, y: 1, z: 1 },
     accessoryRoot: null,
+    approach: null,
     hp: 1,
     timer: 0,
     targetTx: 2,
@@ -114,7 +116,43 @@ describe('fox direction director', () => {
     expect(fox.path).not.toContainEqual({ tx: 2, ty: 1 });
   });
 
-  it('applies the existing deterministic overlap nudge while preserving trapped/dead actors and bounds', () => {
+  it('assigns distinct diagonal-first approach slots for foxes sharing one world target', () => {
+    const { director } = makeDirector(new Set(), new Set([tileKey(13, 11)]));
+    const first = makeFox({ x: 8.5, z: 8.5 });
+    const second = makeFox({ x: 9.5, z: 8.5 });
+    const target = { kind: 'crop' as const, x: 12, y: 12, distance: 1, exposed: true };
+
+    const firstSlot = director.reserveApproach(first, target);
+    const secondSlot = director.reserveApproach(second, target);
+
+    expect(firstSlot).toEqual({ tx: 11, ty: 11 });
+    expect(secondSlot).not.toEqual(firstSlot);
+    expect(secondSlot).toBeTruthy();
+    expect(first.approach).not.toBeNull();
+    director.releaseApproach(first);
+    expect(first.approach).toBeNull();
+    expect(director.reserveApproach(first, target)).toEqual(firstSlot);
+  });
+
+  it('moves through waypoints without overshooting or snapping past the reserved goal', () => {
+    const { director } = makeDirector();
+    const fox = makeFox({ x: 1.5, z: 1.5, path: [], pathGoalKey: '', pathTimer: 0 });
+
+    expect(director.moveTowardTile(fox, 3, 1, 10, 0.1)).toEqual({ atGoal: false, hasPath: true });
+    director.advance();
+    expect(director.moveTowardTile(fox, 3, 1, 10, 0.5)).toEqual({ atGoal: true, hasPath: true });
+    expect([fox.x, fox.z]).toEqual([3.5, 1.5]);
+  });
+
+  it('finishes a same-tile approach instead of treating an off-center goal as unreachable', () => {
+    const { director } = makeDirector();
+    const fox = makeFox({ x: 3.99, z: 1.5, path: [], pathGoalKey: '', pathTimer: 0 });
+
+    expect(director.moveTowardTile(fox, 3, 1, 1, 0.2)).toEqual({ atGoal: true, hasPath: true });
+    expect(fox.x).toBeCloseTo(3.79);
+  });
+
+  it('keeps active foxes at the readable separation gap while preserving trapped/dead actors and bounds', () => {
     const { director } = makeDirector();
     const first = makeFox({ x: 10, z: 10 });
     const second = makeFox({ x: 10, z: 10 });
@@ -124,13 +162,26 @@ describe('fox direction director', () => {
     director.separate([first, second, trapped, dead]);
 
     const separation = Math.hypot(first.x - second.x, first.z - second.z);
-    // Current behavior treats coincident actors as one unit apart before
-    // calculating the push, so the nudge remains below the nominal gap.
-    expect(separation).toBeCloseTo((FOX_SEPARATION - 1) * 1.04);
-    expect(separation).toBeLessThan(FOX_SEPARATION);
+    expect(separation).toBeGreaterThanOrEqual(FOX_SEPARATION - 0.000001);
+    director.separate([first, second, trapped, dead]);
+    expect(Math.hypot(first.x - second.x, first.z - second.z)).toBeGreaterThanOrEqual(FOX_SEPARATION - 0.000001);
     expect([trapped.x, trapped.z]).toEqual([1, 1]);
     expect([dead.x, dead.z]).toEqual([WORLD_SIZE + 2, WORLD_SIZE + 2]);
     expect(first.root.position.x).toBe(first.x);
     expect(first.root.position.z).toBe(first.z);
+  });
+
+  it('resolves a deterministic ten-fox arrival crowd without pairwise overlap', () => {
+    const { director } = makeDirector();
+    const crowd = Array.from({ length: 10 }, () => makeFox({ x: 10, z: 10 }));
+
+    director.separate(crowd);
+
+    for (let i = 0; i < crowd.length; i++) {
+      for (let j = i + 1; j < crowd.length; j++) {
+        expect(Math.hypot(crowd[i]!.x - crowd[j]!.x, crowd[i]!.z - crowd[j]!.z))
+          .toBeGreaterThanOrEqual(FOX_SEPARATION - 0.000001);
+      }
+    }
   });
 });

@@ -868,7 +868,7 @@ export class GameRuntime {
     }
     for (const key of occupiedPlacedTiles(this.gs.placedBuildings)) this.obstacleTiles.add(key);
     this.topologyVersion++;
-    this.foxDirector.clear();
+    this.foxDirector.invalidateNavigation();
     this.refreshInteractiveOccupancy();
   }
 
@@ -3216,6 +3216,7 @@ export class GameRuntime {
     this.recordOutcome('fox_defense', 'attempted');
     w.hp -= amount;
     if (w.hp > 0) {
+      this.clearFoxTarget(w);
       this.setFoxScale(w, 1.25, 0.64);
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
@@ -3224,6 +3225,7 @@ export class GameRuntime {
       return;
     }
     w.dead = true;
+    this.clearFoxTarget(w);
     this.resetFoxTrap(w);
     this.recordOutcome('fox_defense', 'completed', 'fox_felled');
     this.gs.stats.foxesFelled += 1;
@@ -3574,6 +3576,7 @@ export class GameRuntime {
         kind: sp.kind,
         silhouetteScale: { ...profile.silhouetteScale },
         accessoryRoot,
+        approach: null,
         hp: 1,
         timer: FOX_BURROW_TIME,
         targetTx: -1,
@@ -3603,6 +3606,7 @@ export class GameRuntime {
   }
 
   private disposeFoxActor(w: Fox): void {
+    this.foxDirector.releaseApproach(w);
     if (w.accessoryRoot) {
       w.accessoryRoot.removeFromParent();
       disposeObjectResources(w.accessoryRoot, { geometries: true, materials: true });
@@ -3740,6 +3744,7 @@ export class GameRuntime {
   }
 
   private clearFoxTarget(w: Fox): void {
+    this.foxDirector.releaseApproach(w);
     w.raidTarget = null;
     w.targetTx = -1;
     w.targetTy = -1;
@@ -3751,6 +3756,10 @@ export class GameRuntime {
   private assignFoxTarget(w: Fox, crops: readonly { x: number; y: number }[]): boolean {
     const target = selectRaidTarget(w.kind, this.raidTargetCandidates(w, crops));
     if (!target) {
+      this.clearFoxTarget(w);
+      return false;
+    }
+    if (!this.foxDirector.reserveApproach(w, target)) {
       this.clearFoxTarget(w);
       return false;
     }
@@ -3869,6 +3878,7 @@ export class GameRuntime {
           this.recordAction('trap_catch');
           w.x = bearTrap.wx;
           w.z = bearTrap.wz;
+          this.clearFoxTarget(w);
           w.state = 'trapped';
           w.timer = 5;
           w.trappedTx = bearTrap.tx;
@@ -3892,6 +3902,7 @@ export class GameRuntime {
         hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, REPEL_FOX_RADIUS) &&
         w.state !== 'flee'
       ) {
+        this.clearFoxTarget(w);
         w.state = 'flee';
         this.playFoxAction(w, 'walk');
         this.spawnFeedbackBurst(w.x, w.z, 0xb9e06b, 6, 0.22);
@@ -3933,7 +3944,19 @@ export class GameRuntime {
           w.state = 'flee';
           continue;
         }
-        const route = this.foxDirector.moveTowardTile(w, w.targetTx, w.targetTy, this.foxDirector.speedFor(w.kind), dt);
+        const approach = w.approach;
+        if (!approach) {
+          this.clearFoxTarget(w);
+          w.state = 'flee';
+          continue;
+        }
+        const route = this.foxDirector.moveTowardTile(
+          w,
+          approach.tx,
+          approach.ty,
+          this.foxDirector.speedFor(w.kind),
+          dt,
+        );
         if (!route.hasPath) {
           this.clearFoxTarget(w);
           w.state = 'flee';
