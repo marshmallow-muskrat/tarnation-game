@@ -665,3 +665,37 @@ headless SwiftShader `GL_CLOSE_PATH_NV` thumbnail-readback message is a browser-
 than an application warning, so the harness filters only that exact message and continues to fail on all
 other console warnings/errors and page errors. No production code, save schema, fixed timestep, seeded
 simulation behavior, or bundle asset changed.
+
+## 2026-08-02 — Keep QA-02 CI release-critical and non-deploying
+
+QA-02 adds a separate pull-request/main quality workflow with locked installs, strict typechecking,
+existing simulation/unit/asset/audio/feel/performance gates, a production-only dependency audit, a
+production build, and Playwright E2E. It never receives deployment credentials or deploys a branch. The
+workflow uploads the generated performance report, Playwright HTML report, screenshots, traces, and videos
+only after failure, with a bounded 14-day retention period. The `e2e:ci` script sets a task-specific CI
+flag so local and hosted runs use the same retry, forbid-only, line, and HTML-report behavior. There is
+no formatter or linter script to invoke yet; the six full-audit dev-tool advisories are reviewed as the
+REL-01 dependency-upgrade follow-up while the production dependency tree must remain at zero findings.
+The deployment workflow repeats strict typecheck and production audit. GitHub branch protection and the
+single final human review are intentionally reserved for the Core Release Gate boundary so autonomous task
+and integration work can continue without weakening the required checks.
+
+The first hosted run also exposed two harness portability contracts: the launch-card baseline must be
+platform-specific because system font metrics change its measured height, and modal buttons that synchronously
+rerender a WebGL-backed React HUD can leave Playwright's pointer actionability wait pending. The E2E suite
+now keeps `darwin` and `linux` baselines, splits long journeys at modal boundaries, and uses the UI's real
+keyboard focus paths for pause/settings, merchant dismissal, and ending dismissal before asserting the
+resulting state. This changes no production UI or gameplay behavior.
+
+## 2026-08-02 — Make hosted QA-02 farm coverage observe the save contract
+
+The fresh-game journey now proves movement by reading the active `SaveService` two-slot envelope before and
+after one bounded KeyD input, then using the existing `beforeunload` persistence boundary. Farm control is
+covered by a compact typed fixture that places the player on a known empty starter-plot tile; the mature-crop
+journey's camera-centered click remains the input technique, and the assertion reads the production save until
+the fixed-step contact commits `grass → tilled`. A hosted run exposed that the transient interaction hint can
+appear just after a five-second wait on the slow Linux software-WebGL renderer even though the persisted farm
+transition is already correct. The final test polls the persisted state rather than adding a larger timing
+guess or a production debug hook. Run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+passed the full quality workflow for `b4d4c9b`. No production behavior, save schema, fixed timestep, seeded
+simulation, or asset bundle changed.

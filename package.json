@@ -13,7 +13,7 @@
     "test:ci": "vitest run --reporter=dot",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "e2e:ci": "playwright test --reporter=line",
+    "e2e:ci": "PLAYWRIGHT_CI=1 playwright test",
     "check": "tsx scripts/simcheck.ts",
     "assetcheck": "tsx scripts/assetcheck.ts",
     "audiocheck": "tsx scripts/audiocheck.ts",

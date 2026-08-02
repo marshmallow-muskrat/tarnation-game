@@ -1,18 +1,24 @@
 import { defineConfig } from '@playwright/test';
 
+const isCi = Boolean(process.env.CI || process.env.PLAYWRIGHT_CI);
+
 /** Production-build browser coverage used by QA-01 and the release gate. */
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.e2e.ts',
-  snapshotPathTemplate: '{testDir}/__screenshots__/{testFileName}/{arg}{ext}',
+  snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{testFileName}/{arg}{ext}',
   fullyParallel: false,
-  forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
+  forbidOnly: isCi,
+  retries: isCi ? 2 : 0,
   workers: 1,
-  reporter: process.env.CI
+  reporter: isCi
     ? [['line'], ['html', { outputFolder: 'qa-artifacts/playwright-report', open: 'never' }]]
     : 'list',
-  timeout: 60_000,
+  // Software WebGL on the hosted Linux runner can take several seconds to
+  // answer each browser protocol turn while the fixed-step loop is rendering.
+  // Keep the journey assertions bounded, but give a complete production-build
+  // journey enough time to finish before Playwright interrupts it.
+  timeout: 120_000,
   expect: {
     timeout: 15_000,
     toHaveScreenshot: {

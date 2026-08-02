@@ -101,10 +101,11 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   passed verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
 - QA-01 is complete on `agent/qa-01-automated-test-pyramid`: the deterministic Vitest baseline is 328
   passing tests across 48 files, including runtime-controller integration tests and the compact fixed-seed
-  fixture builders already used by the save/farm/economy suites. Four Playwright journeys run against the
-  production build: fresh movement/starter-plot work/settings, mature-crop harvest and Codex discovery,
-  merchant purchase through deed placement plus reload, and deterministic raid/ending dismissal. The
-  reviewed launch-card baseline is platform-neutral. `npm run perfcheck` enforces dense-farm, raid-route,
+  fixture builders already used by the save/farm/economy suites. Six focused Playwright journeys run against
+  the production build: fresh movement/starter-plot work/settings, mature-crop harvest and Codex discovery,
+  merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
+  reviewed launch-card baselines are platform-specific for Darwin and Linux. `npm run perfcheck` enforces
+  dense-farm, raid-route,
   and seeded-economy budgets and writes only ignored QA artifacts. The deployment workflow now runs
   `npm run perfcheck`, installs Chromium, and runs `npm run e2e:ci` before the final build/deployment step;
   all other warnings/errors remain fatal, with only the known headless SwiftShader
@@ -112,6 +113,27 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   verification matrix passed: `test`, `test:ci`, `check`, `assetcheck`, `audiocheck`, `feelcheck`,
   `perfcheck`, production E2E, strict unused-symbol TypeScript, build, diff check, and production-only
   `npm audit` (0 vulnerabilities). No production or save behavior changed.
+- QA-02 is complete on `agent/qa-02-continuous-integration`: `.github/workflows/qa.yml` runs for every
+  pull request and push to `main`, starts from locked `npm ci`, runs strict typecheck, simulation,
+  deterministic unit/integration, asset/audio/feel, performance, production-only audit, production build,
+  and `npm run e2e:ci`, then retains `qa-artifacts/**` and `test-results/**` for 14 days on failure. The
+  seven production-build journeys now keep fresh launch/settings/persisted movement separate from the
+  fixture-driven camera-centered grass → tilled farm transition, while retaining mature-crop/Codex,
+  merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
+  movement test reads the active production save envelope before and after one bounded KeyD input and lets
+  the real beforeunload path persist it; the farm test reads the checksum-validated save until the fixed-step
+  tool contact commits `grass → tilled`. The E2E CI script enables the configured line and HTML reporters.
+  The deployment workflow runs `npm run test:ci` and `npm run e2e:ci` before the final build/deployment path.
+  The complete local matrix passed with 328 Vitest tests, all simulation/asset/audio/feel/performance gates,
+  strict unused-symbol TypeScript, build, diff check, and `npm audit --omit=dev` (0 vulnerabilities).
+  Hosted run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+  passed for commit `b4d4c9b`. A prior hosted run failed only because a transient UI hint appeared just
+  after a 5-second wait under slow software WebGL; the artifact showed the real plantable state, so the
+  final assertion uses the persisted save contract instead of increasing a timing guess. No production or
+  save behavior changed. No formatter/linter is configured yet; the six full-audit dev-tool advisories
+  remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
+  rule; release PRs remain the enforced process, with protection and the single final human review to be
+  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
