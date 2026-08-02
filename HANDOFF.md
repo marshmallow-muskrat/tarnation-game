@@ -14,7 +14,8 @@ existing loop.
 
 Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
-manifest paths, and `npm run economyreport` to print the current tuning baseline. `window.tarn`
+manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
+baseline. `window.tarn`
 exposes the runtime for browser debugging.
 
 ## 2. Current implementation
@@ -99,10 +100,23 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
   and build.
 
+- ART-01 is complete on the M7 task branch: the typed model metadata resolver now derives rigged or
+  static structure, expected clips, source-space axes and pivot, target heights, catalog footprints,
+  load groups, primitive fallbacks, held-marker source, icon framing, and CC0 provenance. The pure
+  GLB validator checks all 97 unique active files for scene references, finite transforms, source
+  bounds, textures, binary ranges, and expected clips. The deterministic baseline is now 252 tests
+  across 36 files; `npm run test`, `npm run test:ci`, `npm run check`, `npm run assetcheck`, the
+  production build, strict unused-symbol TypeScript, `git diff --check`, and `npm audit --omit=dev`
+  pass. ART-02 is next.
+
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
 - v4 migration can duplicate a trophy already present in the inventory, and v3/v4 top-level
   `darkwood` is currently discarded because that retired item no longer has a current registry entry.
+- ART-01 intentionally does not change the existing `market_stall` model placeholder, the four
+  hardcoded tool icon views, or the equipment profiles' measured grips. The current held-tool GLBs
+  have no embedded grip/support marker nodes, so the typed equipment profiles remain the honest
+  marker source; placeholder and presentation cleanup remain ART-02 and later M7 work.
 - SAVE-01 now emits a compact v9 sparse-tile wire format with a deduplicated seed table: the fixed
   fresh fixture is 1,361 bytes, the representative midgame fixture is about 1.5 KB, and the dense
   48×48 farm fixture is about 147 KB. Fresh and typical budgets are 250 KB and 1 MB, with a 4 MB

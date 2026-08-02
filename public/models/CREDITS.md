@@ -29,6 +29,11 @@ Raw pack zips are archived outside git.
 | Nature Crops Pack (Jan 2020) | 102 crop models, 4 growth stages per species |
 | Ultimate Nature Pack (Jun 2019) | instanced rocks, bushes, plants, grass, and flowers |
 | Textured Stylized Trees — May 2020 | instanced farm trees |
+| Survival Pack, RPG Items, and Universal Animation libraries | tools and held items |
 | Farm Buildings (Sept 2018) | 13 — barn, silo, windmill, water tower, well, coop, fences |
+| Ultimate Monsters | optional rigged guardian art |
 
-All CC0. Raw pack zips archived outside git.
+All listed packs are recorded as CC0. Raw pack zips are archived outside git. The typed
+`src/content/assetMetadata.ts` resolver records the pack, provider, license URL, and this file as
+the provenance record for every active manifest path category; `scripts/assetcheck.ts` fails if a
+manifest path has no provenance record.

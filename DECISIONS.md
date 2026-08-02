@@ -459,3 +459,20 @@ retreat consequence without a reward; only fox defeat enters the existing trophy
 sealed farms, open routes, unreachable routes, ten-fox waves, and dawn cleanup remain pure
 characterization cases. No save schema, migration, economy price, player-health, or production
 debug behavior changes in FOX-04.
+
+## 2026-08-01 — Make the active model manifest inspectable
+
+ART-01 keeps `src/content/models.ts` as the only model path and target-height manifest, then resolves
+the rest of the asset contract through typed metadata: expected rig class and semantic clips, source
+axes and ground pivot, catalog-derived collision and interaction footprints, deterministic load group,
+primitive fallback, held-marker source, icon framing, and CC0 pack/license provenance. Gameplay
+placement and equipment tables remain the authorities for their existing rules; the resolved
+footprints and held markers are validation metadata and do not change runtime behavior.
+
+The asset check opens each unique active binary glTF and validates its container, scene/node/mesh/
+skin/animation references, finite transforms, finite POSITION bounds, texture sources, buffer ranges,
+expected clips, missing files, catalog IDs, and fallback records. This is a pure Node-side check with
+no Three.js or browser dependency, so it does not change the production bundle or the primitive
+fallback path. The current repository contains 12 rigged and 85 static active files, 160 named clips,
+12 intentional manifest aliases, and no external texture files. The market-stall well placeholder and
+hardcoded tool-icon views remain intentionally deferred to ART-02 and the later presentation pass.

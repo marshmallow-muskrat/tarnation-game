@@ -9,6 +9,30 @@
  * so assets can be added one at a time without ever breaking the build.
  */
 
+export type ModelAxis = readonly [number, number, number];
+export type ModelKind = 'rigged' | 'static';
+export type AssetFallback = 'primitive';
+export type ModelClipSemantic = 'idle' | 'walk' | 'run' | 'attack' | 'death';
+export type ModelClipMatchers = Partial<Record<ModelClipSemantic, RegExp>>;
+export type ModelFootprint = Readonly<{ width: number; depth: number }>;
+export type ModelIconFraming = Readonly<{
+  yaw: number;
+  pitch: number;
+  roll: number;
+  distance: number;
+  targetY: number;
+  orthographicScale: number;
+}>;
+export type ModelSourceRecord = Readonly<{
+  pack: string;
+  provider: string;
+  url: string;
+  license: 'CC0';
+  licenseUrl: string;
+  record: string;
+}>;
+export type ModelMarkerSource = 'equipment-profile' | 'embedded-node' | 'none';
+
 export type ModelDef = {
   /** Path under public/models/ */
   path: string;
@@ -25,7 +49,28 @@ export type ModelDef = {
    * and normalising here means scale is fixed in exactly one place instead of
    * being hand-tuned at every call site.
    */
-  height?: number;
+  height: number;
+
+  /** Expected source structure. The checker compares this with the opened GLB. */
+  kind?: ModelKind;
+  /** Source-space forward and up axes; defaults match the shared loader. */
+  forwardAxis?: ModelAxis;
+  upAxis?: ModelAxis;
+  /** Source-space pivot adjustment; the runtime still grounds from measured bounds. */
+  groundPivot?: ModelAxis;
+  /** Data-only footprints; gameplay placement remains owned by purchasables.ts. */
+  collisionFootprint?: ModelFootprint;
+  interactionFootprint?: ModelFootprint;
+  /** Every failed load retains the existing primitive fallback contract. */
+  fallback?: AssetFallback;
+  /** Where held markers are authored when an asset has no embedded marker nodes. */
+  markerSource?: ModelMarkerSource;
+  /** Expected semantic clips for rigged assets; names are matched by the checker. */
+  requiredClips?: readonly ModelClipSemantic[];
+  /** Optional metadata used by icons and future authored preview framing. */
+  icon?: ModelIconFraming;
+  /** Source pack and license override for an exceptional asset. */
+  source?: ModelSourceRecord;
 
   /** Additional gameplay readability scale for a normalized animal silhouette. */
   animalScale?: number;
@@ -48,13 +93,7 @@ export type ModelDef = {
    * `Idle` / `Running_A`, Quaternius uses `Armature|Idle` or `Gallop`. Per-model
    * regexes beat one global guess.
    */
-  clips?: {
-    idle?: RegExp;
-    walk?: RegExp;
-    run?: RegExp;
-    attack?: RegExp;
-    death?: RegExp;
-  };
+  clips?: ModelClipMatchers;
 
   /** Free-text note — where it came from, why it's tuned this way. */
   note?: string;
