@@ -796,7 +796,9 @@ retain the oscillator cues only as a missing/blocked-asset fallback. The provena
 `npm run audiocheck` validate all 24 shipped WAV files. The deterministic baseline is 319 tests
 across 46 files; full simulation, asset, audio, build, strict TypeScript, diff, and production audit
 checks pass, and production-preview smoke triggered the audio bootstrap with no browser warnings or
-errors. M9 release verification remains.
+errors. M9 is released as PR #61 merge `b6325bd`; workflow
+[30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed
+verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
 
 ### AUD-02 — Mix for information
 
@@ -813,7 +815,9 @@ events, pans fox threats from their relative world position, and sends meaningfu
 through the existing HUD toast/status channel. The mix remains renderer-only: seeded RNG, fixed-step
 simulation, saves, and `src/sim/` are unchanged. The deterministic baseline is 321 tests across 46
 files; full simulation, asset, audio, build, strict TypeScript, diff, production audit, and
-production-preview smoke checks pass. M9 release verification remains.
+production-preview smoke checks pass. M9 is released as PR #61 merge `b6325bd`; workflow
+[30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed
+verification and automatic deployment, and live smoke at <https://tarnation.pages.dev/> passed.
 
 ### FEEL-01 — Cohesive feedback pass
 
@@ -1021,7 +1025,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Complete: PR #56 merged as `20a0c26`; workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417) passed simulation, deterministic tests, asset validation, build, and deployment; live smoke at <https://tarnation.pages.dev/> passed |
-| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Release candidate: AUD-01–02 and FEEL-01 complete on `agent/m9-release`; integrated verification and live smoke pending |
+| M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Complete: PR #61 merged as `b6325bd`; workflow [30752875291](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30752875291) passed verification/deployment and live smoke at <https://tarnation.pages.dev/> passed |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
 
