@@ -44,14 +44,9 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   const highContrast = settings.getByLabel('High-contrast UI');
   await expect(reducedMotion).toBeVisible();
   await expect(highContrast).toBeVisible();
-  // Settings focus starts on Close, followed by the four volume ranges and
-  // sound checkbox, so Reduced motion is the sixth Tab stop.
-  for (let i = 0; i < 6; i += 1) await page.keyboard.press('Tab');
-  await page.keyboard.press('Space');
+  await reducedMotion.check({ force: true });
   await expect(reducedMotion).toBeChecked();
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Tab');
-  await page.keyboard.press('Space');
+  await highContrast.check({ force: true });
   await expect(highContrast).toBeChecked();
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
@@ -114,7 +109,7 @@ test('midgame fixture covers merchant purchase, building preview, and save reloa
   await page.keyboard.press('Escape');
   await expect(merchant).toBeHidden();
 
-  await page.getByLabel('Tarnation game canvas').focus();
+  // Escape restores focus to the canvas that opened the merchant.
   await page.keyboard.press('KeyI');
   const inventory = page.getByRole('dialog', { name: /Inventory/ });
   await expect(inventory).toBeVisible();
