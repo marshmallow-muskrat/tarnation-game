@@ -1,5 +1,5 @@
 import { GRID_H, GRID_W } from '../content';
-import { GRID_DIRECTIONS_8, tileKey } from '../sim/placement';
+import { canTraverseGridStep, GRID_DIRECTIONS_8, tileKey } from '../sim/placement';
 
 export type NavigationRouteStatus = 'pending' | 'ready' | 'unreachable';
 
@@ -179,6 +179,7 @@ export class FoxNavigation {
       const next = nextTy * GRID_W + nextTx;
       if (field.parent[next] !== UNVISITED) continue;
       if (field.blocked.has(tileKey(nextTx, nextTy))) continue;
+      if (!canTraverseGridStep(tx, ty, nextTx, nextTy, field.blocked)) continue;
       field.parent[next] = current;
       field.queue[field.tail++] = next;
     }

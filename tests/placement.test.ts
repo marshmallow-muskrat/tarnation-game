@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createEmptyGrid } from '../src/sim/farm';
 import {
   calculateEnclosedTiles,
+  canTraverseGridStep,
   fixtureObstacleTiles,
   fixtureTiles,
   footprintTiles,
@@ -121,5 +122,22 @@ describe('placement footprints, reservations, gates, demolition, and enclosures'
     boundary.delete(tileKey(3, 1));
     const open = calculateEnclosedTiles(boundary, 7, 7);
     expect(tileIsEnclosed(open, 3, 3, 7)).toBe(false);
+  });
+
+  it('uses the same no-corner-cutting rule for enclosure flood fill and actor navigation', () => {
+    const blocked = new Set<string>();
+    for (let x = 1; x <= 5; x++) {
+      blocked.add(tileKey(x, 1));
+      blocked.add(tileKey(x, 5));
+    }
+    for (let y = 2; y < 5; y++) {
+      blocked.add(tileKey(1, y));
+      blocked.add(tileKey(5, y));
+    }
+    blocked.delete(tileKey(1, 1));
+
+    expect(canTraverseGridStep(1, 1, 2, 2, blocked, 7, 7)).toBe(false);
+    const enclosed = calculateEnclosedTiles(blocked, 7, 7);
+    expect(tileIsEnclosed(enclosed, 3, 3, 7)).toBe(true);
   });
 });

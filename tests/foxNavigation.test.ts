@@ -28,6 +28,32 @@ describe('fox navigation flow fields', () => {
     expect(route.path).not.toContainEqual({ tx: 10, ty: 9 });
   });
 
+  it('does not cut diagonally through the corner of two blocked tiles', () => {
+    const blocked = new Set([tileKey(2, 1), tileKey(1, 2)]);
+    const navigation = new FoxNavigation();
+
+    navigation.request(3, 3, 2, blocked);
+    navigation.advance(100_000);
+    const route = navigation.route(1, 1, 3, 3, 2, blocked);
+
+    expect(route.status).toBe('ready');
+    expect(route.path).not.toContainEqual({ tx: 2, ty: 2 });
+  });
+
+  it('reports a sealed target as unreachable instead of oscillating at an impossible corner', () => {
+    const blocked = new Set([
+      tileKey(1, 1), tileKey(2, 1), tileKey(3, 1),
+      tileKey(1, 2), tileKey(3, 2),
+      tileKey(1, 3), tileKey(2, 3), tileKey(3, 3),
+    ]);
+    const navigation = new FoxNavigation();
+
+    navigation.request(2, 2, 3, blocked);
+    navigation.advance(100_000);
+
+    expect(navigation.route(5, 5, 2, 2, 3, blocked).status).toBe('unreachable');
+  });
+
   it('caps route-field work per fixed-step budget instead of scanning the whole map', () => {
     const navigation = new FoxNavigation();
     navigation.request(120, 120, 4, new Set());

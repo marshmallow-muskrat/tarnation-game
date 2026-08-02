@@ -153,6 +153,31 @@ export const GRID_DIRECTIONS_8 = [
   [-1, 1],  [0, 1],   [1, 1],
 ] as const;
 
+/**
+ * A diagonal actor step may not pass through the corner of two solid tiles.
+ * Keep this rule beside the shared grid directions so enclosure and wildlife
+ * navigation agree about which gaps are physically traversable.
+ */
+export function canTraverseGridStep(
+  fromTx: number,
+  fromTy: number,
+  toTx: number,
+  toTy: number,
+  blocked: ReadonlySet<string>,
+  width = GRID_W,
+  height = GRID_H,
+): boolean {
+  if (
+    fromTx < 0 || fromTy < 0 || fromTx >= width || fromTy >= height ||
+    toTx < 0 || toTy < 0 || toTx >= width || toTy >= height
+  ) return false;
+  const dx = toTx - fromTx;
+  const dy = toTy - fromTy;
+  if (Math.abs(dx) > 1 || Math.abs(dy) > 1 || (dx === 0 && dy === 0)) return false;
+  if (dx === 0 || dy === 0) return true;
+  return !blocked.has(tileKey(fromTx + dx, fromTy)) && !blocked.has(tileKey(fromTx, fromTy + dy));
+}
+
 export function calculateEnclosedTiles(
   blocked: ReadonlySet<string>,
   width = GRID_W,
@@ -177,7 +202,12 @@ export function calculateEnclosedTiles(
   }
   for (let i = 0; i < queue.length; i++) {
     const current = queue[i]!;
-    for (const [dx, dy] of GRID_DIRECTIONS_8) enqueue(current.tx + dx, current.ty + dy);
+    for (const [dx, dy] of GRID_DIRECTIONS_8) {
+      const nextTx = current.tx + dx;
+      const nextTy = current.ty + dy;
+      if (!canTraverseGridStep(current.tx, current.ty, nextTx, nextTy, blocked, width, height)) continue;
+      enqueue(nextTx, nextTy);
+    }
   }
 
   const enclosed = new Uint8Array(width * height);
