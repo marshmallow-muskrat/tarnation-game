@@ -89,10 +89,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is in progress.
-  UX-01 through UX-04 are complete; UX-05's authored implementation is integrated on the task branch.
-  The product owner explicitly waived its five-person external study for this release; M8 release
-  verification remains pending.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is a release
+  candidate on `agent/m8-release`. UX-01 through UX-05 are complete on the integration branch.
+  The product owner explicitly waived UX-05's five-person external study for this release; the
+  `main` workflow and live smoke verification remain pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -225,7 +225,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   daylight, showed the non-modal First steps card and Saved status, opened Help, and reached Settings
   through the pause menu with no browser warnings/errors. The five-person external study is explicitly
   waived for this release; its protocol remains documented for future validation. UX-05 is complete
-  and M8 release evidence is pending.
+  and M8 release evidence is pending. The M8 release candidate contains no production gameplay
+  changes beyond the reviewed UX-01–05 integration and is awaiting the normal `main` workflow.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

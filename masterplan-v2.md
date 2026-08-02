@@ -992,7 +992,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01–04 complete; UX-05 implementation complete, five-person study pending |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | Release candidate: UX-01–05 complete on the integration branch; UX-05 study waived by explicit product-owner authorization; deterministic and production-preview evidence pass; release workflow/live smoke pending |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
