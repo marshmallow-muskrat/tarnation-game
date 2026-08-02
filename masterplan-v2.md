@@ -918,7 +918,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M3 Runtime health | PERF-01–05 | M0 | Complete: PR #24 merged as `d8a4362`; workflow `30728223190` passed verification/deployment and live smoke passed |
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
-| M6 Defense | FOX-01–04 | M3–M5 | In progress: FOX-01 and FOX-02 complete in integration merge `82a9900` (PR #41); next FOX-03 |
+| M6 Defense | FOX-01–04 | M3–M5 | In progress: FOX-01–03 complete in integration merge `4c0244b` (PR #42); next FOX-04 |
 | M7 Presentation | ART-01–05 | M3–M6 | Not started |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |

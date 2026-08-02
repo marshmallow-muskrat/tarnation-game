@@ -73,16 +73,17 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 
 - CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
   after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is next.
-- FOX-01 is integrated as merge `109a07b` (PR #40), and FOX-02 is integrated as merge `82a9900`
-  (PR #41). Foxes select deterministic world targets: haulers can steal stored crop produce,
-  sappers can force gates or damage active defenses, and ordinary roles pursue exposed crops; the
-  player-centered attack ring and all player-health implications remain removed. Each released fox
-  role now has a distinct pure profile plus clone-owned tint, bounded silhouette, procedural
+- FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), and FOX-03
+  as merge `4c0244b` (PR #42). Foxes select deterministic world targets: haulers can steal stored
+  crop produce, sappers can force gates or damage active defenses, and ordinary roles pursue exposed
+  crops; the player-centered attack ring and all player-health implications remain removed. Each
+  released fox role has a distinct pure profile plus clone-owned tint, bounded silhouette, procedural
   accessory, movement/target preference, telegraph, counter, and existing audio cue; live actors and
-  defeat markers explicitly dispose those renderer-owned resources. The integrated baseline is 230
-  deterministic tests across 35 files; `npm run test:ci` already runs before asset validation and
-  build in the deployment workflow. FOX-03 navigation/readability and FOX-04 preparation/action
-  tuning remain intentionally deferred to their dedicated tasks.
+  defeat markers explicitly dispose those renderer-owned resources. Shared navigation now rejects
+  diagonal corner cuts, reserves distinct target approach tiles, carries fixed-step movement across
+  waypoints, and resolves ten-fox overlap to the configured spacing gap. The integrated baseline is
+  237 deterministic tests across 35 files; `npm run test:ci` already runs before asset validation and
+  build in the deployment workflow. FOX-04 preparation/action tuning remains intentionally deferred.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
