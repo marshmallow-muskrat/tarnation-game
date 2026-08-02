@@ -301,3 +301,24 @@ indexes and v8 full-grid `Seed[]` entries migrate to counted packets; duplicate 
 legacy saves with more than 24 distinct stacks are preserved as temporary overflow rather than
 silently discarded. Seed packets remain separate from sellable produce; a seed-sale economy is not
 invented in CORE-02. No later genetics, irrigation, economy-tuning, or Codex-UI task is included.
+
+## 2026-08-02 — Give every released seed trait a bounded consequence
+
+CORE-03 keeps the existing Seed genotype as the sole producer and save representation for all trait
+effects. `growTimeForSeed` maps Vigor 0–100 to 1.25–0.75× the species base duration, while
+`waterGrowthMultiplierForSeed` maps the clamped species water need plus Thirst to 0.80–1.25× for a
+watered crop; Vigor and Thirst are multiplied per crop and never pooled across the field.
+`nibbleDamageForSeed` maps Hardiness 0–100 to 1.5–0.5× of the existing fox bite, per target crop.
+Greed crops add one produce unit and four raid-attraction score points per active crop. These
+effects are exercised by pure deterministic farm, genetics, and raid-score tests and surface in the
+planting HUD with their numeric trait values and effect text.
+
+Local mechanisms deliberately do not stack: the presence of any active `repel_foxes`, `ricochet`,
+or `portable_light` crop enables one boolean effect within a capped radius of 3, 8, or 6 tiles.
+Repellers send a fox fleeing with a feedback burst/toast; a ricochet crop gives each fired shotgun
+pellet or bow arrow at most one seeded-RNG bounce; portable light is derived from the selected
+packet or nearby planted crop and expands/brightens the renderer hero light. Ironroot remains an
+absolute bite defense and mature-crop destruction defense, with explicit failed-raid feedback.
+The derived effects add no save fields, preserve v9 compatibility, and do not change Codex identity
+or packet stacking. The economy diagnostic remains a generic two-day base-crop model until a later
+calibration task intentionally models trait distributions.

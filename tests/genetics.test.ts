@@ -67,11 +67,11 @@ describe('genetics, inheritance, mutation, and Codex behavior', () => {
     expect(ordinary.mech).toBe('none');
   });
 
-  it('keeps hybrid grow time on the base calendar while thirst changes water need within bounds', () => {
+  it('makes vigor and thirst affect growth deterministically while water need stays bounded', () => {
     const thirsty = makeSeed('lettuce', { thirst: 100 });
     const dry = makeSeed('grass', { thirst: 0 });
 
-    expect(growTimeForSeed(thirsty, FULL_DAY * 2)).toBe(FULL_DAY * 2);
+    expect(growTimeForSeed(thirsty, FULL_DAY * 2)).toBe(FULL_DAY * 2 * 1.05);
     expect(waterNeedForSeed(thirsty, 0.75)).toBe(1);
     expect(waterNeedForSeed(dry, 0.05)).toBe(0.1);
   });

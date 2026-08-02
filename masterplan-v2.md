@@ -917,7 +917,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M2 Honest economy | ECON-01–04 | M0, save transaction boundary | Complete: PR #13 merged as `ae4ee73`; workflow `30723636941` passed verification/deployment and live smoke passed |
 | M3 Runtime health | PERF-01–05 | M0 | Complete: PR #24 merged as `d8a4362`; workflow `30728223190` passed verification/deployment and live smoke passed |
 | M4 Premium control | ACT-01–05 | M0, relevant PERF extraction | Complete: ACT-01–05 integrated with fixed-step action states, contact/fire callbacks, buffering, movement scaling, menu cancellation, focus recovery, validated data-driven equipment profiles, locomotion hysteresis/cadence, bounded heading turns, typed tool interaction contracts, target/facing validation, authored bucket prop, fixed ranged/placement feedback, separate work/combat target domains, deterministic melee cones, and nonlethal ambient wildlife daze |
-| M5 Complete core loop | CORE-01–08 | M1–M4 decisions | In progress: CORE-01 and CORE-02 complete; CORE-03 next |
+| M5 Complete core loop | CORE-01–08 | M1–M4 decisions | In progress: CORE-01–03 complete; CORE-04 next |
 | M6 Defense | FOX-01–04 | M3–M5 | Not started |
 | M7 Presentation | ART-01–05 | M3–M6 | Not started |
 | M8 UX/accessibility | UX-01–05 | M1–M7 | Not started |

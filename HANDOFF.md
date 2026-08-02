@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 and CORE-02 are complete on the current integration branch after the ACT-01/02/03/04/05
-  and PERF-05 responsibility extractions; CORE-03 is next.
+- CORE-01, CORE-02, and CORE-03 are complete on the current integration branch after the
+  ACT-01/02/03/04/05 and PERF-05 responsibility extractions; CORE-04 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -291,7 +291,23 @@ The characterization baseline intentionally preserves current behavior for later
   genotypes. The separate seed packet store remains distinct from sellable produce. The baseline is
   now 189 deterministic tests across 29 files. `npm run test`, `npm run test:ci`, `npm run check`,
   `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
-  and `npm audit --omit=dev` pass. CORE-03 is next.
+  and `npm audit --omit=dev` pass. CORE-03 follows as the separate trait-effects task documented
+  immediately below.
+
+- CORE-03 makes every released seed trait earn a player-visible decision. Vigor changes the base
+  grow duration by ±25% around trait 50; species water need plus Thirst changes watered growth by
+  0.80–1.25×; Hardiness scales fox bite damage from 1.5× at 0 to 0.5× at 100; and Greed crops
+  return one additional produce unit plus four raid-attraction score points. Repel, Ricochet, and
+  Portable Light are local boolean effects with authored caps of 3, 8, and 6 tiles respectively;
+  multiple sources do not stack, and projectiles receive at most one bounce. Ironroot keeps its
+  existing mature-crop immunity and bite resistance, now with explicit feedback. The planting HUD
+  describes all numeric traits and mechanisms; repels, blocked bites, ricochet arming, and harvest
+  results provide runtime feedback. Effects are derived from the already-saved Seed genotype, so
+  no save schema or migration changes were needed. Pure tests cover each magnitude, active-tile
+  rule, cap, non-stacking boolean, and deterministic crop/raid outcome. The baseline is now 196
+  deterministic tests across 30 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. CORE-04 is next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
@@ -313,6 +329,9 @@ The characterization baseline intentionally preserves current behavior for later
   nonfunctional progression purchase to new players. The 30-day diagnostic still shows one rare
   runaway boundary hit because current released sinks are intentionally small; functional buildings
   are a later CORE-06 dependency, not silently invented here.
+- The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
+  not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
+  follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.
 
 ## 5. Release procedure
 

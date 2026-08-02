@@ -48,6 +48,7 @@ export class WorldRenderer {
   private keyLight!: THREE.DirectionalLight;
   private rim!: THREE.DirectionalLight;
   heroLight!: THREE.PointLight;
+  private portableLightActive = false;
 
   private overworldRoot = new THREE.Group();
   private farmBoundaryRoot!: THREE.Group;
@@ -416,6 +417,12 @@ export class WorldRenderer {
     this.starterPlotRoot.visible = visible;
   }
 
+  /** Carrying or standing near a portable-light crop expands the local light. */
+  setPortableLightActive(active: boolean): void {
+    this.portableLightActive = active;
+    this.heroLight.distance = active ? 10 : 6;
+  }
+
   /** Overworld trees are drawn here but their state lives in the sim. */
   initFarmTrees(hooks: ConstructorParameters<typeof FarmTrees>[0]): void {
     this.farmTrees = new FarmTrees(hooks);
@@ -540,7 +547,10 @@ export class WorldRenderer {
     }
     this.keyLight.intensity = THREE.MathUtils.lerp(2.2, 0.55, night);
     this.hemisphere.intensity = THREE.MathUtils.lerp(1.1, 0.45, night);
-    this.heroLight.intensity = THREE.MathUtils.lerp(3.0, 5.5, night);
+    this.heroLight.intensity =
+      THREE.MathUtils.lerp(3.0, 5.5, night) +
+      (this.portableLightActive ? THREE.MathUtils.lerp(0.6, 2.5, night) : 0);
+    this.heroLight.distance = this.portableLightActive ? 10 : 6;
     this.fogTarget.copy(this.fogDay).lerp(this.fogNight, night);
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.density = THREE.MathUtils.lerp(0.012, 0.028, night);

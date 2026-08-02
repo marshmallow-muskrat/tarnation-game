@@ -85,7 +85,9 @@ import {
   destroyCrop,
   digTrench,
   getTile,
+  hasPortableLightNearby,
   hasRepelNearby,
+  hasRicochetNearby,
   makeBreedingBed,
   nibbleCrop,
   placeBearTrap,
@@ -97,7 +99,13 @@ import {
   cropValueScore,
   totalWeirdness,
 } from '../sim/farm';
-import { crossbreed } from '../sim/genetics';
+import {
+  crossbreed,
+  PORTABLE_LIGHT_RADIUS,
+  REPEL_FOX_RADIUS,
+  RICOCHET_RADIUS,
+  seedTraitDescription,
+} from '../sim/genetics';
 import { hasRoomFor } from '../sim/inventory';
 import { cropItem, itemInfo, ITEM_WOOD, trophyItem, type ItemId } from '../sim/items';
 import { purchaseAsset } from '../sim/economy';
@@ -1818,6 +1826,7 @@ export class GameRuntime {
     this.flushActionEvents();
 
     const clock = stepGameClock(this.gs, dt);
+    this.world.setPortableLightActive(this.hasPortableLightSource());
     this.world.applyDayNight(this.gs.clock.phase, this.gs.clock.t);
 
     if (clock.matured.length) {
@@ -1919,6 +1928,22 @@ export class GameRuntime {
     const { tx, ty } = worldToTile(wx, wz, 1);
     if (tx < 0 || ty < 0 || tx >= GRID_W || ty >= GRID_H) return null;
     return { tx, ty };
+  }
+
+  /** One live ricochet crop arms every projectile fired from nearby. */
+  private ricochetChargesForPlayer(): number {
+    const tile = this.worldToFarmTile(this.playerX, this.playerZ);
+    return tile && hasRicochetNearby(this.gs.tiles, tile.tx, tile.ty, RICOCHET_RADIUS) ? 1 : 0;
+  }
+
+  /** Portable light is derived from the held packet or a nearby live crop. */
+  private hasPortableLightSource(): boolean {
+    const selected = selectedSeed(this.gs);
+    if (selected?.mech === 'portable_light') return true;
+    const tile = this.worldToFarmTile(this.playerX, this.playerZ);
+    return tile
+      ? hasPortableLightNearby(this.gs.tiles, tile.tx, tile.ty, PORTABLE_LIGHT_RADIUS)
+      : false;
   }
 
   private farmTileWorld(tx: number, ty: number): { x: number; z: number } {
@@ -2600,6 +2625,7 @@ export class GameRuntime {
     const sideX = dz;
     const sideZ = -dx;
     this.beginRangedAction('shotgun_2', () => {
+      const ricochet = this.ricochetChargesForPlayer();
       const pelletMaterial = new THREE.MeshStandardMaterial({
         color: 0x4b4b45,
         metalness: 0.65,
@@ -2631,9 +2657,12 @@ export class GameRuntime {
           vx: pelletX * SHOTGUN_SPEED,
           vz: pelletZ * SHOTGUN_SPEED,
           life: SHOT_LIFETIME,
-          ricochet: 0,
+          ricochet,
           dmg: 1,
         });
+      }
+      if (ricochet > 0) {
+        setToast(this.gs, 'Ricochet crop armed · each projectile bounces once', 1.5);
       }
       this.shotCd = SHOTGUN_COOLDOWN;
       this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 0xffd07a, 5, 0.12);
@@ -2665,6 +2694,7 @@ export class GameRuntime {
     if (this.shotCd > 0) return;
     const { dx, dz } = this.aimDirection();
     this.beginRangedAction('bow_wooden', () => {
+      const ricochet = this.ricochetChargesForPlayer();
       const { root } = cloneModel('arrow');
       root.scale.multiplyScalar(0.85);
       root.position.set(
@@ -2683,9 +2713,12 @@ export class GameRuntime {
         vx: dx * BOW_SPEED,
         vz: dz * BOW_SPEED,
         life: SHOT_LIFETIME,
-        ricochet: 0,
+        ricochet,
         dmg: 2,
       });
+      if (ricochet > 0) {
+        setToast(this.gs, 'Ricochet crop armed · the arrow bounces once', 1.5);
+      }
       this.shotCd = BOW_COOLDOWN;
       this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 0xd79358, 4, 0.1);
       this.audio.play('shot');
@@ -3496,7 +3529,17 @@ export class GameRuntime {
       }
 
       const tpos = this.worldToFarmTile(w.x, w.z);
-      if (tpos && hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, 3)) w.state = 'flee';
+      if (
+        w.state !== 'trapped' &&
+        tpos &&
+        hasRepelNearby(this.gs.tiles, tpos.tx, tpos.ty, REPEL_FOX_RADIUS) &&
+        w.state !== 'flee'
+      ) {
+        w.state = 'flee';
+        this.playFoxAction(w, 'walk');
+        this.spawnFeedbackBurst(w.x, w.z, 0xb9e06b, 6, 0.22);
+        setToast(this.gs, 'Repeller crop drove a fox away', 1.4);
+      }
 
       if (w.state === 'trapped') {
         this.playFoxAction(w, 'idle');
@@ -3616,6 +3659,11 @@ export class GameRuntime {
           } else if (w.kind === 'nibbler') {
             const nibbled = nibbleCrop(this.gs.tiles, w.targetTx, w.targetTy);
             if (nibbled) this.syncCropTile(w.targetTx, w.targetTy);
+            else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+              const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              setToast(this.gs, 'Ironroot resisted the fox bite', 1.5);
+            }
             this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
             w.targetTx = -1;
             if (this.gs.rng() < 0.4) w.state = 'flee';
@@ -3624,6 +3672,10 @@ export class GameRuntime {
               w.haulSeed = true;
               this.syncCropTile(w.targetTx, w.targetTy);
               this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
+            } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+              const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+              this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+              setToast(this.gs, 'Ironroot held against the fox', 1.5);
             }
             w.state = 'flee';
           } else {
@@ -3643,6 +3695,10 @@ export class GameRuntime {
         if (w.eatTimer <= 0) {
           if (destroyCrop(this.gs.tiles, w.targetTx, w.targetTy)) {
             this.syncCropTile(w.targetTx, w.targetTy);
+          } else if (getTile(this.gs.tiles, w.targetTx, w.targetTy)?.seed?.mech === 'ironroot') {
+            const wc = this.farmTileWorld(w.targetTx, w.targetTy);
+            this.spawnFeedbackBurst(wc.x, wc.z, 0xa9d5b0, 6, 0.22);
+            setToast(this.gs, 'Ironroot held against the fox', 1.5);
           }
           this.syncWorldTiles([{ tx: w.targetTx, ty: w.targetTy }]);
           w.state = 'flee';
@@ -3913,7 +3969,8 @@ export class GameRuntime {
     packet: ReturnType<typeof selectedSeedPacket>,
   ): string {
     const seedLabel = seed ? `${seed.displayName} ×${packet?.count ?? 0}` : '—';
-    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seedLabel}) · + / − zoom · M motion · F12 grid`;
+    const seedEffect = seed ? ` · ${seedTraitDescription(seed)}` : '';
+    const controls = `1 shotgun · 2 shovel · 3 axe · 6 bucket · Q boulder · B bear trap · R weapon · U upgrade · P build · X demolish · I inventory · [ ] seed (${seedLabel})${seedEffect} · + / − zoom · M motion · F12 grid`;
     if (this.buildingMode) {
       const selected = this.placement.selectedAsset();
       return `Build: ${selected?.displayName ?? 'asset'} · right-click rotate · click place · Esc exit`;
@@ -3950,7 +4007,9 @@ export class GameRuntime {
       if (!target) return 'Point at a farm tile';
       if (target.state === 'grass') return 'Click to till this tile';
       if (target.state === 'tilled' || target.state === 'breeding') {
-        return seed ? `Click to plant ${seed.displayName}` : 'No seed selected';
+        return seed
+          ? `Click to plant ${seed.displayName} ×${packet?.count ?? 0} · ${seedTraitDescription(seed)}`
+          : 'No seed selected';
       }
       if (target.state === 'planted' && !target.watered) return 'Use the bucket to water this crop';
       if (target.state === 'mature') return 'Click to harvest';
