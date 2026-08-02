@@ -176,8 +176,19 @@ The characterization baseline intentionally preserves current behavior for later
   combat fallback, bucket/tool selection, and attempt metrics retain their existing order and callbacks;
   `GameRuntime` remains the composition root for gameplay effects. Seven focused routing tests cover the
   player-visible tool mapping and build/context/demolish/combat/Space priority rules. The integrated
-  deterministic baseline is now 121 tests across 18 files. Remaining PERF-05 slices are fox direction,
-  placement, metrics, and HUD responsibility extraction.
+  deterministic baseline is now 121 tests across 18 files.
+
+- PERF-05's third extraction slice moves fox target selection, bounded route following, role speeds,
+  navigation-field ownership, and actor separation into `FoxDirector`; the raid state machine and
+  gameplay callbacks remain in `GameRuntime`. Four focused tests cover exposed-target choice, role
+  speeds, blocked-tile routing, and the current overlap/separation behavior. The integrated
+  deterministic baseline is now 125 tests across 19 files. Remaining PERF-05 slices are placement,
+  metrics, and HUD responsibility extraction.
+
+- Known current fox behavior is preserved for a later focused follow-up: when two active foxes start at
+  exactly the same position, the existing separation fallback treats them as one unit apart before
+  calculating the push, producing only a small deterministic nudge (0.052 units at the current 1.05
+  unit nominal gap) rather than fully separating them. No gameplay rule was changed in PERF-05.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
