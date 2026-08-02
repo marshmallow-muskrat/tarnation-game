@@ -3,6 +3,8 @@ import { DAY_LENGTH, NIGHT_LENGTH } from '../src/content';
 import { createClock } from '../src/sim/clock';
 import {
   dayTwoChoiceHint,
+  foxCropLossGuidance,
+  foxProduceLossGuidance,
   hasFunctionalBuilding,
   multiDayArcHint,
   RAID_TELEGRAPH,
@@ -10,6 +12,21 @@ import {
 } from '../src/sim/gameArc';
 
 describe('multi-day arc guidance', () => {
+  it('explains each crop-loss consequence with a concrete next defensive choice', () => {
+    expect(foxCropLossGuidance('nibbler', 'Beet', 'nibbled')).toBe(
+      'Nibbler nibbled your Beet · fence the plot or set a bear trap before nightfall.',
+    );
+    expect(foxCropLossGuidance('diggler', 'Carrot', 'destroyed')).toContain(
+      'fence the plot or set a bear trap before nightfall',
+    );
+    expect(foxCropLossGuidance('hauler', 'Lettuce', 'taken_before_harvest')).toContain(
+      'harvest before dusk, fence the plot, or set a bear trap',
+    );
+    expect(foxProduceLossGuidance('Beet')).toBe(
+      'Hauler stole Beet from storage · sell it before dusk or set a bear trap.',
+    );
+  });
+
   it('names the Day 2 capacity, crop-strategy, watering, and defense choices', () => {
     const hint = dayTwoChoiceHint();
     expect(hint).toContain('Silo');

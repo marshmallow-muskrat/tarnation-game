@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BOW_COOLDOWN,
+  BEAR_TRAP_COOLDOWN,
+  BOULDER_COOLDOWN,
+  MELEE_COOLDOWN,
+  SHOTGUN_COOLDOWN,
+} from '../src/content';
+import {
   EQUIPMENT_KEYS,
   EQUIPMENT_PROFILES,
   equipmentTimingFor,
@@ -93,6 +100,17 @@ describe('equipment content profiles', () => {
     expect(equipmentTimingFor('bear_trap', 'interact')).toEqual(DEFAULT_INTERACT_ACTION_TIMING);
     expect(equipmentTimingFor('build_preview', 'interact')).toEqual(DEFAULT_INTERACT_ACTION_TIMING);
     expect(equipmentTimingFor('bucket', 'ranged')).toBeNull();
+  });
+
+  it('keeps active raid defenses distinct through their targets, cooldowns, and recovery cues', () => {
+    expect(EQUIPMENT_PROFILES.shotgun_2.interaction.target).toBe('ranged');
+    expect(EQUIPMENT_PROFILES.bow_wooden.interaction.target).toBe('ranged');
+    expect(EQUIPMENT_PROFILES.bear_trap.interaction.target).toBe('trap_ground');
+    expect(EQUIPMENT_PROFILES.bear_trap.timings.interact?.recover).toBeGreaterThan(0);
+    expect(DEFAULT_RANGED_ACTION_TIMING.recover).toBe(0);
+    expect(SHOTGUN_COOLDOWN).toBeGreaterThan(BOW_COOLDOWN);
+    expect(BOULDER_COOLDOWN).toBeGreaterThan(SHOTGUN_COOLDOWN);
+    expect(BEAR_TRAP_COOLDOWN).toBeGreaterThan(MELEE_COOLDOWN);
   });
 
   it('keeps fallback records explicit for glyph tools, traps, and building previews', () => {

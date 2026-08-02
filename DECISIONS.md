@@ -395,3 +395,67 @@ schema. The HUD shows each step from fresh play through completion, and the endi
 continued play. The existing `winShown` field remains the dismissal marker; no save schema or
 migration changes are introduced. The old day-five-only behavior is characterized as insufficient,
 not silently retained as a second ending path.
+
+## 2026-08-01 — Keep fox raid consequences on vulnerable farm state
+
+FOX-01 removes the player-centered attack ring because the released game has no player-health,
+damage, recovery, accessibility, or fail-state contract. The raid instead selects deterministic
+world targets: haulers prefer the highest-value stored crop produce, sappers prefer a closed gate,
+then an active trap or trench, and ordinary crop roles prefer the nearest exposed crop. A closed
+gate can be forced open, an active trap remains the normal capture counter, a trench loses one
+structure point, and stored produce is removed atomically with player-visible feedback. A fox with
+no valid world target retreats rather than inventing danger.
+
+The existing lifecycle remains authoritative: the dusk telegraph and night spawn start a raid;
+burrowing is the preparation window; seeking, eating, and trap capture are active consequences;
+fox defeat grants the existing trophy roll; fleeing reaches the map edge; and dawn clears actors
+and re-arms traps. No player-health state, save field, migration, navigation rewrite, role art pass,
+or balance policy is introduced here. The earlier readable attack-ring decision is superseded by
+this world-target contract; the remaining role silhouette, telegraph, navigation, and preparation
+versus action tuning belong to FOX-02–04.
+
+## 2026-08-01 — Give each released fox type a readable role contract
+
+FOX-02 keeps the accepted fox model and adds renderer-owned role treatment rather than introducing
+new unproven assets: clone-owned material tints, bounded silhouette proportions, and one small
+procedural low-poly accessory per type. Digglers are low and slow with a dirt crest and crop
+burrow rule; nibblers are lean and fast with a collar and direct crop rule; sappers are broad and
+deliberate with a pack and gate/trap/trench preference; haulers are heavy with side satchels and
+stored-produce preference. Each profile carries the player-facing telegraph, counter text, and an
+existing audio cue, and the first role encounter in a raid announces that contract without adding
+a save field.
+
+The accessories are explicitly detached and disposed for live actors and short-lived defeat
+markers. No new model, license, save schema, navigation policy, or raid-pressure tuning is added;
+crowd readability and preparation/action balance remain FOX-03 and FOX-04 work.
+
+## 2026-08-01 — Make fox routes and approach positions physically readable
+
+FOX-03 keeps the existing shared reverse-BFS field and topology-version contract, but gives it one
+shared movement rule: diagonal steps cannot pass between two blocked tiles. Enclosure flood fill uses
+the same guard, so a visually closed corner is not exposed to one system and sealed to the other.
+Topology invalidation remains explicit; ordinary tile-state and actor updates do not discard cached
+fields.
+
+Foxes reserve one deterministic, diagonal-first approach tile around each world target. Reservations
+are released on target completion, trap/repeller retreat, actor disposal, and raid cleanup; a blocked
+or occupied slot is skipped rather than forcing two actors onto the same point. Waypoint motion carries
+remaining fixed-step distance across tile centers without overshooting, and bounded deterministic
+separation resolves exact overlaps to the configured readability gap. No save field, target priority,
+role tuning, or new visual effect is introduced.
+
+## 2026-08-02 — Keep fox preparation readable without making passive defense automatic
+
+FOX-04 keeps the existing dusk telegraph, burrow window, fixed-step action states, role priorities,
+active tool cooldowns, and trophy-on-defeat reward contract. A live `repel_foxes` crop now drives off
+at most two foxes per raid through a runtime-only counter; the cap resets at raid spawn and adds no
+save field, so passive crops soften pressure without clearing a peak wave by themselves. Shotgun,
+bow, melee, boulder, and bear-trap roles remain distinct through their existing typed targets,
+cooldowns, action timings, and HUD recovery cues rather than gaining a second ability system.
+
+Crop bites, crop destruction, pre-harvest hauling, and stored-produce theft now use deterministic
+player-facing guidance that names the fox role and a concrete next defense. Farm loss remains a
+retreat consequence without a reward; only fox defeat enters the existing trophy roll. Empty or
+sealed farms, open routes, unreachable routes, ten-fox waves, and dawn cleanup remain pure
+characterization cases. No save schema, migration, economy price, player-health, or production
+debug behavior changes in FOX-04.
