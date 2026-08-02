@@ -121,7 +121,10 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the six full-audit dev-tool advisories remain the explicit REL-01 upgrade follow-up while
   `npm audit --omit=dev` reports 0 vulnerabilities. The repository currently has no GitHub branch-protection
   rule; release PRs remain the enforced process, with protection and the single final human review to be
-  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
+  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs. The hosted
+  run required platform-specific launch-card baselines (`darwin` and `linux`) and a test-only DOM activation
+  helper for modal controls whose synchronous React rerenders outlast Playwright pointer actionability under
+  headless WebGL; both normal and CI-mode E2E now pass with those corrections and production behavior unchanged.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

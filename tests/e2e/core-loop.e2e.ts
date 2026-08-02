@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { captureBrowserErrors, completedE2eSave, e2eSave, expectNoBrowserErrors, importSave, startAdventure } from './helpers';
+import { activateButton, captureBrowserErrors, completedE2eSave, e2eSave, expectNoBrowserErrors, importSave, startAdventure } from './helpers';
 
 test('fresh game supports movement, farm controls, settings, and a reviewed visual launch baseline', async ({ page }) => {
   const errors = captureBrowserErrors(page);
@@ -94,9 +94,12 @@ test('midgame fixture covers merchant purchase, building preview, and save reloa
   await expect(merchant.getByText('Silo', { exact: true })).toBeVisible();
   const buyButtons = merchant.getByRole('button', { name: 'Buy', exact: true });
   await expect(buyButtons.first()).toBeEnabled();
-  await buyButtons.first().click();
+  await activateButton(buyButtons.first());
   await expect(merchant.getByRole('status')).toContainText(/added to inventory|Purchased|Bought|owned/i);
-  await merchant.getByRole('button', { name: 'Close' }).click();
+  const closeMerchant = merchant.getByRole('button', { name: 'Close' });
+  await expect(closeMerchant).toBeVisible();
+  await activateButton(closeMerchant);
+  await expect(merchant).toBeHidden();
 
   await page.getByLabel('Tarnation game canvas').focus();
   await page.keyboard.press('KeyI');
@@ -144,7 +147,9 @@ test('night raid and completed objective remain visible through import and dismi
   const ending = page.getByRole('dialog', { name: 'Homestead Established' });
   await expect(ending).toBeVisible({ timeout: 15_000 });
   await expect(ending).toContainText('Grow, experiment, defend, and develop');
-  await ending.getByRole('button', { name: 'Keep playing' }).click();
+  const keepPlaying = ending.getByRole('button', { name: 'Keep playing' });
+  await expect(keepPlaying).toBeVisible();
+  await activateButton(keepPlaying);
   await expect(ending).toBeHidden();
   await expectNoBrowserErrors(page, errors);
 });

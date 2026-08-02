@@ -6,7 +6,7 @@ const isCi = Boolean(process.env.CI || process.env.PLAYWRIGHT_CI);
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.e2e.ts',
-  snapshotPathTemplate: '{testDir}/__screenshots__/{testFileName}/{arg}{ext}',
+  snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{testFileName}/{arg}{ext}',
   fullyParallel: false,
   forbidOnly: isCi,
   retries: isCi ? 2 : 0,

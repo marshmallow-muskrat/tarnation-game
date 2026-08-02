@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import { serialize } from '../../src/sim/save';
 import { midgameSaveFixture } from '../fixtures';
 import type { SaveData } from '../../src/sim/save';
@@ -32,6 +32,19 @@ export async function startAdventure(page: Page, choice: 'Continue' | 'New Adven
   await expect(page.getByLabel('Tarnation game canvas')).toBeVisible();
   await expect(page.getByText(/^Day \d+$/)).toBeVisible({ timeout: 45_000 });
   await expect(page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 15_000 });
+}
+
+/**
+ * Activate a verified modal control without waiting for its synchronous React
+ * rerender to become actionability-stable under a headless WebGL loop.
+ * Visibility/enabled assertions remain at each call site; this fires the same
+ * browser button handler as a pointer click.
+ */
+export async function activateButton(button: Locator): Promise<void> {
+  await button.evaluate((element) => {
+    if (!(element instanceof HTMLButtonElement)) throw new Error('expected a button control');
+    element.click();
+  });
 }
 
 export function captureBrowserErrors(page: Page): string[] {
