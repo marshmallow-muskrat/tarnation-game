@@ -89,10 +89,15 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
   asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
-  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is a release
-  candidate on `agent/m8-release`. UX-01 through UX-05 are complete on the integration branch.
-  The product owner explicitly waived UX-05's five-person external study for this release; the
-  `main` workflow and live smoke verification remain pending.
+  M7 Presentation is now released as PR #50 merge `76b9efd`; M8 UX/accessibility is released as
+  PR #56 merge `20a0c26`. Workflow [30750993417](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30750993417)
+  passed simulation, `test:ci`, asset validation, build, and automatic deployment of the exact
+  merge SHA. Fresh live smoke at <https://tarnation.pages.dev/> passed Day 1/daylight, the First
+  steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
+  product owner explicitly waived UX-05's five-person external study for this release; its protocol
+  remains documented for future validation without fabricated participant findings.
+  M9 Audio/feel is now a release candidate on `agent/m9-release`: AUD-01, AUD-02, and FEEL-01 pass
+  their task gates; the `main` workflow and live smoke verification remain pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -206,13 +211,13 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   typed browser preferences outside the save schema: master/music/effects/ambience levels, mute,
   reduced motion, independent camera shake, UI/text scale, high-contrast UI, and the existing
   conflict-safe keyboard rebinding/reset contract. Audio gains are applied at the master and typed
-  music/effects/ambience buses; the current synthesized fallback has no authored music or ambience
-  source and remains on effects until AUD-01. Day/night pacing remains fixed because it is coupled
+  music/effects/ambience/UI buses; AUD-01 now supplies original authored music, ambience, and UI
+  sources, with synthesized cues retained only as the missing/blocked-asset fallback. Day/night pacing remains fixed because it is coupled
   to crop growth, raids, cooldowns, and the economy. The deterministic baseline is 303 tests across
   44 files. npm run test, npm run test:ci, npm run check, npm run assetcheck, the production build,
   strict unused-symbol TypeScript, git diff --check, and npm audit --omit=dev pass. Production-preview
   smoke verified the labeled Settings dialog, focus trap/restoration, scale and contrast controls,
-  and no browser warnings/errors. UX-05's implementation is ready for M8 release; its five-person study is explicitly waived for this release.
+  and no browser warnings/errors. UX-05's implementation is included in released M8; its five-person study is explicitly waived for this release.
 
 - UX-05 authors the first ten minutes as a derived, non-saved eight-beat guide: launch copy and
   immediate movement, starter-plot shovel/plant/water/grow/harvest transitions with active-binding
@@ -225,8 +230,30 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   daylight, showed the non-modal First steps card and Saved status, opened Help, and reached Settings
   through the pause menu with no browser warnings/errors. The five-person external study is explicitly
   waived for this release; its protocol remains documented for future validation. UX-05 is complete
-  and M8 release evidence is pending. The M8 release candidate contains no production gameplay
-  changes beyond the reviewed UX-01–05 integration and is awaiting the normal `main` workflow.
+  and M8 is released as PR #56 merge `20a0c26`; the exact workflow and live smoke evidence are
+  recorded above.
+
+- AUD-01 moves audio presentation from the oscillator-only identity to 24 original deterministic
+  WAV assets covering UI, footsteps, material-specific tools, water, crops, foxes, building,
+  rewards, merchant, day transitions, save states, and day/night loops. `AudioFeedback` now lazily
+  loads authored assets after a gesture, routes typed events through master/music/effects/ambience/UI
+  buses, switches day/night loop layers with the fixed simulation phase, and preserves the oscillator
+  cues as the missing/blocked-asset fallback. `public/audio/CREDITS.md` records original authorship,
+  `npm run audiocheck` validates the ledger and files, and the deployment workflow runs it before
+  build. AUD-02 adds typed priority, voice caps, repeat intervals, music/ambience ducking, directional
+  fox-threat panning, and HUD captions without changing simulation timing or save data. The
+  deterministic baseline is 321 tests across 46 files; all required checks and an audio-mix
+  production-preview smoke pass. FEEL-01 is complete; M9 release verification remains.
+
+- FEEL-01 synchronizes the existing action-state animation start/contact/fire boundary with a typed
+  renderer-only presentation timeline. Major impacts now dispatch one bounded semantic VFX/audio/
+  camera/hit-pause bundle; repeated bundles are coalesced, melee misses no longer shake or pause the
+  camera, and fox defeats no longer receive a second melee impact layer. Camera shake eases out and
+  uses a fixed renderer-only jitter stream, while reduced motion and camera-shake settings remain
+  respected. `npm run feelcheck` runs 216,000 fixed steps (one simulated hour) twice and compares the
+  bounded result. The deterministic baseline is 326 tests across 47 files; all required checks and
+  production-preview fresh-run/audio-bootstrap smoke pass. The M9 release candidate is awaiting the
+  normal `main` workflow and live smoke verification.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

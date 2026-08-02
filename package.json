@@ -13,6 +13,8 @@
     "test:watch": "vitest",
     "check": "tsx scripts/simcheck.ts",
     "assetcheck": "tsx scripts/assetcheck.ts",
+    "audiocheck": "tsx scripts/audiocheck.ts",
+    "feelcheck": "tsx scripts/feelcheck.ts",
     "economyreport": "tsx scripts/economyreport.ts"
   },
   "dependencies": {

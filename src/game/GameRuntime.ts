@@ -216,6 +216,11 @@ import { PlayerActionController, type PlayerClip } from './PlayerActionControlle
 import { PlacementCoordinator, PLACEABLE_BUILDINGS, type PlacementContext } from './PlacementCoordinator';
 import { RuntimeMetrics } from './RuntimeMetrics';
 import { FeedbackEffectPool } from './FeedbackEffects';
+import {
+  ACTION_IMPACT_PHASES,
+  PresentationTimeline,
+  type FeelEvent,
+} from './FeelTimeline';
 import { HudPresenter, TOOLBAR, type HudContextMenu, type HudPopup, type HudSnapshot } from './HudPresenter';
 import {
   InteractionSystem,
@@ -272,6 +277,8 @@ type Shot = {
   ricochet: number;
   dmg: number;
 };
+
+type FoxDamageResult = 'ignored' | 'hit' | 'defeated';
 
 type PendingPlayerAction = {
   clip: PlayerClip;
@@ -397,6 +404,7 @@ export class GameRuntime {
     this.settings = settings;
     this.audio.setVolumes(settings);
     this.audio.setMuted(settings.muted);
+    this.audio.setCaptionHandler((caption) => this.showAudioCaption(caption));
     this.input.setBindings(parseInputBindings(localStorage.getItem(INPUT_BINDINGS_STORAGE_KEY)));
     this.input.setFocusHandler((focused) => this.handleFocusChange(focused));
   }
@@ -486,6 +494,7 @@ export class GameRuntime {
   private deathMarkers: DeathMarker[] = [];
   private lootMarkers: LootMarker[] = [];
   private feedbackEffects: FeedbackEffectPool | null = null;
+  private readonly presentationTimeline = new PresentationTimeline();
   private shots: Shot[] = [];
   private boulders: Boulder[] = [];
   private shotCd = 0;
@@ -651,6 +660,7 @@ export class GameRuntime {
     this.rebuildCrops();
     this.recalculateEnclosure();
     this.world.snapCamera(this.playerX, this.playerZ);
+    this.audio.setPhase(this.gs.clock.phase);
 
     if (this.gs.clock.phase === 'night') this.spawnRaid();
 
@@ -772,6 +782,7 @@ export class GameRuntime {
 
   private persist = (): void => {
     if (!this.gs) return;
+    const previousSaveState = this.saveFeedback.state;
     this.saveFeedback = savingFeedback();
     this.pushHud(true);
     const result = this.saveService.save(this.gs);
@@ -779,6 +790,9 @@ export class GameRuntime {
     this.saveFeedback = completedSaveFeedback(result);
     if (result.status !== 'ok') {
       console.error(`[Save] ${result.status}: ${result.message ?? 'save was not written'}`);
+      if (previousSaveState !== 'failed') this.audio.playEvent('save-error');
+    } else if (previousSaveState === 'failed') {
+      this.audio.playEvent('save-success');
     }
     this.pushHud(true);
   };
@@ -1084,6 +1098,7 @@ export class GameRuntime {
       this.runtimeMetrics.recordSale(earned);
       setToast(this.gs, `Sold everything for ${earned} duckettes`, 2.5);
       this.popup(`+${earned}₫`, this.playerX, this.playerZ);
+      this.audio.playEvent('merchant');
       this.persist();
       this.pushHud(true);
     } else this.recordOutcome('sale', 'rejected');
@@ -1094,6 +1109,7 @@ export class GameRuntime {
     this.runtimeMetrics.recordSale(earned);
     setToast(this.gs, `Sold ${itemInfo(id).name} · +${earned}₫`, 1.5);
     this.popup(`+${earned}₫`, this.playerX, this.playerZ);
+    this.audio.playEvent('merchant');
     this.persist();
     this.pushHud(true);
   }
@@ -1367,6 +1383,12 @@ export class GameRuntime {
     setToast(this.gs, message, 1.8);
   }
 
+  private showAudioCaption(caption: string): void {
+    if (!this.gs) return;
+    setToast(this.gs, caption, 1.2);
+    this.pushHud(true);
+  }
+
   private availableVendorTabs(): AssetCategory[] {
     return VENDOR_CATEGORIES.filter((category) => shopAssets(category).length > 0);
   }
@@ -1397,6 +1419,7 @@ export class GameRuntime {
     this.velX = 0;
     this.velZ = 0;
     this.syncActionMenuState();
+    this.audio.playEvent('merchant');
     this.pushHud(true);
   }
 
@@ -1419,17 +1442,20 @@ export class GameRuntime {
     this.recordOutcome('purchase', 'attempted');
     if (!this.nearMerchant) {
       this.recordOutcome('purchase', 'rejected');
+      this.audio.playEvent('ui-error');
       return;
     }
     const asset = assetDefinition(id);
     if (!asset || !isVendorAsset(asset)) {
       this.recordOutcome('purchase', 'rejected');
+      this.audio.playEvent('ui-error');
       return;
     }
     const result = purchaseAsset(this.gs, asset, this.economyCapability);
     if (!result.ok) {
       this.recordOutcome('purchase', 'rejected');
       this.vendorMessage = `Cannot buy ${asset.displayName}: ${result.quote.reasons.join(' · ')}`;
+      this.audio.playEvent('ui-error');
       setToast(this.gs, this.vendorMessage, 2.2);
       this.pushHud(true);
       return;
@@ -1444,6 +1470,7 @@ export class GameRuntime {
         : ' · no duckette or material cost';
     this.vendorMessage = `${asset.displayName} ${asset.progression ? 'permit' : 'deed'} added to inventory${spentSummary}`;
     this.recordOutcome('purchase', 'completed');
+    this.audio.playEvent('merchant');
     this.persist();
     this.pushHud(true);
   }
@@ -1483,8 +1510,7 @@ export class GameRuntime {
             : `Homestead tier ${this.gs.homesteadTier}`,
           2.4,
         );
-        this.spawnFeedbackBurst(HOMESTEAD_X, HOMESTEAD_Z, 'reward');
-        this.audio.play('build');
+        this.presentFeel('upgrade-reward', HOMESTEAD_X, HOMESTEAD_Z);
       }
       this.persist();
       this.pushHud(true);
@@ -1874,10 +1900,9 @@ export class GameRuntime {
     if (event.type === 'start') {
       if (event.kind === 'tool') this.meleeCd = MELEE_COOLDOWN;
       this.playerActions?.play(pending.clip);
-    } else if (event.type === 'contact') {
-      pending.onContact?.();
-    } else if (event.type === 'fire') {
-      pending.onFire?.();
+    } else if (event.type === ACTION_IMPACT_PHASES[event.kind]) {
+      if (event.kind === 'ranged') pending.onFire?.();
+      else pending.onContact?.();
     } else if (event.type === 'complete') {
       this.pendingPlayerActions.delete(event.actionId);
     }
@@ -2136,6 +2161,7 @@ export class GameRuntime {
       this.movementIntent = false;
       return;
     }
+    this.presentationTimeline.advance(dt);
     const b = this.world.getWorldBounds();
     this.movePlayer(dt, b.minX, b.maxX, b.minZ, b.maxZ);
 
@@ -2235,11 +2261,15 @@ export class GameRuntime {
     }
 
     if (clock.becameNight) {
+      this.audio.setPhase('night');
+      this.audio.playEvent('day-transition');
       setToast(this.gs, 'Night falls. Defend the crops!', 3);
       this.spawnRaid();
       this.persist();
     }
     if (clock.becameDay) {
+      this.audio.setPhase('day');
+      this.audio.playEvent('day-transition');
       this.runtimeMetrics.setDaysReached(this.gs.clock.day);
       this.clearFoxes();
       this.clearDeathMarkers();
@@ -2273,8 +2303,7 @@ export class GameRuntime {
     this.clearInputState();
     this.syncActionMenuState();
     setToast(this.gs, 'Homestead established · all four pillars are yours', 4);
-    this.spawnFeedbackBurst(this.playerX, this.playerZ, 'reward');
-    this.audio.play('reward');
+    this.presentFeel('settlement-reward', this.playerX, this.playerZ);
     this.persist();
   }
 
@@ -2494,7 +2523,7 @@ export class GameRuntime {
       this.syncBuildings();
       this.recalculateEnclosure();
       this.persist();
-      this.audio.play('build');
+      this.presentFeel('gate-open', placed.x, placed.z);
       setToast(this.gs, 'Gate opened', 1.1);
       return true;
     }
@@ -2626,7 +2655,7 @@ export class GameRuntime {
     const selected = placement.asset;
     if (!selected || !placement.valid || !placement.tile) {
       this.recordOutcome('building', 'rejected');
-      this.spawnFeedbackBurst(placement.x, placement.z, 'placement-invalid');
+      this.presentFeel('placement-rejected', placement.x, placement.z);
       setToast(this.gs, placement.reason, 1.6);
       return;
     }
@@ -2659,8 +2688,7 @@ export class GameRuntime {
       this.syncWorldTiles();
       this.recalculateEnclosure();
       this.persist();
-      this.spawnFeedbackBurst(placement.x, placement.z, 'placement-valid');
-      this.audio.play('build');
+      this.presentFeel('placement-confirmed', placement.x, placement.z);
       const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
       const functionNote = selected.id === 'silo'
         ? ` · seed storage ${previousSeedCapacity}→${nextSeedCapacity}`
@@ -2679,8 +2707,7 @@ export class GameRuntime {
       this.beginProfiledToolAction('bucket', () => {
         fillBucket(this.gs);
         this.recordAction('fill_bucket');
-        this.spawnFeedbackBurst(this.playerX, this.playerZ, 'water');
-        this.audio.play('water');
+        this.presentFeel('water-contact', this.playerX, this.playerZ);
         setToast(this.gs, `Bucket filled (${this.gs.bucketFill}/${BUCKET_CAPACITY})`, 1.6);
         this.persist();
       });
@@ -2739,8 +2766,7 @@ export class GameRuntime {
     }
     this.beginFacingToolAction('axe', wc.x, wc.z, () => {
       if (target === 'boulder') {
-        this.spawnFeedbackBurst(wc.x, wc.z, 'damage');
-        this.audio.play('hit');
+        this.presentFeel('metal-contact', wc.x, wc.z);
         setToast(this.gs, 'The axe clangs off the boulder', 1.4);
         return;
       }
@@ -2789,8 +2815,7 @@ export class GameRuntime {
         if (!digTrench(this.gs.tiles, tx, ty)) return;
         const watered = this.refreshTrenchWater();
         this.syncWorldTiles();
-        this.spawnFeedbackBurst(wc.x, wc.z, 'water');
-        this.audio.play('tool');
+        this.presentFeel('soil-contact', wc.x, wc.z);
         setToast(
           this.gs,
           watered > 0
@@ -2808,8 +2833,7 @@ export class GameRuntime {
         this.beginFacingToolAction('shovel', wc.x, wc.z, () => {
           if (!makeBreedingBed(this.gs.tiles, tx, ty)) return;
           this.syncWorldTiles([{ tx, ty }]);
-          this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-          this.audio.play('build');
+          this.presentFeel('breeding-bed', wc.x, wc.z);
           setToast(this.gs, 'Breeding bed ready — plant two seeds', 2.5);
           this.persist();
         });
@@ -2840,8 +2864,7 @@ export class GameRuntime {
           }
           this.gs.tiles[ty]![tx]!.state = 'tilled';
           this.syncWorldTiles([{ tx, ty }]);
-          this.spawnFeedbackBurst(wc.x, wc.z, wasKnown ? 'reward' : 'discovery');
-          this.audio.play('reward');
+          this.presentFeel(wasKnown ? 'hybrid-reward' : 'hybrid-discovery', wc.x, wc.z);
           setToast(
             this.gs,
             wasKnown ? `Hybrid: ${child.displayName}!` : `New Codex entry: ${child.displayName}!`,
@@ -2862,8 +2885,7 @@ export class GameRuntime {
         if (!tillTile(this.gs.tiles, tx, ty, this.gs.clock.day)) return;
         this.recordAction('till');
         this.syncWorldTiles([{ tx, ty }]);
-        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.presentFeel('soil-contact', wc.x, wc.z);
         this.persist();
       });
     } else if (tile.state === 'tilled' || tile.state === 'breeding') {
@@ -2885,8 +2907,7 @@ export class GameRuntime {
         this.refreshTrenchWater();
         this.syncCropTile(tx, ty);
         this.syncWorldTiles();
-        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.presentFeel('soil-contact', wc.x, wc.z);
         this.persist();
       })) this.recordOutcome('plant', 'rejected');
     } else if (tile.state === 'planted' && !tile.watered) {
@@ -2937,8 +2958,7 @@ export class GameRuntime {
           this.syncCropTile(tx, ty);
           this.syncWorldTiles([{ tx, ty }]);
           this.popup(`+${res.count} ${res.seed.displayName}`, wc.x, wc.z);
-          this.spawnFeedbackBurst(wc.x, wc.z, wasKnown ? 'reward' : 'discovery');
-          this.audio.play('reward');
+          this.presentFeel(wasKnown ? 'harvest-complete' : 'codex-discovery', wc.x, wc.z);
           if (!wasKnown) setToast(this.gs, `New Codex entry: ${res.seed.displayName}!`, 3.5);
           this.persist();
         } else this.recordOutcome('harvest', 'rejected');
@@ -2963,8 +2983,7 @@ export class GameRuntime {
       this.recordAction('water');
       this.syncWorldTiles([{ tx, ty }]);
       const wc = this.farmTileWorld(tx, ty);
-      this.spawnFeedbackBurst(wc.x, wc.z, 'water');
-      this.audio.play('water');
+      this.presentFeel('water-contact', wc.x, wc.z);
       this.persist();
     }
   }
@@ -2986,8 +3005,7 @@ export class GameRuntime {
       if (swings < STUMP_CHOPS) {
         this.treeChops.set(key, swings);
         this.recordAction('chop');
-        this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-        this.audio.play('tool');
+        this.presentFeel('wood-contact', wc.x, wc.z);
         return true;
       }
       this.treeChops.delete(key);
@@ -3000,8 +3018,7 @@ export class GameRuntime {
       trees.invalidateTile(tx, ty);
       this.refreshInteractionOnlyTile(tx, ty);
       this.world.markShadowsDirty();
-      this.spawnFeedbackBurst(wc.x, wc.z, 'reward');
-      this.audio.play('tool');
+      this.presentFeel('wood-contact', wc.x, wc.z);
       this.popup('+1 Wood', wc.x, wc.z);
       setToast(this.gs, 'Stump cleared · +1 Wood', 1.2);
       this.persist();
@@ -3013,10 +3030,9 @@ export class GameRuntime {
     const chops = (this.treeChops.get(key) ?? 0) + 1;
     this.recordAction('chop');
     this.treeChops.set(key, chops);
-    this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-    this.audio.play('tool');
 
     if (chops < FARM_TREE_CHOPS) {
+      this.presentFeel('wood-contact', wc.x, wc.z);
       setToast(this.gs, `Chopping… ${chops}/${FARM_TREE_CHOPS}`, 0.8);
       return true;
     }
@@ -3029,9 +3045,7 @@ export class GameRuntime {
     this.world.markShadowsDirty();
     this.gs.stats.woodGathered += FARM_TREE_WOOD;
     this.runtimeMetrics.recordTreeFelled();
-    this.world.shake(0.14, 0.12);
-    this.spawnFeedbackBurst(wc.x, wc.z, 'reward');
-    this.audio.play('reward');
+    this.presentFeel('tree-felled', wc.x, wc.z);
     this.popup(`+${FARM_TREE_WOOD} Wood`, wc.x, wc.z);
     this.persist();
     return true;
@@ -3119,9 +3133,7 @@ export class GameRuntime {
         setToast(this.gs, 'Ricochet crop armed · each projectile bounces once', 1.5);
       }
       this.shotCd = SHOTGUN_COOLDOWN;
-      this.spawnFeedbackBurst(this.playerX + dx * 0.45, this.playerZ + dz * 0.45, 'damage');
-      this.audio.play('shot');
-      this.world.shake(0.06, 0.05);
+      this.presentFeel('shotgun-fire', this.playerX + dx * 0.45, this.playerZ + dz * 0.45);
     });
   }
 
@@ -3174,9 +3186,7 @@ export class GameRuntime {
         setToast(this.gs, 'Ricochet crop armed · the arrow bounces once', 1.5);
       }
       this.shotCd = BOW_COOLDOWN;
-      this.spawnFeedbackBurst(this.playerX + dx * 0.4, this.playerZ + dz * 0.4, 'damage');
-      this.audio.play('shot');
-      this.world.shake(0.025, 0.02);
+      this.presentFeel('bow-fire', this.playerX + dx * 0.4, this.playerZ + dz * 0.4);
     });
   }
 
@@ -3333,12 +3343,13 @@ export class GameRuntime {
         setToast(this.gs, 'The fox is no longer a target', 1.4);
         return;
       }
-      this.damageFox(fox, damage);
+      const result = this.damageFox(fox, damage);
+      if (result === 'defeated') this.presentFeel('fox-defeat', fox.x, fox.z);
+      else if (result === 'hit') this.presentFeel('melee-impact', fox.x, fox.z);
     } else {
-      this.dazeAnimal(candidate.target as PlainsAnimal);
+      const animal = candidate.target as PlainsAnimal;
+      if (this.dazeAnimal(animal)) this.presentFeel('melee-impact', animal.x, animal.z);
     }
-    this.world.shake(0.08, 0.07);
-    this.hitPause = 0.04;
   }
 
   /** Combat swing — selects one intended target inside a facing cone at contact. */
@@ -3410,13 +3421,15 @@ export class GameRuntime {
         if (w.dead || b.hit.has(w)) continue;
         if (Math.hypot(w.x - b.x, w.z - b.z) > BOULDER_RADIUS + 0.4) continue;
         b.hit.add(w);
-        this.damageFox(w, BOULDER_DAMAGE);
+        const result = this.damageFox(w, BOULDER_DAMAGE);
+        if (result === 'defeated') this.presentFeel('fox-defeat', w.x, w.z);
+        else if (result === 'hit') this.presentFeel('projectile-impact', w.x, w.z);
       }
       for (const a of [...this.animals]) {
         if (b.hit.has(a)) continue;
         if (Math.hypot(a.x - b.x, a.z - b.z) > BOULDER_RADIUS + 0.4) continue;
         b.hit.add(a);
-        this.dazeAnimal(a);
+        if (this.dazeAnimal(a)) this.presentFeel('projectile-impact', a.x, a.z);
       }
 
       if (
@@ -3474,8 +3487,7 @@ export class GameRuntime {
       onPlaced?.();
       this.syncWorldTiles([{ tx: tilePos.tx, ty: tilePos.ty }]);
       this.syncBearTrapModels();
-      this.spawnFeedbackBurst(wc.x, wc.z, 'work-contact');
-      this.audio.play('trap');
+      this.presentFeel('trap-set', wc.x, wc.z);
       setToast(this.gs, 'Bear trap set', 1.4);
       this.persist();
       this.pushHud(true);
@@ -3502,7 +3514,9 @@ export class GameRuntime {
       for (const w of [...this.foxes]) {
         if (w.dead) continue;
         if (Math.hypot(s.x - w.x, s.z - w.z) > 0.8) continue;
-        this.damageFox(w, s.dmg);
+        const result = this.damageFox(w, s.dmg);
+        if (result === 'defeated') this.presentFeel('fox-defeat', w.x, w.z);
+        else if (result === 'hit') this.presentFeel('projectile-impact', w.x, w.z);
         if (s.ricochet > 0) {
           s.ricochet--;
           s.vx = -s.vx + (this.gs.rng() - 0.5) * 4;
@@ -3515,7 +3529,7 @@ export class GameRuntime {
       if (!consumed) {
         for (const a of [...this.animals]) {
           if (Math.hypot(s.x - a.x, s.z - a.z) > 0.9) continue;
-          this.dazeAnimal(a);
+          if (this.dazeAnimal(a)) this.presentFeel('projectile-impact', a.x, a.z);
           if (s.ricochet > 0) {
             s.ricochet--;
             s.vx *= -1;
@@ -3532,8 +3546,8 @@ export class GameRuntime {
     }
   }
 
-  private damageFox(w: Fox, amount: number): void {
-    if (w.dead) return;
+  private damageFox(w: Fox, amount: number): FoxDamageResult {
+    if (w.dead) return 'ignored';
     this.recordOutcome('fox_defense', 'attempted');
     w.hp -= amount;
     if (w.hp > 0) {
@@ -3541,9 +3555,7 @@ export class GameRuntime {
       this.setFoxScale(w, 1.25, 0.64);
       w.state = 'flee';
       this.playFoxAction(w, 'walk');
-      this.spawnFeedbackBurst(w.x, w.z, 'damage');
-      this.audio.play('hit');
-      return;
+      return 'hit';
     }
     w.dead = true;
     this.clearFoxTarget(w);
@@ -3551,10 +3563,6 @@ export class GameRuntime {
     this.recordOutcome('fox_defense', 'completed', 'fox_felled');
     this.gs.stats.foxesFelled += 1;
     this.runtimeMetrics.recordFoxFelled();
-    this.world.shake(0.09, 0.08);
-    this.hitPause = 0.05;
-    this.spawnFeedbackBurst(w.x, w.z, 'threat');
-    this.audio.play('defeat');
     this.stopMixer(w.actions.mixer, w.root);
     this.spawnDeathMarker(
       w.root,
@@ -3570,17 +3578,17 @@ export class GameRuntime {
     this.rollTrophy(`fox:${w.kind}`, `${w.kind[0]!.toUpperCase()}${w.kind.slice(1)}`, w.x, w.z);
     // Dead is dead — drop it now rather than waiting for the next sweep.
     this.foxes = this.foxes.filter((o) => !o.dead);
+    return 'defeated';
   }
 
   /** Ambient wildlife is friendly scenery: explicit combat can only daze it. */
-  private dazeAnimal(a: PlainsAnimal): void {
-    if (a.state === 'hurt') return;
+  private dazeAnimal(a: PlainsAnimal): boolean {
+    if (a.state === 'hurt') return false;
     a.state = 'hurt';
     a.timer = 1.2;
     a.root.scale.set(a.baseScale * 1.1, a.baseScale * 0.9, a.baseScale * 1.1);
-    this.spawnFeedbackBurst(a.x, a.z, 'damage');
-    this.audio.play('hit');
     setToast(this.gs, `${a.name} is dazed — wildlife is unharmed`, 1.8);
+    return true;
   }
 
   /** Leave a short-lived, grounded carcass marker instead of making a kill pop. */
@@ -3760,8 +3768,23 @@ export class GameRuntime {
     );
   }
 
+  /**
+   * Dispatch one fixed-step impact bundle. Action animation starts at the
+   * state-machine start event; this keeps contact/fire VFX, audio, camera, and
+   * hit pause on the same presentation boundary without touching simulation.
+   */
+  private presentFeel(event: FeelEvent, x: number, z: number): void {
+    const timeline = this.presentationTimeline.trigger(event);
+    if (!timeline) return;
+    if (timeline.feedback) this.spawnFeedbackBurst(x, z, timeline.feedback);
+    if (timeline.audio) this.audio.playEvent(timeline.audio);
+    if (timeline.shake) this.world.shake(timeline.shake.duration, timeline.shake.amplitude);
+    this.hitPause = Math.max(this.hitPause, timeline.hitPause);
+  }
+
   private clearFeedbackBursts(): void {
     this.feedbackEffects?.clear();
+    this.presentationTimeline.clear();
   }
 
   private stepFeedbackBursts(dt: number): void {
@@ -4039,9 +4062,14 @@ export class GameRuntime {
     if (this.raidTelegraphedRoles.has(w.kind)) return;
     const profile = foxRoleProfile(w.kind);
     this.raidTelegraphedRoles.add(w.kind);
+    this.presentFeel('fox-telegraph', w.x, w.z);
+    this.audio.playFoxCue(profile.audioCue, {
+      x: w.x,
+      z: w.z,
+      listenerX: this.playerX,
+      listenerZ: this.playerZ,
+    });
     setToast(this.gs, `${profile.label}: ${profile.telegraph} · Counter: ${profile.counter}`, 3);
-    this.spawnFeedbackBurst(w.x, w.z, 'threat');
-    this.audio.play(profile.audioCue);
   }
 
   private raidTargetCandidates(w: Fox, crops: readonly { x: number; y: number }[]): RaidTarget[] {
@@ -4150,8 +4178,7 @@ export class GameRuntime {
           this.playFoxAction(w, 'idle');
           this.syncWorldTiles([{ tx: bearTrap.tx, ty: bearTrap.ty }]);
           this.syncBearTrapModels();
-          this.spawnFeedbackBurst(w.x, w.z, 'damage');
-          this.audio.play('trap');
+          this.presentFeel('fox-trapped', w.x, w.z);
           setToast(this.gs, 'Fox caught in the bear trap!', 2.2);
           continue;
         }
@@ -4169,7 +4196,7 @@ export class GameRuntime {
         this.clearFoxTarget(w);
         w.state = 'flee';
         this.playFoxAction(w, 'walk');
-        this.spawnFeedbackBurst(w.x, w.z, 'threat');
+        this.presentFeel('fox-threat', w.x, w.z);
         const remaining = repellerUsesRemaining(this.raidRepelUses);
         setToast(
           this.gs,
@@ -4253,8 +4280,7 @@ export class GameRuntime {
                 this.refreshObstacleTopology();
                 this.syncBuildings();
                 this.recalculateEnclosure();
-                this.spawnFeedbackBurst(w.x, w.z, 'threat');
-                this.audio.play('build');
+                this.presentFeel('fox-structure-hit', w.x, w.z);
                 setToast(this.gs, 'A sapper forced the gate open', 2.2);
                 this.persist();
               }

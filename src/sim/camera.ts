@@ -64,6 +64,19 @@ export function quantizeShadowAnchor(value: number, step = SHADOW_ANCHOR_STEP): 
   return Math.round(safeValue / safeStep) * safeStep;
 }
 
+/** Ease a shake out instead of holding a constant amplitude until a hard stop. */
+export function cameraShakeAmplitude(
+  remaining: number,
+  duration: number,
+  amplitude: number,
+): number {
+  const safeDuration = Number.isFinite(duration) && duration > 0 ? duration : 0;
+  const safeAmplitude = Number.isFinite(amplitude) && amplitude > 0 ? amplitude : 0;
+  if (safeDuration === 0 || safeAmplitude === 0 || !Number.isFinite(remaining) || remaining <= 0) return 0;
+  const progress = Math.min(1, Math.max(0, remaining / safeDuration));
+  return safeAmplitude * progress * progress;
+}
+
 /** The renderer's existing dawn/dusk curve, expressed without Three.js. */
 export function dayNightBlend(phase: Phase, t: number): number {
   const normalized = Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 0;
