@@ -2,6 +2,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { MODEL_KEYS, modelDef, modelLoadGroup } from '../src/content/models';
+import { EQUIPMENT_KEYS, validateEquipmentProfiles } from '../src/content/equipment';
 import { PURCHASABLE_ASSETS, validatePurchasableCatalog } from '../src/content/purchasables';
 
 const root = resolve(process.cwd(), 'public', 'models');
@@ -38,6 +39,15 @@ if (missing.length) {
     console.log(`Manifest aliases retained intentionally: ${duplicates.length} shared paths.`);
   }
   console.log(`Asset load groups: ${[...loadGroupCounts.entries()].map(([group, count]) => `${group}=${count}`).join(', ')}.`);
+}
+
+const equipmentProblems = validateEquipmentProfiles();
+if (equipmentProblems.length) {
+  console.error(`Equipment profile check failed (${equipmentProblems.length}):`);
+  for (const problem of equipmentProblems) console.error(`  ${problem}`);
+  process.exitCode = 1;
+} else {
+  console.log(`Equipment profiles passed: ${EQUIPMENT_KEYS.length} typed records.`);
 }
 
 const catalogProblems = validatePurchasableCatalog();

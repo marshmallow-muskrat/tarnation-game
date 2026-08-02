@@ -104,6 +104,7 @@ import {
   generateWave,
   nearestEdgePoint,
 } from '../sim/raid';
+import { equipmentTimingFor, type EquipmentKey } from '../content/equipment';
 import {
   cloneModel,
   initAssetLoaders,
@@ -1572,6 +1573,7 @@ export class GameRuntime {
     if (this.input.justPressed('F12')) {
       this.debugGrid = !this.debugGrid;
       this.world.setGridDebug(this.debugGrid);
+      this.equipment.setDebugVisible(this.debugGrid);
       setToast(this.gs, this.debugGrid ? 'Grid debug on' : 'Grid debug off', 1.4);
     }
     if (this.input.justPressed('KeyX')) {
@@ -2473,7 +2475,7 @@ export class GameRuntime {
     if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
     const admission = this.actionState.request({
       kind: 'tool',
-      timing: DEFAULT_TOOL_ACTION_TIMING,
+      timing: this.equipment.actionTimingFor('tool') ?? DEFAULT_TOOL_ACTION_TIMING,
       payload: null,
       bufferable: true,
     });
@@ -2487,7 +2489,7 @@ export class GameRuntime {
     if (!this.actionState.isBusy && this.playerActions.isOneShotRunning) return false;
     const admission = this.actionState.request({
       kind: 'ranged',
-      timing: DEFAULT_RANGED_ACTION_TIMING,
+      timing: this.equipment.actionTimingFor('ranged') ?? DEFAULT_RANGED_ACTION_TIMING,
       payload: null,
       bufferable: false,
     });
@@ -2497,11 +2499,15 @@ export class GameRuntime {
     return true;
   }
 
-  private beginInteractAction(clip: PlayerClip, onContact: () => void): boolean {
+  private beginInteractAction(
+    clip: PlayerClip,
+    onContact: () => void,
+    profileKey: EquipmentKey = 'build_preview',
+  ): boolean {
     if (this.actionState.isBusy || this.playerActions.isOneShotRunning) return false;
     const admission = this.actionState.request({
       kind: 'interact',
-      timing: DEFAULT_INTERACT_ACTION_TIMING,
+      timing: equipmentTimingFor(profileKey, 'interact') ?? DEFAULT_INTERACT_ACTION_TIMING,
       payload: null,
       bufferable: false,
     });
@@ -2657,7 +2663,7 @@ export class GameRuntime {
       setToast(this.gs, 'Bear trap set', 1.4);
       this.persist();
       this.pushHud(true);
-    });
+    }, 'bear_trap');
   }
 
   private stepShots(dt: number): void {

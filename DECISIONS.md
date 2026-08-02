@@ -212,3 +212,21 @@ run from fixed-step contact/fire callbacks. Movement remains available with auth
 for tool windup/recovery, 0.45 at tool contact, 0.85 while aiming, and 0.65 at ranged fire; menus and lost
 focus stop movement. Focus loss cancels pending effects and focus restoration returns to a valid idle/move
 state. Animation clips remain renderer-facing and are started from the state-machine start event.
+
+## 2026-08-01 — Keep equipment profiles typed and renderer-owned
+
+ACT-02 centralizes the measured held-equipment contract in `src/content/equipment.ts`. The table covers
+the four current model-backed tools plus the bucket glyph, bear-trap model, and building preview. Each
+record owns source forward/up axes, right- and optional left-hand grip points, carry/action socket
+transforms, scale/readability bounds, locomotion and compatible action metadata, audio/VFX cues, fixed-step
+timings, icon framing, and debug visualization settings. The current Survival Pack glTFs were inspected
+and contain no authored grip/socket marker nodes, so the existing measured transforms remain authoritative
+until those source assets provide markers.
+
+`EquipmentController` now consumes the table for model cloning, grip pivots, carry/action transforms,
+support-hand targets, and locomotion profiles. `GameRuntime` consumes the profile timing records while
+retaining the same 0.12/0.05/0.18 tool, 0.08/0.06/0 ranged, and 0.08/0/0.08 interaction timings. F12
+enables the renderer-only model-axis and support-point visualization; it is off by default and its
+procedural resources are disposed with the held clone. `assetcheck` and deterministic Vitest coverage
+reject invalid profile fields without loading Three.js assets. No save, simulation, timestep, input,
+pricing, or gameplay rule changed in ACT-02.
