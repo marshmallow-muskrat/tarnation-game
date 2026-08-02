@@ -261,3 +261,16 @@ because the player asset has no authored placement clip. Invalid shovel/bucket t
 range or target requirements without playing a false action, and the selected shovel no longer calls
 bucket watering on a thirsty crop despite the HUD saying to equip the bucket. No save, simulation,
 economy, timestep, or seeded-RNG rule changes in ACT-04.
+
+## 2026-08-01 — Keep work, combat, and wildlife target domains separate
+
+ACT-05 keeps primary work actions target-specific: shovel and selected-axe actions resolve farm
+tiles or tree/boulder targets before starting an authored action, so ambient animals are never part
+of their effect set. The explicit secondary axe combat affordance selects the nearest intended
+hostile or friendly wildlife candidate inside a fixed-step facing cone before the swing, then checks
+the same range and facing volume again at contact. A missed or moved target reports the reason and
+does not produce a success effect. Foxes retain their existing damage, defeat, and defense-reward
+path. Friendly ambient animals have no combat health path: melee, ranged shots, and the boulder can
+only produce a short hurt/daze response with feedback and no death marker, trophy, or reward. No
+player-health or hunt system is introduced, and no save, simulation, economy, timestep, or seeded-RNG
+rule changes are part of ACT-05.
