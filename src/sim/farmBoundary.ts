@@ -113,6 +113,6 @@ export function firstPlotHint(stage: FirstPlotStage, seedName = 'a seed'): strin
     case 'sell':
       return 'First plot · take the harvest to the Market stall and sell it';
     case 'complete':
-      return 'First plot complete · keep developing your homestead';
+      return 'First plot complete · visit the Traveling Merchant for homestead permits or irrigation';
   }
 }

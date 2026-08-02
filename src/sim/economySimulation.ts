@@ -145,9 +145,12 @@ function median(values: readonly number[]): number | null {
  *
  * The policy fells a seeded number of trees, plants one seeded base crop per
  * day, sells ready harvest immediately, and attempts every current vendor row.
- * It is deliberately not a player simulator: its purpose is to make resource
- * starvation, runaway accumulation, and purchases that never become possible
- * visible before ECON-04 tuning.
+ * Progression permits are applied immediately after purchase so the diagnostic
+ * can exercise their sequential locks. The fixed policy prioritizes irrigation
+ * before homestead permits because irrigation is the first capability upgrade
+ * being measured for the opening-session target. It is deliberately not a
+ * player simulator: its purpose is to make resource starvation, runaway
+ * accumulation, and purchases that never become possible visible.
  */
 export function simulateEconomy(
   seed: number,
@@ -158,6 +161,8 @@ export function simulateEconomy(
   const state: PurchaseState = {
     duckettes: 0,
     inventory: createInventory(),
+    homesteadTier: 1,
+    irrigationTier: 2,
   };
   const tiles = createEmptyGrid();
   const planted: CropLot[] = [];
@@ -230,6 +235,9 @@ export function simulateEconomy(
       const target = targets[i]!;
       const observation = observations[i]!;
       if (observation.completed > 0) continue;
+      if (target.progression?.kind === 'homestead' && (state.irrigationTier ?? 2) < 3) {
+        continue;
+      }
       observation.attempted += 1;
       purchaseAttempts += 1;
       const hasMalformedCost =
@@ -244,6 +252,16 @@ export function simulateEconomy(
       }
       const result = purchaseAsset(state, target, { allowFreePurchases: false });
       if (result.ok) {
+        if (target.progression) {
+          if (!removeItem(state.inventory, result.itemId, 1)) {
+            throw new Error(`economy simulation could not apply ${target.id}`);
+          }
+          if (target.progression.kind === 'irrigation') {
+            state.irrigationTier = target.progression.targetTier;
+          } else {
+            state.homesteadTier = target.progression.targetTier;
+          }
+        }
         observation.completed += 1;
         completedPurchases += 1;
         if (

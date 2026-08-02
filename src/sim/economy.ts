@@ -2,6 +2,7 @@ import type { PurchasableAsset } from '../content/purchasables';
 import { deedItemId } from '../content/purchasables';
 import { addItem, cloneInventory, countItem, hasRoomFor, removeItem, type Inventory } from './inventory';
 import { ITEM_WOOD, type ItemId } from './items';
+import { progressionLockReason } from './progression';
 
 export type PurchasePolicy = {
   readonly allowFreePurchases: boolean;
@@ -10,6 +11,8 @@ export type PurchasePolicy = {
 export type PurchaseState = {
   duckettes: number;
   inventory: Inventory;
+  homesteadTier?: number;
+  irrigationTier?: number;
 };
 
 export type PurchaseQuote = {
@@ -48,6 +51,15 @@ export function quotePurchase(
 ): PurchaseQuote {
   const itemId = deedItemId(asset.id) as ItemId;
   const reasons: string[] = [];
+
+  if (asset.progression) {
+    const progressionReason = progressionLockReason(asset.progression, {
+      homesteadTier: state.homesteadTier ?? 1,
+      irrigationTier: state.irrigationTier ?? 2,
+    });
+    if (progressionReason) reasons.push(progressionReason);
+    if (countItem(state.inventory, itemId) > 0) reasons.push('Already own this progression permit');
+  }
 
   if (!policy.allowFreePurchases) {
     if (state.duckettes < asset.price) {

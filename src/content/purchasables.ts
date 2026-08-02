@@ -14,6 +14,10 @@ export type AssetAvailability = 'starter' | 'merchant' | 'upgrade' | 'debug' | '
 
 export type MaterialCost = Readonly<Record<string, number>>;
 
+export type ProgressionEffect =
+  | { kind: 'irrigation'; targetTier: 3 }
+  | { kind: 'homestead'; targetTier: 2 | 3 | 4 | 5 };
+
 export type PurchasableAsset = {
   id: AssetId;
   displayName: string;
@@ -30,6 +34,7 @@ export type PurchasableAsset = {
   materialCost: MaterialCost;
   description: string;
   availability: AssetAvailability;
+  progression?: ProgressionEffect;
   keybind?: string;
 };
 
@@ -168,9 +173,27 @@ export const PURCHASABLE_ASSETS = [
     blocksEnclosure: false,
     price: 12,
     materialCost: { wood: 12 },
-    description: 'Unlocks reliable tier-three irrigation for every crop tile.',
+    description: 'Waters crop tiles without spending bucket water.',
     availability: 'upgrade',
+    progression: { kind: 'irrigation', targetTier: 3 },
   }),
+  ...([2, 3, 4, 5] as const).map((tier) =>
+    apply({
+      id: `upgrade:homestead:${tier}`,
+      displayName: `Homestead Permit · Tier ${tier}`,
+      category: 'Housing',
+      modelKey: `house_${tier}` as ModelKey,
+      footprint: { width: 1, height: 1 },
+      facings: 1,
+      blocksMovement: false,
+      blocksEnclosure: false,
+      price: 0,
+      materialCost: { wood: HOMESTEAD_UPGRADE_WOOD[tier - 1]! },
+      description: `A merchant permit that advances the homestead to tier ${tier}.`,
+      availability: 'upgrade',
+      progression: { kind: 'homestead', targetTier: tier },
+    }),
+  ),
   place({
     id: 'well',
     displayName: 'Well',
@@ -381,9 +404,9 @@ export const PURCHASABLE_ASSETS = [
       price: tier === 1 ? 0 : HOMESTEAD_UPGRADE_WOOD[tier - 1]!,
       materialCost: tier === 1 ? {} : { wood: HOMESTEAD_UPGRADE_WOOD[tier - 1]! },
       description: `Homestead upgrade tier ${tier}.`,
-      // The direct homestead path is still the current legacy behavior. These
-      // deed rows remain loadable for old saves, but are not production choices
-      // until CORE-05 gives the merchant/deed path one authored progression job.
+      // These placeable rows remain loadable for old saves and legacy inventory
+      // deeds. New progression uses the apply-type merchant permits above so a
+      // player has one authored homestead/deed authority.
       availability: tier === 1 ? 'debug' : 'unreleased',
     }),
   ),

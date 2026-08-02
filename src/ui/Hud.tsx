@@ -285,7 +285,7 @@ export function Hud({
               Close
             </button>
           </div>
-          <p className="vendor-intro">The merchant stays at this encampment. Buy a deed, then double-click it in your inventory to use it.</p>
+          <p className="vendor-intro">The merchant stays at this encampment. Buy a permit or deed, then double-click it in your inventory to use it.</p>
           <div className="vendor-tabs" role="tablist" aria-label="Merchant categories">
             {hud.vendor.tabs.map((tab) => (
               <button
@@ -307,7 +307,7 @@ export function Hud({
                 <div className="vendor-copy">
                   <p className="vendor-name">{item.name}</p>
                   <p className="vendor-description">{item.description}</p>
-                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType}</p>
+                  <p className="vendor-meta">Footprint {item.footprint} · {item.gate ? 'Gate' : item.useType === 'apply' ? 'Upgrade' : item.useType}</p>
                   <p className="vendor-cost">Cost: {item.price}₫{item.material === '—' ? '' : ` + ${item.material}`}</p>
                   <p className="vendor-owned">Owned: {item.owned}</p>
                   <p className={`vendor-lock ${item.canBuy ? 'available' : 'blocked'}`}>{item.lockReason}</p>
@@ -428,6 +428,7 @@ export function Hud({
               <p><kbd>W A S D</kbd> Move</p>
               <p><kbd>1</kbd> Shotgun · <kbd>2</kbd> Shovel · <kbd>3</kbd> Axe</p>
               <p><kbd>6</kbd> Bucket · <kbd>[ ]</kbd> Choose seed</p>
+              <p><kbd>Z</kbd> Dig an irrigation trench</p>
               <p><kbd>Left click</kbd> Use selected tool</p>
             </div>
             <div>
@@ -435,11 +436,10 @@ export function Hud({
               <p><kbd>Right click</kbd> Attack</p>
               <p><kbd>Q</kbd> Boulder · <kbd>B</kbd> Bear trap</p>
               <p><kbd>R</kbd> Cycle unlocked weapon</p>
-              <p><kbd>U</kbd> Upgrade near the homestead</p>
             </div>
             <div>
               <p className="label">Settlement</p>
-              <p><kbd>E</kbd> Open the merchant shop nearby</p>
+              <p><kbd>E</kbd> Open the merchant shop · permits advance the homestead</p>
               <p><kbd>P</kbd> Shop nearby · legacy build with <kbd>?legacy</kbd></p>
               <p><kbd>N</kbd> Next legacy building while placing</p>
               <p><kbd>X</kbd> Demolish mode · <kbd>F12</kbd> Grid debug</p>

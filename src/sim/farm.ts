@@ -189,16 +189,49 @@ export function waterTile(tiles: Tile[][], tx: number, ty: number, simTime: numb
   return true;
 }
 
+/** Locate trench tiles that touch the authored open-water boundary. */
+export function trenchSourceTiles(
+  tiles: Tile[][],
+  distToWater: (x: number, z: number) => number,
+  maxDistance = 0.8,
+): { x: number; y: number }[] {
+  const sources: { x: number; y: number }[] = [];
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (tiles[y]![x]!.state !== 'trench') continue;
+      if (distToWater(x + 0.5, y + 0.5) <= maxDistance) sources.push({ x, y });
+    }
+  }
+  return sources;
+}
+
 /** Flow water along trenches downhill using height samples. */
 export function flowTrenchWater(
   tiles: Tile[][],
   heightAt: (x: number, z: number) => number,
   sourceTiles: { x: number; y: number }[],
 ): number {
-  // BFS from water-touching trenches / sources; water planted tiles adjacent downhill
+  // Recompute the wet/dry state from source connectivity so a destroyed or
+  // disconnected trench cannot leave an old blue state behind.
+  for (let y = 0; y < GRID_H; y++) {
+    for (let x = 0; x < GRID_W; x++) {
+      if (tiles[y]![x]!.state === 'trench') tiles[y]![x]!.watered = false;
+    }
+  }
+
+  // BFS from water-touching trenches / sources; water planted tiles adjacent downhill.
   let watered = 0;
-  const queue = [...sourceTiles];
-  const seen = new Set(sourceTiles.map((s) => `${s.x},${s.y}`));
+  const queue: { x: number; y: number }[] = [];
+  const seen = new Set<string>();
+  for (const source of sourceTiles) {
+    const tile = getTile(tiles, source.x, source.y);
+    if (!tile || tile.state !== 'trench') continue;
+    const key = `${source.x},${source.y}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tile.watered = true;
+    queue.push(source);
+  }
   while (queue.length) {
     const cur = queue.shift()!;
     for (const [dx, dy] of [
@@ -218,6 +251,7 @@ export function flowTrenchWater(
       if (h1 > h0 + 0.05) continue; // only downhill / flat
       seen.add(key);
       if (t.state === 'trench') {
+        t.watered = true;
         queue.push({ x: nx, y: ny });
       } else if (t.state === 'planted' && !t.watered) {
         t.watered = true;

@@ -72,6 +72,20 @@ describe('save serialization and fixture round-trips', () => {
     expect(loaded!.seedInventory.map((packet) => packet.count)).toEqual([4, 2, 3]);
   });
 
+  it('round-trips a merchant homestead permit without changing the save schema', () => {
+    const save = createNewSave(FIXTURE_SEED);
+    save.homesteadTier = 2;
+    save.irrigationTier = 3;
+    expect(save.inventory.some((slot) => slot?.id === 'deed:upgrade:homestead:2')).toBe(false);
+    save.inventory[0] = { id: 'deed:upgrade:homestead:2', count: 1 };
+
+    const loaded = deserialize(serialize(save));
+
+    expect(loaded).not.toBeNull();
+    expect(loaded).toMatchObject({ homesteadTier: 2, irrigationTier: 3 });
+    expect(loaded!.inventory[0]).toEqual({ id: 'deed:upgrade:homestead:2', count: 1 });
+  });
+
   it('round-trips a dense typed farm stress fixture without committing generated JSON', () => {
     const raw = serialize(denseFarmStressFixture());
     const parsed = deserialize(raw);

@@ -15,6 +15,7 @@ import {
   plantTile,
   stepCrops,
   tillTile,
+  trenchSourceTiles,
   triggerBearTrap,
   waterTile,
 } from '../src/sim/farm';
@@ -158,8 +159,26 @@ describe('farming and crop transitions', () => {
 
     const watered = flowTrenchWater(tiles, (x, z) => -x + z * 10, [{ x: 1, y: 1 }]);
     expect(watered).toBe(1);
+    expect(tiles[1]![1]!.watered).toBe(true);
+    expect(tiles[1]![2]!.watered).toBe(true);
     expect(tiles[1]![3]!.watered).toBe(true);
     expect(tiles[2]![1]!.watered).toBe(false);
+  });
+
+  it('recomputes connected trench wetness from explicit water sources instead of leaving stale wet tiles', () => {
+    const tiles = createEmptyGrid();
+    digTrench(tiles, 1, 1);
+    digTrench(tiles, 2, 1);
+    const sources = trenchSourceTiles(tiles, (x, z) => (x === 1.5 && z === 1.5 ? 0 : 10));
+
+    expect(sources).toEqual([{ x: 1, y: 1 }]);
+    expect(flowTrenchWater(tiles, (x, z) => -x + z * 10, sources)).toBe(0);
+    expect(tiles[1]![1]!.watered).toBe(true);
+    expect(tiles[1]![2]!.watered).toBe(true);
+
+    expect(flowTrenchWater(tiles, () => 0, [])).toBe(0);
+    expect(tiles[1]![1]!.watered).toBe(false);
+    expect(tiles[1]![2]!.watered).toBe(false);
   });
 
   it('lets ironroot resist mature destruction and nibbles ordinary mature crops back to young growth', () => {
