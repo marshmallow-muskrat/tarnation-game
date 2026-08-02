@@ -214,7 +214,6 @@ export const MODELS = {
   house_3: { path: 'buildings/barn.glb', height: 4.4, note: 'Homestead tier' },
   house_4: { path: 'buildings/silo_house.glb', height: 5.4, note: 'Roadhouse tier' },
   house_5: { path: 'buildings/big_barn.glb', height: 6.4, note: 'Top tier' },
-  market_stall: { path: 'buildings/well.glb', height: 2.0, note: 'Placeholder until a stall model exists' },
   silo: { path: 'buildings/silo.glb', height: 6.0 },
   windmill: { path: 'buildings/windmill.glb', height: 7.0 },
   tower_windmill: { path: 'buildings/tower_windmill.glb', height: 8.0 },
@@ -279,7 +278,7 @@ const FIRST_PLAY_MODEL_KEYS = [
   'rock_1', 'rock_2', 'rock_3', 'rock_a',
   'bush_1', 'bush_2', 'plant_1', 'plant_2', 'plant_3', 'plant_4', 'plant_5',
   'grass', 'grass_2', 'grass_short', 'flowers',
-  'house_1', 'market_stall', 'tent', 'chest_closed', 'wood_log', 'pouch', 'trophy',
+  'house_1', 'tent', 'chest_closed', 'wood_log', 'pouch', 'trophy',
   'shotgun_2', 'shovel', 'axe', 'backpack', 'bear_trap_open', 'bear_trap_closed',
 ] as const satisfies readonly ModelKey[];
 

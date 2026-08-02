@@ -159,6 +159,7 @@ import {
   type ActionEvent,
 } from './ActionStateMachine';
 import { buildMarketStall } from './MarketStall';
+import { buildAuthoredVisual } from './PresentationProps';
 import {
   disposeCloneOwnedMaterials,
   disposeModelClone,
@@ -271,6 +272,21 @@ type CropActor = {
   ty: number;
   stage: number;
 };
+
+type RenderedRoot = {
+  root: THREE.Object3D;
+  /** Authored props own their geometry/materials; model clones retain cache ownership. */
+  owned: boolean;
+};
+
+function disposeRenderedRoot(rendered: RenderedRoot): void {
+  rendered.root.removeFromParent();
+  if (rendered.owned) {
+    disposeObjectResources(rendered.root, { geometries: true, materials: true, textures: true });
+  } else {
+    disposeModelClone(rendered.root);
+  }
+}
 
 type PlainsAnimal = {
   root: THREE.Object3D;
@@ -472,9 +488,9 @@ export class GameRuntime {
   private nearMerchant = false;
   private firstPlotGuideActive = false;
   private raidWarningDay = -1;
-  private fixtureRoots: THREE.Object3D[] = [];
+  private fixtureRoots: RenderedRoot[] = [];
   private homesteadRoot: THREE.Object3D | null = null;
-  private buildingRoots = new Map<string, THREE.Object3D>();
+  private buildingRoots = new Map<string, RenderedRoot>();
   private bearTrapRoots = new Map<string, THREE.Object3D>();
   private gateCloseTimers = new Map<PlacedBuilding, number>();
   /** In-progress chops, keyed "tx,ty". */
@@ -667,10 +683,7 @@ export class GameRuntime {
       disposeObjectResources(this.stallRoot, { geometries: true, materials: true, textures: true });
       this.stallRoot = null;
     }
-    for (const root of this.fixtureRoots) {
-      root.removeFromParent();
-      disposeModelClone(root);
-    }
+    for (const rendered of this.fixtureRoots) disposeRenderedRoot(rendered);
     this.fixtureRoots = [];
     if (this.merchantRoot) {
       this.merchantRoot.removeFromParent();
@@ -682,10 +695,7 @@ export class GameRuntime {
       disposeModelClone(this.homesteadRoot);
       this.homesteadRoot = null;
     }
-    for (const root of this.buildingRoots.values()) {
-      root.removeFromParent();
-      disposeModelClone(root);
-    }
+    for (const rendered of this.buildingRoots.values()) disposeRenderedRoot(rendered);
     this.buildingRoots.clear();
     for (const root of this.bearTrapRoots.values()) {
       root.removeFromParent();
@@ -830,21 +840,20 @@ export class GameRuntime {
   }
 
   private spawnMerchantCamp(): void {
-    for (const root of this.fixtureRoots) {
-      root.removeFromParent();
-      disposeModelClone(root);
-    }
+    for (const rendered of this.fixtureRoots) disposeRenderedRoot(rendered);
     this.fixtureRoots = [];
     for (const fixture of CENTRAL_CAMP_FIXTURES) {
       const asset = assetDefinition(fixture.id);
       if (!asset) continue;
-      const { root } = cloneModel(asset.modelKey);
+      const authored = asset.authoredVisual ? buildAuthoredVisual(asset.authoredVisual) : null;
+      const root = authored ?? (asset.modelKey ? cloneModel(asset.modelKey).root : null);
+      if (!root) continue;
       const center = placedCenter({ tx: fixture.tx, ty: fixture.ty }, fixture.rotation, asset);
       root.name = `fixture_${fixture.id}`;
       root.position.set(center.x, this.world.heightAt(center.x, center.z), center.z);
       root.rotation.y = normalizeOrientation(fixture.rotation) * Math.PI / 2;
       this.world.getFarmActors().add(root);
-      this.fixtureRoots.push(root);
+      this.fixtureRoots.push({ root, owned: authored !== null });
     }
 
     if (!this.merchantRoot) {
@@ -927,10 +936,7 @@ export class GameRuntime {
       disposeModelClone(this.homesteadRoot);
     }
     this.homesteadRoot = null;
-    for (const root of this.buildingRoots.values()) {
-      root.removeFromParent();
-      disposeModelClone(root);
-    }
+    for (const rendered of this.buildingRoots.values()) disposeRenderedRoot(rendered);
     this.buildingRoots.clear();
 
     const tier = Math.min(Math.max(this.gs.homesteadTier, 1), HOMESTEAD_MODEL_KEYS.length);
@@ -944,13 +950,15 @@ export class GameRuntime {
     this.gs.placedBuildings.forEach((placed: PlacedBuilding, index) => {
       const def = assetDefinition(placed.id);
       if (!def) return;
-      const root = cloneModel(def.modelKey).root;
+      const authored = def.authoredVisual ? buildAuthoredVisual(def.authoredVisual) : null;
+      const root = authored ?? (def.modelKey ? cloneModel(def.modelKey).root : null);
+      if (!root) return;
       root.name = `placed_${placed.id}_${index}`;
       root.position.set(placed.x, this.world.heightAt(placed.x, placed.z), placed.z);
       root.rotation.y = normalizeOrientation(placed.rotation) * Math.PI / 2;
       if (def.gate && placed.gateOpen) root.rotation.y += Math.PI / 2;
       this.world.getFarmActors().add(root);
-      this.buildingRoots.set(`${index}:${placed.id}`, root);
+      this.buildingRoots.set(`${index}:${placed.id}`, { root, owned: authored !== null });
     });
     this.world.markShadowsDirty();
   }
@@ -2234,7 +2242,7 @@ export class GameRuntime {
       const index = this.placedIndexAtPointer();
       const placed = index >= 0 ? this.gs.placedBuildings[index] : null;
       const asset = placed ? assetDefinition(placed.id) : null;
-      if (!placed || !asset) {
+      if (!placed || !asset || asset.modelKey === null) {
         this.world.setHover(null, null, false);
         this.world.setBuildPreview(null);
         return;
@@ -2261,7 +2269,7 @@ export class GameRuntime {
         return;
       }
       this.world.setHover(placement.tile.tx, placement.tile.ty, placement.valid);
-      if (placement.asset) {
+      if (placement.asset && placement.asset.modelKey !== null) {
         const size = orientedFootprint(placement.asset, placement.rotation);
         this.world.setBuildPreview(
           placement.asset.modelKey,

@@ -33,7 +33,6 @@ describe('asset loading groups', () => {
         'beet_4',
         'tree_oak',
         'rock_a',
-        'market_stall',
         'house_1',
       ]),
     );
@@ -52,6 +51,10 @@ describe('asset loading groups', () => {
       expect.arrayContaining(['corn_4', 'guardian_a']),
     );
     expect(modelLoadGroup('guardian_a')).toBe('optional');
+  });
+
+  it('does not advertise the procedural market stall or unrelated pack meshes as authored props', () => {
+    expect(MODEL_KEYS).not.toContain('market_stall');
   });
 });
 

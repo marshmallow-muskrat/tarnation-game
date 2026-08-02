@@ -7,6 +7,7 @@ import {
   placeableAssets,
   PURCHASABLE_ASSETS,
   shopAssets,
+  validatePurchasableCatalog,
 } from '../src/content/purchasables';
 import { createGameState, sellEverything, sellItem } from '../src/sim/gameState';
 import { purchaseAsset, quotePurchase } from '../src/sim/economy';
@@ -105,6 +106,7 @@ describe('economy values and current purchasing inputs', () => {
   });
 
   it('classifies every catalog entry explicitly and keeps unfinished buildings out of production surfaces', () => {
+    expect(validatePurchasableCatalog()).toEqual([]);
     expect(PURCHASABLE_ASSETS.every((asset) => asset.availability)).toBe(true);
     expect(PURCHASABLE_ASSETS.filter((asset) => asset.availability === 'starter').map((asset) => asset.id)).toEqual([
       'tool:shotgun',
@@ -134,6 +136,32 @@ describe('economy values and current purchasing inputs', () => {
     expect(PURCHASABLE_ASSETS.every((asset) =>
       Object.values(asset.materialCost).every((cost) => Number.isFinite(cost)),
     )).toBe(true);
+  });
+
+  it('uses authored visuals only where no accepted pack model is an honest match', () => {
+    expect(assetDefinition('tool:bucket')).toMatchObject({
+      modelKey: null,
+      authoredVisual: 'bucket',
+    });
+    expect(assetDefinition('fixture:caravan')).toMatchObject({
+      modelKey: null,
+      authoredVisual: 'caravan',
+    });
+    expect(assetDefinition('fixture:barrel')).toMatchObject({
+      modelKey: null,
+      authoredVisual: 'barrel',
+    });
+    expect(assetDefinition('fixture:haystack')).toMatchObject({
+      modelKey: null,
+      authoredVisual: 'haystack',
+    });
+    expect(assetDefinition('fixture:crate')?.modelKey).toBe('chest_closed');
+    expect(assetDefinition('fixture:coin-sack')?.modelKey).toBe('pouch');
+  });
+
+  it('keeps every production vendor and build row backed by a validated model', () => {
+    expect(shopAssets().every((asset) => asset.modelKey !== null)).toBe(true);
+    expect(placeableAssets().every((asset) => asset.modelKey !== null)).toBe(true);
   });
 
   it('uses both duckette and wood costs for a paid fence deed and requires a stackable inventory slot', () => {

@@ -130,7 +130,9 @@ if (equipmentProblems.length) {
 
 const catalogProblems = validatePurchasableCatalog();
 for (const asset of PURCHASABLE_ASSETS) {
-  if (!MODEL_KEYS.includes(asset.modelKey)) catalogProblems.push(`unknown model key: ${asset.id} → ${asset.modelKey}`);
+  if (asset.modelKey !== null && !MODEL_KEYS.includes(asset.modelKey)) {
+    catalogProblems.push(`unknown model key: ${asset.id} → ${asset.modelKey}`);
+  }
 }
 if (catalogProblems.length) {
   console.error(`Purchasable catalog check failed (${catalogProblems.length}):`);
