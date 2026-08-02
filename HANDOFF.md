@@ -72,7 +72,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
 [`masterplan-v2.md`](masterplan-v2.md):
 
 - CORE-01 through CORE-08 and the M5 release gate are complete on the current integration branch
-  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is in progress.
+  after the ACT-01/02/03/04/05 and PERF-05 responsibility extractions; M6 Defense is complete.
 - FOX-01 is integrated as merge `109a07b` (PR #40), FOX-02 as merge `82a9900` (PR #41), FOX-03
   as merge `4c0244b` (PR #42), and FOX-04 as merge `86c9efb` (PR #43). Foxes select deterministic
   world targets: haulers can steal stored
@@ -87,8 +87,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   Repeller crops now drive off at most two foxes per raid, while active shotgun/bow/melee/boulder/trap
   roles retain distinct typed targets, cooldowns, and recovery cues. Crop and stored-produce loss
   feedback names the fox role and the next defensive choice. `npm run test:ci` already runs before
-  asset validation and build in the deployment workflow. The M6 release gate and production smoke are
-  the next release boundary.
+  asset validation and build in the deployment workflow. M6 is released as PR #44 merge `2cce059`;
+  the next dependency-ready milestone is M7 Presentation.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -426,6 +426,11 @@ The characterization baseline intentionally preserves current behavior for later
 - The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
   not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
   follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.
+- M6 production smoke passed fresh New Adventure, Day 1/daylight HUD launch, Saved status, the
+  settlement objective, Help modal, and visible Q/B/weapon defense controls with no console errors
+  or warnings. The production Help copy still exposes legacy `?legacy` build and F12 grid-debug
+  instructions; this pre-existing presentation/UX defect is deferred to the appropriate later task
+  and was not changed in M6.
 
 ## 5. Release procedure
 
@@ -483,3 +488,10 @@ Deployment record:
   Saved status, the visible four-pillar settlement objective, starter controls, and no console
   warnings or errors. The current production title remains `Tarnation — Draft 0.3`; the removed
   `Draft Complete` text is no longer presented as the player-facing ending.
+- `2cce059` — M6 defense: FOX-01–04 — <https://tarnation.pages.dev/>; GitHub Actions run
+  [30737391871](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30737391871)
+  passed simulation checks, the deterministic 241-test suite in both local and CI-style modes, asset
+  validation, production build, and automatic deployment. Live smoke passed fresh New Adventure,
+  Day 1/daylight HUD launch, Saved status, settlement objective, Help modal, and visible Q/B/weapon
+  defense controls with no console errors or warnings. Existing legacy/F12 debug copy in the Help
+  modal remains a documented later presentation/UX follow-up.
