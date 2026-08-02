@@ -96,7 +96,7 @@ describe('genetics, inheritance, mutation, and Codex behavior', () => {
     expect(game.codex[1]!.discoveredDay).toBe(1);
   });
 
-  it('adds seeds to the inventory while keeping selection cycling deterministic and wrapping at both ends', () => {
+  it('adds counted seed packets while keeping selection cycling deterministic and wrapping at both ends', () => {
     const game = createGameState(0xdef456);
     game.seedInventory = [];
     game.selectedSeedIndex = 0;
@@ -105,6 +105,10 @@ describe('genetics, inheritance, mutation, and Codex behavior', () => {
 
     addSeedToInventory(game, beet);
     addSeedToInventory(game, carrot);
+    expect(game.seedInventory).toMatchObject([
+      { seed: beet, count: 1 },
+      { seed: carrot, count: 1 },
+    ]);
     expect(selectedSeed(game)).toBe(beet);
     cycleSeed(game, 1);
     expect(selectedSeed(game)).toBe(carrot);

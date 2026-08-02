@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 is complete on the current task branch after the ACT-01/02/03/04/05 and PERF-05
-  responsibility extractions; CORE-02 is next after integration.
+- CORE-01 and CORE-02 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; CORE-03 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -281,6 +281,17 @@ The characterization baseline intentionally preserves current behavior for later
   than silently deleting it, but cannot create new work there. The baseline is now 179 deterministic
   tests across 28 files. Production-preview smoke reached fresh Day 1/daylight with the first-plot
   guide and Saved status, and browser logs contained no warnings or errors.
+
+- CORE-02 replaces the old effectively infinite seed list with counted packets stacked by a full
+  genotype key. Planting consumes exactly one matching packet at the fixed shovel contact, while a
+  mature crop transaction returns its produce and one genotype-preserving packet; full produce or
+  seed storage leaves the crop untouched. Sorting, deletion, capacity, legacy overflow, and Codex
+  discovery are pure deterministic rules. Compact v9 writes use seed-table references plus counts;
+  old bare v9 indexes and released v8 Seed[] entries migrate explicitly and merge only identical
+  genotypes. The separate seed packet store remains distinct from sellable produce. The baseline is
+  now 189 deterministic tests across 29 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`,
+  and `npm audit --omit=dev` pass. CORE-03 is next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

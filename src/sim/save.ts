@@ -1,7 +1,8 @@
 import type { Phase } from './clock';
 import { CROP_DEFS, GRID_H, GRID_W } from '../content';
 import { createEmptyGrid, emptyTile, type Tile, type TileState } from './farm';
-import type { CodexEntry, HybridMech, Seed } from './genetics';
+import type { CodexEntry, HybridMech, Seed, SeedPacket } from './genetics';
+import { normalizeSeedPackets } from './seedInventory';
 import {
   addItem,
   createInventory,
@@ -12,7 +13,10 @@ import { cropItem, ITEM_WOOD, trophyItem } from './items';
 import type { PityState } from './luck';
 import { assetDefinition, deedAssetId, type AssetId } from '../content/purchasables';
 
-/** Current compact wire format. Versions 3–8 remain readable through migration. */
+/**
+ * Current compact wire format. Versions 3–8 remain readable through
+ * migration; pre-counted v9 seed indexes are also upgraded to packet counts.
+ */
 export const SAVE_VERSION = 9;
 
 /** Storage budgets used by the save service and release checks. */
@@ -71,7 +75,7 @@ export interface SaveData {
   dropPity: PityState;
   toolbarSlot: number;
   toolSlotActive: boolean;
-  seedInventory: Seed[];
+  seedInventory: SeedPacket[];
   codex: CodexEntry[];
   stats: GameStats;
   simTime: number;
@@ -127,6 +131,13 @@ interface CompactCodexEntry {
   id: string;
   s: number;
   d: number;
+}
+
+interface CompactSeedInventoryEntry {
+  /** seed genotype table reference */
+  s: number;
+  /** counted packets in this genotype stack */
+  c: number;
 }
 
 const TILE_STATES: readonly TileState[] = [
@@ -277,10 +288,13 @@ function encodeCompact(data: SaveData): Record<string, unknown> {
     }
   }
 
-  const seedInventory = data.seedInventory.map((seed) => {
-    const index = encodeSeedReference(seed, seeds, indexes);
+  const seedInventory = data.seedInventory.map((packet): CompactSeedInventoryEntry => {
+    const index = encodeSeedReference(packet.seed, seeds, indexes);
     if (index === undefined) throw new Error('Save seed inventory contained an empty seed');
-    return index;
+    if (!Number.isInteger(packet.count) || packet.count <= 0) {
+      throw new Error('Save seed inventory contained an invalid packet count');
+    }
+    return { s: index, c: packet.count };
   });
   const codex = data.codex.map((entry): CompactCodexEntry => {
     const index = encodeSeedReference(entry.seed, seeds, indexes);
@@ -359,9 +373,81 @@ function decodeSeed(raw: unknown): Seed | null {
   };
 }
 
+function decodeLegacySeed(raw: unknown): Seed | null {
+  if (
+    !isRecord(raw) ||
+    typeof raw.species !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(CROP_DEFS, raw.species)
+  ) {
+    return null;
+  }
+  const traits = raw.traits;
+  if (
+    !isRecord(traits) ||
+    !['yield', 'vigor', 'thirst', 'hardiness', 'weirdness'].every(
+      (key) => isFiniteNumber(traits[key]) && traits[key] >= 0 && traits[key] <= 100,
+    ) ||
+    typeof raw.displayName !== 'string' ||
+    raw.displayName.length === 0 ||
+    typeof raw.hybrid !== 'boolean' ||
+    !isHybridMechanic(raw.mech)
+  ) {
+    return null;
+  }
+  if (raw.lineage !== undefined && (!Array.isArray(raw.lineage) || !raw.lineage.every((value) => typeof value === 'string'))) {
+    return null;
+  }
+  return {
+    species: raw.species as Seed['species'],
+    traits: {
+      yield: traits.yield as number,
+      vigor: traits.vigor as number,
+      thirst: traits.thirst as number,
+      hardiness: traits.hardiness as number,
+      weirdness: traits.weirdness as number,
+    },
+    displayName: raw.displayName,
+    hybrid: raw.hybrid,
+    mech: raw.mech,
+    lineage: raw.lineage ? [...(raw.lineage as string[])] : undefined,
+  };
+}
+
 function seedAt(seeds: Seed[], value: unknown): Seed | null {
   if (!isIntegerInRange(value, 0, seeds.length - 1)) return null;
   return cloneSeed(seeds[value]);
+}
+
+function decodeCompactSeedPacket(raw: unknown, seeds: Seed[]): SeedPacket | null {
+  // v9 compact saves before counted packets stored a bare genotype index.
+  if (isIntegerInRange(raw, 0, seeds.length - 1)) {
+    const seed = seedAt(seeds, raw);
+    return seed ? { seed, count: 1 } : null;
+  }
+  if (!isRecord(raw) || !isIntegerInRange(raw.s, 0, seeds.length - 1) || !isIntegerInRange(raw.c, 1, Number.MAX_SAFE_INTEGER)) {
+    return null;
+  }
+  const seed = seedAt(seeds, raw.s);
+  return seed ? { seed, count: raw.c } : null;
+}
+
+/** Migrate old full-grid Seed[] entries and current packet entries together. */
+function migrateSeedInventory(raw: unknown): SeedPacket[] | null {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) return null;
+  const packets: SeedPacket[] = [];
+  for (const entry of raw) {
+    if (isRecord(entry) && 'seed' in entry) {
+      const seed = decodeLegacySeed(entry.seed);
+      if (!seed || !isIntegerInRange(entry.count, 1, Number.MAX_SAFE_INTEGER)) return null;
+      packets.push({ seed, count: entry.count });
+      continue;
+    }
+    const seed = decodeLegacySeed(entry);
+    if (!seed) return null;
+    packets.push({ seed, count: 1 });
+  }
+  return normalizeSeedPackets(packets);
 }
 
 function optionalNumber(record: Record<string, unknown>, key: string): number | undefined | null {
@@ -445,11 +531,11 @@ function decodeCompactSave(parsed: Record<string, unknown>): Record<string, unkn
   }
 
   if (!Array.isArray(parsed.seedInventory) || !Array.isArray(parsed.codex)) return null;
-  const seedInventory: Seed[] = [];
-  for (const rawIndex of parsed.seedInventory) {
-    const seed = seedAt(seeds, rawIndex);
-    if (!seed) return null;
-    seedInventory.push(seed);
+  const seedInventory: SeedPacket[] = [];
+  for (const rawEntry of parsed.seedInventory) {
+    const packet = decodeCompactSeedPacket(rawEntry, seeds);
+    if (!packet) return null;
+    seedInventory.push(packet);
   }
   const codex: CodexEntry[] = [];
   for (const rawEntry of parsed.codex) {
@@ -581,6 +667,8 @@ export function deserialize(raw: string): SaveData | null {
     if (typeof parsed.day !== 'number') return null;
     if (parsed.phase !== 'day' && parsed.phase !== 'night') return null;
     if (!Array.isArray(parsed.tiles)) return null;
+    const seedInventory = migrateSeedInventory(parsed.seedInventory);
+    if (!seedInventory) return null;
 
     const unlocked = Array.isArray(parsed.unlockedWeapons)
       ? (parsed.unlockedWeapons as unknown[]).map(migrateWeapon)
@@ -618,6 +706,7 @@ export function deserialize(raw: string): SaveData | null {
         ? (parsed.dropPity as PityState)
         : {};
     data.stats = migrateStats(parsed.stats);
+    data.seedInventory = seedInventory;
     // v4 used slot 0 for the original unarmed action. v5 introduced the ranged
     // slot at index 0; that meaning remains stable with the shotgun asset.
     const preV5 = incoming < 5;

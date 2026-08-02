@@ -33,6 +33,12 @@ export interface Seed {
   lineage?: string[];
 }
 
+/** A counted packet keeps the complete genotype while allowing like seeds to stack. */
+export interface SeedPacket {
+  seed: Seed;
+  count: number;
+}
+
 export interface CodexEntry {
   id: string;
   seed: Seed;
@@ -151,6 +157,26 @@ export function crossbreed(a: Seed, b: Seed, rng: Rng): Seed {
 
 export function seedId(s: Seed): string {
   return `${s.displayName}|${s.species}|${s.traits.weirdness}|${s.mech}`;
+}
+
+/**
+ * Full genotype identity used by inventory stacking. The Codex keeps its older
+ * display-oriented seedId for compatibility; packets must distinguish every
+ * inherited trait and lineage so unlike seeds never merge.
+ */
+export function seedGenotypeKey(s: Seed): string {
+  return JSON.stringify([
+    s.species,
+    s.traits.yield,
+    s.traits.vigor,
+    s.traits.thirst,
+    s.traits.hardiness,
+    s.traits.weirdness,
+    s.displayName,
+    s.hybrid,
+    s.mech,
+    s.lineage ?? null,
+  ]);
 }
 
 /**
