@@ -93,6 +93,8 @@ export function midgameSaveFixture(): SaveData {
   save.placedBuildings = [
     { id: 'fence', x: 30.5, z: 30.5, rotation: 0 },
     { id: 'gate', x: 34.5, z: 30.5, rotation: 0, gateOpen: true },
+    { id: 'silo', x: 39.5, z: 30.5, rotation: 0 },
+    { id: 'water_tower', x: 44.5, z: 30.5, rotation: 0 },
   ];
   save.irrigationTier = 3;
   save.bucketFill = 7;

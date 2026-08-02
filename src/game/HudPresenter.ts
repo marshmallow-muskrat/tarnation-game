@@ -16,6 +16,7 @@ import { woodCount, type GameState } from '../sim/gameState';
 import { buildCodexCatalog } from '../sim/codex';
 import { quotePurchase } from '../sim/economy';
 import { seedMechanismDescription } from '../sim/genetics';
+import { seedPacketCapacity } from '../sim/buildings';
 import { assetDefinition, deedAssetId, shopAssets, type AssetCategory, type AssetId, type PurchasableAsset } from '../content/purchasables';
 import type { ModelKey } from './Assets';
 import type { EconomyCapability } from './EconomyCapability';
@@ -133,6 +134,10 @@ export type HudSnapshot = {
   phaseT: number;
   hint: string;
   inventory: HudSlot[];
+  seedStorage: {
+    used: number;
+    capacity: number;
+  };
   inventoryOpen: boolean;
   duckettes: number;
   toolbar: HudToolbarSlot[];
@@ -371,6 +376,10 @@ export class HudPresenter {
       phaseT: state.clock.t,
       hint: context.hint,
       inventory,
+      seedStorage: {
+        used: state.seedInventory.length,
+        capacity: seedPacketCapacity(state.placedBuildings),
+      },
       inventoryOpen: state.inventoryOpen,
       duckettes: state.duckettes,
       toolbar,

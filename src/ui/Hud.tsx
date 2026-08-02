@@ -180,6 +180,9 @@ export function Hud({
           <p className="label">
             Inventory · {filled}/{hud.inventory.length}
           </p>
+          <p className="label">
+            Seed packets · {hud.seedStorage.used}/{hud.seedStorage.capacity}
+          </p>
           <div className="inv-grid">
             {hud.inventory.map((slot, i) => (
               <div

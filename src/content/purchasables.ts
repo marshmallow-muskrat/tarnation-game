@@ -318,8 +318,8 @@ export const PURCHASABLE_ASSETS = [
     blocksEnclosure: true,
     price: 7,
     materialCost: { wood: 7 },
-    description: 'Store a larger harvest close to home.',
-    availability: 'unreleased',
+    description: 'Adds 8 distinct seed-packet slots to the homestead.',
+    availability: 'merchant',
   }),
   place({
     id: 'silo_house',
@@ -374,8 +374,8 @@ export const PURCHASABLE_ASSETS = [
     blocksEnclosure: true,
     price: 10,
     materialCost: { wood: 10 },
-    description: 'A visible sign that the settlement is growing.',
-    availability: 'unreleased',
+    description: 'Provides a local bucket and trench water source within 6 tiles.',
+    availability: 'merchant',
   }),
   place({
     id: 'big_barn',

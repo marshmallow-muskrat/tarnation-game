@@ -144,13 +144,15 @@ function median(values: readonly number[]): number | null {
  * Run the current economy rules through a small, fixed farming policy.
  *
  * The policy fells a seeded number of trees, plants one seeded base crop per
- * day, sells ready harvest immediately, and attempts every current vendor row.
+ * day, sells ready harvest immediately, and attempts each current vendor row
+ * once the fixed opening-session priority allows it.
  * Progression permits are applied immediately after purchase so the diagnostic
  * can exercise their sequential locks. The fixed policy prioritizes irrigation
- * before homestead permits because irrigation is the first capability upgrade
- * being measured for the opening-session target. It is deliberately not a
- * player simulator: its purpose is to make resource starvation, runaway
- * accumulation, and purchases that never become possible visible.
+ * before other progression or building purchases because irrigation is the
+ * first capability upgrade being measured for the opening-session target. It
+ * is deliberately not a player simulator: its purpose is to make resource
+ * starvation, runaway accumulation, and purchases that never become possible
+ * visible.
  */
 export function simulateEconomy(
   seed: number,
@@ -235,7 +237,7 @@ export function simulateEconomy(
       const target = targets[i]!;
       const observation = observations[i]!;
       if (observation.completed > 0) continue;
-      if (target.progression?.kind === 'homestead' && (state.irrigationTier ?? 2) < 3) {
+      if (target.id !== FIRST_MEANINGFUL_UPGRADE_ID && (state.irrigationTier ?? 2) < 3) {
         continue;
       }
       observation.attempted += 1;

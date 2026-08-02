@@ -63,6 +63,7 @@ describe('HUD presenter', () => {
       save: { state: 'saved', message: 'Saved' },
     });
     expect(received!.inventory).toHaveLength(24);
+    expect(received!.seedStorage).toEqual({ used: 5, capacity: 24 });
     expect(received!.toolbar.map((slot) => slot.name)).toEqual(['Brown Shotgun', 'Shovel', 'Red Axe']);
     expect(received!.toolbar[0]!.selected).toBe(true);
     expect(received!.build.options.map((option) => option.name)).toEqual([

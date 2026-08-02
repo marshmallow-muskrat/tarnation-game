@@ -65,6 +65,7 @@ import {
   deserialize,
 } from './save';
 import type { AssetId } from '../content/purchasables';
+import { seedPacketCapacity } from './buildings';
 
 export interface GameState {
   seed: number;
@@ -400,13 +401,13 @@ export function discoverSeed(gs: GameState, seed: Seed): boolean {
 }
 
 export function addSeedToInventory(gs: GameState, seed: Seed, count = 1): boolean {
-  if (!addSeedPacket(gs.seedInventory, seed, count)) return false;
+  if (!addSeedPacket(gs.seedInventory, seed, count, seedPacketCapacity(gs.placedBuildings))) return false;
   discoverSeed(gs, seed);
   return true;
 }
 
 export function canStoreSeedPacket(gs: GameState, seed: Seed, count = 1): boolean {
-  return canAddSeedPacket(gs.seedInventory, seed, count);
+  return canAddSeedPacket(gs.seedInventory, seed, count, seedPacketCapacity(gs.placedBuildings));
 }
 
 function failedHarvest(): HarvestResult {
@@ -447,7 +448,7 @@ export function plantSeedPacket(gs: GameState, tx: number, ty: number, seed: See
   if (!plantTile(gs.tiles, tx, ty, seed)) {
     // The predicate and mutation share the same pure tile rules. Keep the
     // rollback explicit so a future rule change cannot erase a packet.
-    addSeedPacket(gs.seedInventory, seed, 1);
+    addSeedPacket(gs.seedInventory, seed, 1, seedPacketCapacity(gs.placedBuildings));
     return false;
   }
   if (gs.selectedSeedIndex >= gs.seedInventory.length) {
