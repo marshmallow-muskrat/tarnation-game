@@ -11,6 +11,7 @@ import {
 import { makeSeed, seedGenotypeKey, type SeedPacket } from '../src/sim/genetics';
 import {
   createGameState,
+  addSeedToInventory,
   discardSeedFromInventory,
   harvestCropTransaction,
   plantSeedPacket,
@@ -20,6 +21,7 @@ import {
 import { emptyTile, getTile, tillTile } from '../src/sim/farm';
 import { addItem, createInventory } from '../src/sim/inventory';
 import { cropItem, type ItemId } from '../src/sim/items';
+import { seedPacketCapacity } from '../src/sim/buildings';
 
 function distinctSeed(index: number) {
   const species = (['grass', 'dandelion', 'beet', 'carrot', 'lettuce'] as const)[index % 5]!;
@@ -57,6 +59,35 @@ describe('counted seed packet inventory', () => {
     expect(packets).toHaveLength(SEED_PACKET_SLOTS);
     expect(packets.slice(1).map((packet) => packet.count)).toEqual(before.slice(1));
     expect(packets[0]!.count).toBe(before[0]! + 2);
+  });
+
+  it('accepts a new genotype beyond the base limit when a silo provides the saved building effect', () => {
+    const packets: SeedPacket[] = [];
+    for (let index = 0; index < SEED_PACKET_SLOTS; index++) {
+      expect(addSeedPacket(packets, distinctSeed(index))).toBe(true);
+    }
+    const capacity = seedPacketCapacity([{ id: 'silo' }]);
+    const extra = makeSeed('lettuce', { yield: 99, weirdness: 99 });
+
+    expect(canAddSeedPacket(packets, extra)).toBe(false);
+    expect(canAddSeedPacket(packets, extra, 1, capacity)).toBe(true);
+    expect(addSeedPacket(packets, extra, 1, capacity)).toBe(true);
+    expect(packets).toHaveLength(SEED_PACKET_SLOTS + 1);
+  });
+
+  it('derives the live game seed capacity from placed silos without adding a save field', () => {
+    const game = createGameState(0x0101_0101);
+    game.seedInventory = [];
+    for (let index = 0; index < SEED_PACKET_SLOTS; index++) {
+      expect(addSeedToInventory(game, distinctSeed(index))).toBe(true);
+    }
+    const extra = makeSeed('lettuce', { yield: 99, weirdness: 99 });
+
+    expect(addSeedToInventory(game, extra)).toBe(false);
+    game.placedBuildings.push({ id: 'silo', x: 20.5, z: 20.5, rotation: 0 });
+    expect(addSeedToInventory(game, extra)).toBe(true);
+    expect(seedPacketCapacity(game.placedBuildings)).toBe(SEED_PACKET_SLOTS + 8);
+    expect(game.seedInventory).toHaveLength(SEED_PACKET_SLOTS + 1);
   });
 
   it('consumes exactly one selected packet only when planting can commit', () => {

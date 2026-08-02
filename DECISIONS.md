@@ -358,3 +358,15 @@ show the existing tier models, and retain the current bow/axe unlock thresholds.
 shortcut is removed from production. Legacy placeable homestead deed IDs stay in the catalog for old
 save rendering and use, but remain unreleased so old inventory cannot be silently discarded and new
 players do not see a second progression path. No save schema or migration rule changes in CORE-05.
+
+## 2026-08-02 — Give the released building portfolio one bounded job each
+
+CORE-06 releases the existing fence/gate path plus Silo and Water Tower as the small functional portfolio. A placed
+Silo adds eight distinct seed-packet slots per instance; capacity is derived from `placedBuildings`, so no duplicate
+save field or migration is needed. Existing seed overflow is preserved when a Silo is demolished rather than silently
+discarded, and the HUD exposes the resulting used/capacity state. A Water Tower supplies bucket filling for the player
+and acts as a deterministic trench-flow source within six world tiles; placement and demolition recompute the relevant
+obstacle, enclosure, world-tile, and trench topology. Merchant descriptions and runtime effects use the same contract.
+Coops, barns, windmills, and other cosmetic buildings remain unreleased until their animal or processing loops exist.
+Rotation, collision, enclosure, demolition refunds, save round-trips, and capacity/source rules remain covered by pure
+or deterministic characterization tests. No save schema or migration rule changes in CORE-06.

@@ -67,6 +67,18 @@ describe('placement footprints, reservations, gates, demolition, and enclosures'
     ).toContain('suitable');
   });
 
+  it('preserves functional silo and water-tower footprints as physical placement obstacles', () => {
+    const grass = createEmptyGrid();
+    for (const id of ['silo', 'water_tower'] as const) {
+      const asset = assetDefinition(id)!;
+      expect(asset).toMatchObject({ blocksMovement: true, blocksEnclosure: true, useType: 'place' });
+      expect(footprintTiles(asset, { tx: 20, ty: 20 }, 0)).toHaveLength(9);
+      expect(
+        placementStatus({ asset, origin: { tx: 20, ty: 20 }, rotation: 0, tiles: grass, placed: [] }).valid,
+      ).toBe(true);
+    }
+  });
+
   it('rejects overlapping placed assets and preserves the overlap contract after a building is demolished', () => {
     const well = assetDefinition('well')!;
     const grass = createEmptyGrid();

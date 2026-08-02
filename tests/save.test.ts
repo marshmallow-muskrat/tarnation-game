@@ -65,8 +65,9 @@ describe('save serialization and fixture round-trips', () => {
     expect(loaded!.tiles[20]![21]!.state).toBe('planted');
     expect(loaded!.tiles[25]![20]!.bearTrap).toBe(true);
     expect(loaded!.tiles[26]![20]!.bearTrapClosed).toBe(true);
-    expect(loaded!.placedBuildings).toHaveLength(2);
+    expect(loaded!.placedBuildings).toHaveLength(4);
     expect(loaded!.placedBuildings[1]).toMatchObject({ id: 'gate', gateOpen: true });
+    expect(loaded!.placedBuildings.slice(2).map((building) => building.id)).toEqual(['silo', 'water_tower']);
     expect(loaded!.codex).toHaveLength(2);
     expect(loaded!.seedInventory).toHaveLength(3);
     expect(loaded!.seedInventory.map((packet) => packet.count)).toEqual([4, 2, 3]);

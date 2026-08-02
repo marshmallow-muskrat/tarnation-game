@@ -63,13 +63,14 @@ export function canAddSeedPacket(
   packets: readonly SeedPacket[],
   seed: Seed,
   count = 1,
+  capacity = SEED_PACKET_SLOTS,
 ): boolean {
   if (!validCount(count)) return false;
   const index = packetIndex(packets, seed);
   if (index >= 0) {
     return packets[index]!.count <= MAX_PACKET_COUNT - count;
   }
-  return packets.length < SEED_PACKET_SLOTS;
+  return packets.length < capacity;
 }
 
 /** Add packets transactionally: no partial count or Codex mutation on failure. */
@@ -77,8 +78,9 @@ export function addSeedPacket(
   packets: SeedPacket[],
   seed: Seed,
   count = 1,
+  capacity = SEED_PACKET_SLOTS,
 ): boolean {
-  if (!canAddSeedPacket(packets, seed, count)) return false;
+  if (!canAddSeedPacket(packets, seed, count, capacity)) return false;
   const index = packetIndex(packets, seed);
   if (index >= 0) {
     packets[index]!.count += count;

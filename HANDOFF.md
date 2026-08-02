@@ -71,8 +71,8 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- CORE-01 through CORE-05 are complete on the current integration branch after the ACT-01/02/03/04/05
-  and PERF-05 responsibility extractions; CORE-06 is next.
+- CORE-01 through CORE-06 are complete on the current integration branch after the ACT-01/02/03/04/05
+  and PERF-05 responsibility extractions; CORE-07 is next.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -346,6 +346,20 @@ The characterization baseline intentionally preserves current behavior for later
   day 5 in 16/16 runs, 16/16 resource-starvation runs, and one existing long-horizon runaway boundary
   hit; that calibration follow-up remains separate from CORE-05.
 
+- CORE-06 releases a small functional building portfolio without changing the save schema. The
+  existing fence/gate path remains the physical collision, enclosure, routing, rotation, and refund
+  authority; the silo adds eight distinct seed-packet slots per placed instance, derived directly
+  from saved buildings, and the HUD reports used/capacity. The water tower supplies bucket filling
+  for the player and a deterministic local trench source within six tiles; placement and demolition
+  recompute obstacle, enclosure, world-tile, and trench-flow state. Silo and water-tower descriptions
+  now match their runtime effects and are merchant choices; coop, barn, windmill, and other cosmetic
+  buildings remain unreleased until their loops exist. Compact typed fixtures cover the new saved
+  building portfolio, while legacy overflow remains preserved rather than silently discarded. The
+  deterministic baseline is now 210 tests across 32 files. `npm run test`, `npm run test:ci`,
+  `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
+  `git diff --check`, and `npm audit --omit=dev` pass. The existing deployment workflow already runs
+  `npm run test:ci` before asset validation and build; no deployment was performed for this task.
+
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.
 - Continue fox/trap telegraphs and audio hooks, then calibrate the first-session economy against
@@ -363,8 +377,8 @@ The characterization baseline intentionally preserves current behavior for later
 - CORE-05 has removed the parallel `U` homestead shortcut from production and moved new progression
   purchases to sequential merchant permits. Legacy homestead deed rows remain loadable with their
   finite historical costs, while the 30-day diagnostic still shows one rare runaway boundary hit
-  because current released sinks are intentionally small; functional buildings are a later CORE-06
-  dependency, not silently invented here.
+  because current released sinks are intentionally small; CORE-06 adds bounded silo and water-tower
+  sinks/utilities without claiming to solve long-horizon economy calibration.
 - The economy diagnostic intentionally continues to model generic two-day base-crop lots; it does
   not simulate genotype-specific vigor, thirst, greed, or raid effects. That is a calibration
   follow-up, not a reason to weaken the released runtime trait contracts in CORE-03.

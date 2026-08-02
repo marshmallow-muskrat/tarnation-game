@@ -96,6 +96,8 @@ describe('economy values and current purchasing inputs', () => {
       'upgrade:homestead:5',
       'fence',
       'gate',
+      'silo',
+      'water_tower',
     ]);
     expect(placeable.some((asset) => asset.availability === 'unreleased')).toBe(false);
     expect(TOOLBAR_SLOTS).toBe(3);
@@ -119,11 +121,9 @@ describe('economy values and current purchasing inputs', () => {
       'small_barn',
       'open_barn',
       'barn',
-      'silo',
       'silo_house',
       'windmill',
       'tower_windmill',
-      'water_tower',
       'big_barn',
       'housing:homestead:2',
       'housing:homestead:3',

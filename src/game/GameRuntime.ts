@@ -78,7 +78,11 @@ import {
   woodCount,
   type GameState,
 } from '../sim/gameState';
-import { SEED_PACKET_SLOTS, SEED_RECOVERY_PER_HARVEST } from '../sim/seedInventory';
+import { SEED_RECOVERY_PER_HARVEST } from '../sim/seedInventory';
+import {
+  seedPacketCapacity,
+  waterTowerProvidesWater,
+} from '../sim/buildings';
 import {
   clearBreedingParents,
   destroyCrop,
@@ -406,6 +410,7 @@ export class GameRuntime {
   private playerHeading = 0;
   private headingTarget = 0;
   private nearWater = false;
+  private nearWaterTower = false;
   private toolMode: ToolMode = 'farm';
   private buildingMode = false;
   private demolishMode = false;
@@ -1517,14 +1522,23 @@ export class GameRuntime {
       setToast(this.gs, 'No inventory space for the returned deed', 1.8);
       return;
     }
+    const previousSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
     this.gateCloseTimers.delete(placed);
     this.gs.placedBuildings.splice(index, 1);
     addToInventory(this.gs, deed, 1);
     this.refreshObstacleTopology();
+    this.refreshTrenchWater();
     this.syncBuildings();
+    this.syncWorldTiles();
     this.recalculateEnclosure();
     this.persist();
-    setToast(this.gs, `${asset.displayName} demolished · deed returned`, 1.6);
+    const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
+    const functionNote = asset.id === 'silo'
+      ? ` · seed storage ${previousSeedCapacity}→${nextSeedCapacity}`
+      : asset.id === 'water_tower'
+        ? ' · local water source removed'
+        : '';
+    setToast(this.gs, `${asset.displayName} demolished · deed returned${functionNote}`, 1.8);
     this.pushHud(true);
   }
 
@@ -1898,7 +1912,9 @@ export class GameRuntime {
     this.stepFoxes(dt);
     this.stepAnimals(dt);
 
-    this.nearWater = this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE;
+    this.nearWaterTower = waterTowerProvidesWater(this.gs.placedBuildings, this.playerX, this.playerZ);
+    this.nearWater =
+      this.world.distToWater(this.playerX, this.playerZ) <= WATER_COLLECT_RANGE || this.nearWaterTower;
     if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY && this.input.justPressed('KeyE')) {
       fillBucket(this.gs);
       this.recordAction('fill_bucket');
@@ -2061,7 +2077,12 @@ export class GameRuntime {
 
   /** Recompute visible trench flow from the live world water boundary. */
   private refreshTrenchWater(): number {
-    const sources = trenchSourceTiles(this.gs.tiles, (x, z) => this.world.distToWater(x, z));
+    const sources = trenchSourceTiles(this.gs.tiles, (x, z) => {
+      const towerSourceDistance = waterTowerProvidesWater(this.gs.placedBuildings, x, z)
+        ? 0
+        : Number.POSITIVE_INFINITY;
+      return Math.min(this.world.distToWater(x, z), towerSourceDistance);
+    });
     return flowTrenchWater(
       this.gs.tiles,
       (x, z) => this.world.heightAt(x, z),
@@ -2288,15 +2309,24 @@ export class GameRuntime {
         return;
       }
       this.recordOutcome('building', 'completed', 'build');
+      const previousSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
       placeBuilding(this.gs, selected.id, placement.x, placement.z, placement.rotation, false);
       this.runtimeMetrics.recordBuildingPlaced();
       this.refreshObstacleTopology();
+      this.refreshTrenchWater();
       this.syncBuildings();
+      this.syncWorldTiles();
       this.recalculateEnclosure();
       this.persist();
       this.spawnFeedbackBurst(placement.x, placement.z, 0xf2c266, 8, 0.28);
       this.audio.play('build');
-      setToast(this.gs, `Built ${selected.displayName}`, 1.6);
+      const nextSeedCapacity = seedPacketCapacity(this.gs.placedBuildings);
+      const functionNote = selected.id === 'silo'
+        ? ` · seed storage ${previousSeedCapacity}→${nextSeedCapacity}`
+        : selected.id === 'water_tower'
+          ? ' · local bucket and trench water source active'
+          : '';
+      setToast(this.gs, `Built ${selected.displayName}${functionNote}`, 1.8);
       this.buildingMode = false;
       this.placement.clear();
       this.pushHud(true);
@@ -2447,7 +2477,7 @@ export class GameRuntime {
         // A full packet inventory must not consume the breeding bed before the
         // child has somewhere to go. The child is deterministic only after the
         // action commits, so conservatively require one available stack slot.
-        if (this.gs.seedInventory.length >= SEED_PACKET_SLOTS) {
+        if (this.gs.seedInventory.length >= seedPacketCapacity(this.gs.placedBuildings)) {
           setToast(this.gs, 'Seed storage full — harvest or discard a packet', 2);
           return;
         }
@@ -4067,7 +4097,9 @@ export class GameRuntime {
     }
     if (this.nearMerchant) return 'E — open the Traveling Merchant shop';
     if (this.nearMarket) return 'Market stall — sell for duckettes';
-    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) return 'E — fill bucket';
+    if (this.nearWater && this.gs.bucketFill < BUCKET_CAPACITY) {
+      return this.nearWaterTower ? 'E — fill bucket at the water tower' : 'E — fill bucket';
+    }
     if (this.toolMode !== 'farm') return `Tool: ${this.toolMode} · 2 back to shovel`;
 
     const tile = this.pointerTile();
