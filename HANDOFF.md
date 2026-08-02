@@ -70,13 +70,14 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Complete incremental world-update and runtime-responsibility work (PERF-04/05).
+- Complete the remaining runtime-responsibility work (PERF-05).
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: 90 deterministic tests across 10 files,
-  compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and migration fixtures for
-  released save versions 3 through 7. PR #3 merged into the integration branch as `5ff922b`.
+- BASE-02 characterization is now integrated with Vitest: the current baseline has 109 deterministic
+  tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
+  migration fixtures for released save versions 3 through 7. PR #3 merged into the integration
+  branch as `5ff922b`.
   `npm run test:ci` is part of the main deployment verification workflow before asset validation
   and build.
 
@@ -148,8 +149,19 @@ The characterization baseline intentionally preserves current behavior for later
   Day 1/daylight with Saved HUD state and no console warnings/errors. The deterministic baseline is
   now 106 tests across 15 files;
   `npm run test:ci`, `npm run check`, `npm run assetcheck`, the build, strict unused-symbol TypeScript,
-  `git diff --check`, and `npm audit --omit=dev` all pass. PERF-04 is next; route-field, crop batching,
-  scatter occupancy, and hot-path extraction remain intentionally separate.
+  `git diff --check`, and `npm audit --omit=dev` all pass. PERF-04 follows as the completed incremental
+  world-update slice below.
+
+- PERF-04 replaces per-fox full-grid BFS with shared reverse route fields keyed by target and topology
+  version, expanded under a fixed 4,096-node budget per simulation step. Crop state now reconciles by
+  dirty tile and batches compatible species/stage/tint models through `InstancedMesh`, while primitive
+  fallbacks remain available. Interactive camp/building/farm occupancy masks only the affected live
+  scatter chunks. World raycasters, screen vectors, day/night colours, tree picking scratch state, and
+  shadow anchors are reused; shadow maps follow quantized 0.25-unit anchors rather than every render
+  frame. Asset cloning now uses `SkeletonUtils.clone()` only for scenes containing `SkinnedMesh`.
+  The integrated deterministic baseline is 109 tests across 16 files. The built preview reached Day 1
+  daylight through Continue and New Adventure with no console errors or warnings. All required unit,
+  smoke, asset, build, strict TypeScript, diff, and production-audit checks pass. PERF-05 is next.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

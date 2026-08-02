@@ -24,6 +24,7 @@ type CacheEntry = {
   scene: THREE.Object3D;
   animations: THREE.AnimationClip[];
   isFallback: boolean;
+  isSkinned: boolean;
   activeClones: number;
   retired: boolean;
   resourcesDisposed: boolean;
@@ -60,10 +61,15 @@ function cacheEntry(
   animations: THREE.AnimationClip[],
   isFallback: boolean,
 ): CacheEntry {
+  let isSkinned = false;
+  scene.traverse((object) => {
+    if (object instanceof THREE.SkinnedMesh) isSkinned = true;
+  });
   return {
     scene,
     animations,
     isFallback,
+    isSkinned,
     activeClones: 0,
     retired: false,
     resourcesDisposed: false,
@@ -376,7 +382,9 @@ export function cloneModel(key: ModelKey): {
   }
   // SkeletonUtils.clone — Object3D.clone() does NOT rebind skinned meshes to the
   // cloned skeleton, so rigged glTF characters come out collapsed or invisible.
-  const root = entry.isFallback ? entry.scene.clone(true) : skeletonClone(entry.scene);
+  // Static props have no skeleton to rebind, so the cheaper native clone keeps
+  // their scene graph and material references intact.
+  const root = entry.isSkinned ? skeletonClone(entry.scene) : entry.scene.clone(true);
   // Re-apply material treatment: clones share materials with the cached source.
   const def = modelDef(key);
   if (def.silhouette) applySilhouetteMaterials(root, 'clone');
