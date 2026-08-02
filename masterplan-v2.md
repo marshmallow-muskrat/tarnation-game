@@ -739,8 +739,8 @@ not build the game. Revise before adding later content.
 
 Status: The authored first-session implementation is present in `src/sim/onboarding.ts` as a
 derived, non-saved eight-beat guide from movement through the first merchant visit. Launch copy,
-starter-plot transitions, fox-risk guidance, market/merchant next goals, Save status, and concise
-Help/Settings discovery are covered by 314 deterministic tests across 45 files and a production-
+starter-plot transitions, active-binding prompt copy, fox-risk guidance, market/merchant next goals,
+Save status, and concise Help/Settings discovery are covered by 315 deterministic tests across 45 files and a production-
 preview smoke. The five-person external study and any resulting revision are still required before
 UX-05 or M8 can be declared release-complete.
 

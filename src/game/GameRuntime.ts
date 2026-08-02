@@ -4659,7 +4659,13 @@ export class GameRuntime {
     if (this.firstPlotGuideActive) {
       const stage = firstPlotStage(this.gs.tiles, this.gs.stats.cropsHarvested, this.gs.duckettes);
       if (stage !== 'complete' && !this.nearMerchant && !this.nearMarket && !this.nearWater) {
-        return formatFirstPlotHint(stage, seed?.displayName);
+        return formatFirstPlotHint(stage, seed?.displayName, {
+          shovel: key('slot2'),
+          bucket: key('toolSlot'),
+          previousSeed: key('seedPrevious'),
+          nextSeed: key('seedNext'),
+          primary: key('primary'),
+        });
       }
     }
     const arcHint = multiDayArcHint({

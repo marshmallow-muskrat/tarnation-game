@@ -214,10 +214,11 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   and no browser warnings/errors. UX-05's implementation is next in review; the external study remains pending.
 
 - UX-05 authors the first ten minutes as a derived, non-saved eight-beat guide: launch copy and
-  immediate movement, starter-plot shovel/plant/water/grow/harvest transitions, early fox-risk
+  immediate movement, starter-plot shovel/plant/water/grow/harvest transitions with active-binding
+  prompt copy, early fox-risk
   guidance, market sale, merchant next-goal, Save status, and concise Help/Settings discovery.
   The guide ends after the first merchant visit and never adds quest fields to the save schema. The
-  deterministic baseline is now 314 tests across 45 files. `npm run test`, `npm run test:ci`,
+  deterministic baseline is now 315 tests across 45 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. Production-preview smoke reached fresh Day 1/
   daylight, showed the non-modal First steps card and Saved status, opened Help, and reached Settings

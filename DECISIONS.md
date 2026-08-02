@@ -612,6 +612,8 @@ field, migration, RNG, economy, or fixed-step rule. A compact non-modal HUD card
 Save status, settlement objective, Help button, market compass, and pause/Settings route available,
 while launch copy names only the immediate movement control and starter-plot destination. The grow
 beat explicitly explains that foxes raid after dusk and names harvesting or a bear trap as the next
-counter. The implementation is covered by deterministic transition tests and a documented five-
+counter. Existing first-plot prompt copy now receives the active remappable binding labels, keeping
+the lower contextual prompt consistent with the onboarding card without changing any input route.
+The implementation is covered by deterministic transition tests and a documented five-
 participant study protocol; no participant findings are fabricated, so the external study and any
 resulting revision remain required before UX-05/M8 release completion.
