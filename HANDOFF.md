@@ -12,7 +12,7 @@ defends crops from foxes, upgrades the homestead, and places buildings. The desi
 non-linear progression and future maps/challenge spaces, but the current work is refinement of the
 existing loop.
 
-Run locally with `npm install && npm run dev`; open `http://localhost:5173/picker.html` for the
+Run locally with `npm install && npm run dev`; open `http://localhost:5183/picker.html` for the
 asset preview grid. Run `npx tsc --noEmit` for the typecheck, `npm run assetcheck` to verify the
 manifest paths and inspect referenced GLBs, and `npm run economyreport` to print the current tuning
 baseline. The production page exposes no runtime debug handle; use deterministic tests and local
@@ -150,6 +150,17 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   full and production-only audits reported zero vulnerabilities; and contribution, changelog, license,
   and asset/audio provenance guidance were added. The task changed no Vite/React/Three.js, save,
   simulation, economy, or gameplay behavior.
+- REL-02 implementation is complete on `agent/rel-02-release-checklist`, pending the exact reviewed M10
+  merge and live smoke. The top-left HUD objective is bounded to a compact readable panel with a scroll
+  cap; `J` toggles the settlement objective and `G` toggles the market guide, and both bindings are exposed
+  through Help, Settings, and README controls. The release E2E covers those controls, panel width, and the
+  recoverable unsupported-WebGL launch path. Integrated local evidence is 334 Vitest tests across 49 files,
+  10/10 production-build E2E tests, simulation/asset/audio/feel/performance gates, strict TypeScript, build,
+  `git diff --check`, full audit, and production-only audit (0 vulnerabilities). Save/migration, economy,
+  diagnostics, fallback, resource-disposal, animation-profile, keyboard/modal, and browser-error coverage
+  remains green. The stale asset-picker documentation link was corrected from port 5173 to the configured
+  Vite port 5183. Human animation/accessibility signoff and external playtesting: **Deferred by owner until
+  after completion of this update; not performed and not claimed.**
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

@@ -486,6 +486,8 @@ export class GameRuntime {
   private vendorOpen = false;
   private vendorTab: AssetCategory = 'Housing';
   private vendorMessage = '';
+  private objectiveVisible = true;
+  private marketGuideVisible = true;
   private contextMenu: HudContextMenu = {
     open: false,
     x: 0,
@@ -642,6 +644,8 @@ export class GameRuntime {
     this.raidWarningDay = -1;
     this.codexOpen = false;
     this.settingsOpen = false;
+    this.objectiveVisible = true;
+    this.marketGuideVisible = true;
     this.codexCompareKeys = [];
     this.codexSelectedKey = buildCodexCatalog(this.gs.codex)[0]?.key ?? null;
     this.world.setStarterPlotVisible(this.firstPlotGuideActive);
@@ -2109,6 +2113,16 @@ export class GameRuntime {
     }
     if (this.contextMenu.open) {
       if (this.input.justPressed('pause') || this.input.justPressed('context')) this.cancelActiveState();
+      return true;
+    }
+    if (this.input.justPressed('objective')) {
+      this.objectiveVisible = !this.objectiveVisible;
+      setToast(this.gs, this.objectiveVisible ? 'Settlement objective shown' : 'Settlement objective hidden', 1.4);
+      return true;
+    }
+    if (this.input.justPressed('marketGuide')) {
+      this.marketGuideVisible = !this.marketGuideVisible;
+      setToast(this.gs, this.marketGuideVisible ? 'Market guide shown' : 'Market guide hidden', 1.4);
       return true;
     }
     if (this.buildingMode) {
@@ -4901,6 +4915,8 @@ export class GameRuntime {
       marketDistance: Math.round(Math.hypot(this.playerX - this.stallX, this.playerZ - this.stallZ)),
       popups: this.popups,
       save: this.saveFeedback,
+      objectiveVisible: this.objectiveVisible,
+      marketGuideVisible: this.marketGuideVisible,
       onboarding,
       winShownLocal: this.winShownLocal,
     });

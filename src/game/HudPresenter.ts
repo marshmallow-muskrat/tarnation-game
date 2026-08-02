@@ -213,6 +213,8 @@ export type HudSnapshot = {
     state: SaveFeedback['state'];
     message: string;
   };
+  objectiveVisible: boolean;
+  marketGuideVisible: boolean;
   objective: SettlementObjective;
   onboarding: FirstTenMinuteGuide | null;
   win: null | {
@@ -251,6 +253,8 @@ export type HudPresenterContext = {
   marketDistance: number;
   popups: readonly HudPopup[];
   save: SaveFeedback;
+  objectiveVisible?: boolean;
+  marketGuideVisible?: boolean;
   onboarding?: FirstTenMinuteGuide | null;
   winShownLocal: boolean;
 };
@@ -525,6 +529,8 @@ export class HudPresenter {
       popups: context.popups.map((popup) => ({ ...popup })),
       toast: state.toast,
       save: { ...context.save },
+      objectiveVisible: context.objectiveVisible ?? true,
+      marketGuideVisible: context.marketGuideVisible ?? true,
       objective,
       onboarding: context.onboarding ?? null,
       win:
