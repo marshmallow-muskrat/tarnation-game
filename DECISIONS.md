@@ -529,3 +529,19 @@ fade was introduced for a tall building that does not currently occlude the play
 evidence covered day framing, zoom bounds, the homestead approach, HUD/status/toolbar focus, and the
 pausing field guide; generated screenshots are review artifacts rather than committed binary files.
 No save schema, simulation timing, asset catalog, or later VFX/UX task is changed.
+
+## 2026-08-01 — Use a bounded semantic VFX grammar
+
+ART-05 maps transient action feedback to eight typed states: valid placement, invalid placement, work
+contact, water, reward, damage, threat, and discovery. The palette is intentionally small and distinct
+so a player can read the state without a per-call color contract. The renderer owns a fixed 24-slot pool
+with one shared procedural geometry and slot-owned materials; it recycles the oldest active slot and
+disposes the owned resources once at runtime teardown. Renderer-only decoration continues to use its
+own deterministic LCG and never consumes the seeded simulation RNG.
+
+Reduced motion suppresses transient particles at spawn, matching the existing camera-shake, crop,
+loot-marker, and ambient-mote policy. Minor boulder and repeated tree-contact shake was removed where
+it duplicated the same small contact cue; major combat, ranged, harvest, and settlement outcomes keep
+their existing audio, popup, hit-pause, and feedback contracts. Invalid placement now gives the same
+red semantic signal as its preview. No save schema, simulation rule, economy value, asset definition,
+fixed timestep, or deployment credential changed.

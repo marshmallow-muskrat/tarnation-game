@@ -112,7 +112,7 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   the deterministic baseline is now 258 tests across 37 files. `npm run test`, `npm run test:ci`,
   `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol TypeScript,
   `git diff --check`, and `npm audit --omit=dev` pass. ART-03 and ART-04 are integrated below;
-  ART-05 is next.
+  ART-05 is complete on its task branch; M7 integration and release evidence remain pending.
 
 - ART-03 establishes the shared five-class occupancy policy in `src/sim/occupancy.ts`: hard
   obstacles block player and wildlife actors, soft worked ground remains traversable but is excluded
@@ -141,6 +141,21 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   `npm run test:ci`, `npm run check`, `npm run assetcheck`, the production build, strict unused-symbol
   TypeScript, `git diff --check`, and `npm audit --omit=dev` pass. The deployment workflow already
   runs `npm run test:ci` before asset validation and build.
+
+- ART-05 establishes the shared VFX grammar in pure `src/sim/feedback.ts`: valid/invalid placement,
+  work contact, water, reward, damage, threat, and discovery each have a bounded typed profile with
+  distinct colors. `FeedbackEffectPool` owns 24 reusable renderer-only slots, one shared octahedron
+  geometry, and slot-owned materials; it recycles the oldest active slot, never consumes simulation
+  RNG, suppresses transient particles under reduced motion, and disposes resources exactly once.
+  Existing feedback call sites now use semantic kinds, invalid placement gets an explicit red contact
+  cue, and minor boulder/tree-contact shake no longer stacks with the same small event. The current
+  deterministic baseline is 284 tests across 41 files. `npm run test`, `npm run test:ci`, `npm run check`,
+  `npm run assetcheck`, the production build, strict unused-symbol TypeScript, `git diff --check`, and
+  `npm audit --omit=dev` pass. Local visual smoke reached Day 1/daylight with HUD, player, homestead,
+  grounded shadows, and controls visible; no console warnings or errors were observed. The existing
+  Help copy still exposes legacy `?legacy` and F12 grid-debug instructions, which remains deferred to
+  the later UX/presentation cleanup rather than being changed in ART-05. The deployment workflow
+  already runs `npm run test:ci` before asset validation and build.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 
