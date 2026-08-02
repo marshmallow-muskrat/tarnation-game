@@ -66,19 +66,6 @@ function finiteArray(value: unknown, expectedLength: number, path: string, error
   }
 }
 
-function numberArray(value: unknown, path: string, errors: string[]): number[] {
-  if (!Array.isArray(value)) {
-    errors.push(`${path} must be an array`);
-    return [];
-  }
-  const result: number[] = [];
-  value.forEach((entry, entryIndex) => {
-    if (!integer(entry)) errors.push(`${path}[${entryIndex}] must be an integer`);
-    else result.push(entry);
-  });
-  return result;
-}
-
 function chunkType(view: DataView, offset: number): number {
   return view.getUint32(offset + 4, true);
 }
@@ -385,13 +372,12 @@ export function inspectGltfDocument(
       if (node.scale !== undefined) finiteArray(node.scale, 3, `nodes[${nodeIndex}].scale`, errors);
     }
     if (node.children !== undefined) {
-      const children = numberArray(node.children, `nodes[${nodeIndex}].children`, errors);
-      children.forEach((childIndex) => {
-        if (index(childIndex, nodes.length)) visitNode(childIndex);
-      });
-      if (Array.isArray(node.children)) {
+      if (!Array.isArray(node.children)) {
+        errors.push(`nodes[${nodeIndex}].children must be an array`);
+      } else {
         node.children.forEach((child, childIndex) => {
           if (!index(child, nodes.length)) errors.push(`nodes[${nodeIndex}].children[${childIndex}] is invalid`);
+          else visitNode(child);
         });
       }
     }
