@@ -879,13 +879,19 @@ Status: Complete on `agent/qa-02-continuous-integration`. `.github/workflows/qa.
 request and push to `main` with locked `npm ci`, strict unused-symbol typecheck, simulation checks,
 deterministic unit/integration tests, asset/audio/feel validation, performance budgets, production-only
 dependency audit, production build, Chromium E2E/visual checks, and failure-only artifact retention for
-reports, screenshots, traces, and videos. The existing deployment workflow repeats the strict typecheck
-and production audit so its own verified deployment path cannot bypass those release-critical checks.
-No formatter or linter is configured in the repository yet, so no made-up lint command was added; that
-remains a tooling follow-up. The full dependency audit currently reports six dev-tool advisories in the
-Wrangler-era toolchain; the production dependency tree is clean and the upgrade is deferred to REL-01.
-GitHub branch-protection/review settings remain a final release-boundary action under the authorized
-autonomous task loop and are not changed by this code PR.
+reports, screenshots, traces, and videos. The seven production-build journeys separate the fresh launch,
+settings, and persisted movement contract from the fixture-driven camera-centered grass → tilled farm
+contract, while retaining mature-crop/Codex, merchant, building/reload, raid, and ending coverage. The
+deployment workflow runs `npm run test:ci` and `npm run e2e:ci` before the final build/deployment path so
+its verified deployment cannot bypass the deterministic suite or browser gates. The full local matrix
+passed with 328 Vitest tests, all simulation/asset/audio/feel/performance checks, strict TypeScript,
+production build, `npm audit --omit=dev` (0 vulnerabilities), and 7/7 E2E. Hosted run
+[30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879) passed the
+same quality workflow for commit `b4d4c9b`. No formatter or linter is configured in the repository yet,
+so no made-up lint command was added; that remains a tooling follow-up. The full dependency audit
+currently reports six dev-tool advisories in the Wrangler-era toolchain; the production dependency tree
+is clean and the upgrade is deferred to REL-01. GitHub branch-protection/review settings remain a final
+release-boundary action under the authorized autonomous task loop and are not changed by this code PR.
 
 ### QA-03 — Production diagnostics
 

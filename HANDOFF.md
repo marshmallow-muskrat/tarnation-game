@@ -117,16 +117,23 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   pull request and push to `main`, starts from locked `npm ci`, runs strict typecheck, simulation,
   deterministic unit/integration, asset/audio/feel, performance, production-only audit, production build,
   and `npm run e2e:ci`, then retains `qa-artifacts/**` and `test-results/**` for 14 days on failure. The
-  E2E CI script enables the configured line and HTML reporters. The deployment workflow repeats strict
-  typecheck and production audit before its build/deployment path. No formatter/linter is configured yet;
-  the six full-audit dev-tool advisories remain the explicit REL-01 upgrade follow-up while
-  `npm audit --omit=dev` reports 0 vulnerabilities. The repository currently has no GitHub branch-protection
+  seven production-build journeys now keep fresh launch/settings/persisted movement separate from the
+  fixture-driven camera-centered grass → tilled farm transition, while retaining mature-crop/Codex,
+  merchant purchase, deed placement plus reload, deterministic raid, and authored-ending dismissal. The
+  movement test reads the active production save envelope before and after one bounded KeyD input and lets
+  the real beforeunload path persist it; the farm test reads the checksum-validated save until the fixed-step
+  tool contact commits `grass → tilled`. The E2E CI script enables the configured line and HTML reporters.
+  The deployment workflow runs `npm run test:ci` and `npm run e2e:ci` before the final build/deployment path.
+  The complete local matrix passed with 328 Vitest tests, all simulation/asset/audio/feel/performance gates,
+  strict unused-symbol TypeScript, build, diff check, and `npm audit --omit=dev` (0 vulnerabilities).
+  Hosted run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+  passed for commit `b4d4c9b`. A prior hosted run failed only because a transient UI hint appeared just
+  after a 5-second wait under slow software WebGL; the artifact showed the real plantable state, so the
+  final assertion uses the persisted save contract instead of increasing a timing guess. No production or
+  save behavior changed. No formatter/linter is configured yet; the six full-audit dev-tool advisories
+  remain the explicit REL-01 upgrade follow-up. The repository currently has no GitHub branch-protection
   rule; release PRs remain the enforced process, with protection and the single final human review to be
-  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs. The hosted
-  run required platform-specific launch-card baselines (`darwin` and `linux`) and a test-only DOM activation
-  path was replaced with the UI's real keyboard focus paths for modal controls whose synchronous React
-  rerenders outlast Playwright pointer actionability under headless WebGL; both normal and CI-mode E2E now pass
-  locally with those corrections and production behavior unchanged.
+  configured at the Core Release Gate boundary rather than forcing review on autonomous task PRs.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.

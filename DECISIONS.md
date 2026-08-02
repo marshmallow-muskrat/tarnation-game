@@ -686,3 +686,16 @@ rerender a WebGL-backed React HUD can leave Playwright's pointer actionability w
 now keeps `darwin` and `linux` baselines, splits long journeys at modal boundaries, and uses the UI's real
 keyboard focus paths for pause/settings, merchant dismissal, and ending dismissal before asserting the
 resulting state. This changes no production UI or gameplay behavior.
+
+## 2026-08-02 — Make hosted QA-02 farm coverage observe the save contract
+
+The fresh-game journey now proves movement by reading the active `SaveService` two-slot envelope before and
+after one bounded KeyD input, then using the existing `beforeunload` persistence boundary. Farm control is
+covered by a compact typed fixture that places the player on a known empty starter-plot tile; the mature-crop
+journey's camera-centered click remains the input technique, and the assertion reads the production save until
+the fixed-step contact commits `grass → tilled`. A hosted run exposed that the transient interaction hint can
+appear just after a five-second wait on the slow Linux software-WebGL renderer even though the persisted farm
+transition is already correct. The final test polls the persisted state rather than adding a larger timing
+guess or a production debug hook. Run [30762042879](https://github.com/marshmallow-muskrat/tarnation-game/actions/runs/30762042879)
+passed the full quality workflow for `b4d4c9b`. No production behavior, save schema, fixed timestep, seeded
+simulation, or asset bundle changed.
