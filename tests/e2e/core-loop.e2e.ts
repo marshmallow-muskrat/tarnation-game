@@ -8,6 +8,32 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await expect(page.locator('.launch-card')).toHaveScreenshot('launch-card.png');
 
   await startAdventure(page, 'New Adventure');
+  const canvas = page.getByLabel('Tarnation game canvas');
+  await canvas.focus();
+  await page.keyboard.press('Digit2');
+  await page.keyboard.down('KeyA');
+  await page.keyboard.down('KeyS');
+  // The baseline camera is snapped to the authored spawn tile; this short
+  // diagonal movement follows world +Z without drifting across the plot.
+  await page.waitForTimeout(350);
+  await page.keyboard.up('KeyA');
+  await page.keyboard.up('KeyS');
+  const canvasBox = await canvas.boundingBox();
+  if (!canvasBox) throw new Error('game canvas did not expose a layout box');
+  const playerTilePoint = {
+    x: canvasBox.x + canvasBox.width / 2,
+    y: canvasBox.y + canvasBox.height / 2,
+  };
+  const plantingGuide = page.getByRole('region', { name: 'Plant a seed' });
+  await page.mouse.click(playerTilePoint.x, playerTilePoint.y);
+  await expect(plantingGuide).toBeVisible({ timeout: 5_000 });
+  await expect(plantingGuide).toContainText(/Planting spends one packet/i);
+
+  await page.keyboard.press('Digit2');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(350);
+  await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
+
   await page.keyboard.press('Escape');
   // Pause focus starts on Resume; keyboard navigation opens Settings without
   // waiting for a pointer actionability pass while the WebGL loop is busy.
@@ -25,35 +51,6 @@ test('fresh game supports movement, farm controls, settings, and a reviewed visu
   await expect(highContrast).toBeChecked();
   await page.keyboard.press('Escape');
   await expect(settings).toBeHidden();
-  await page.keyboard.press('Escape');
-
-  const canvas = page.getByLabel('Tarnation game canvas');
-  await canvas.focus();
-  await page.keyboard.press('Digit2');
-  await page.keyboard.down('KeyA');
-  await page.keyboard.down('KeyS');
-  // Hosted software-WebGL runners need a few more fixed-step frames before
-  // the player is inside the starter tile's tool range. A+S cancels the
-  // isometric x drift and moves toward the nearest z edge of the marked plot
-  // from the authored spawn tile.
-  await page.waitForTimeout(500);
-  await page.keyboard.up('KeyA');
-  await page.keyboard.up('KeyS');
-  const canvasBox = await canvas.boundingBox();
-  if (!canvasBox) throw new Error('game canvas did not expose a layout box');
-  // The fresh camera is snapped to the player; the first marked plot is two
-  // world units forward, which is a stable isometric screen offset at default zoom.
-  const starterPlotPoint = {
-    x: canvasBox.x + canvasBox.width / 2 - 127,
-    y: canvasBox.y + canvasBox.height / 2 - 84,
-  };
-  await page.mouse.click(starterPlotPoint.x, starterPlotPoint.y);
-  await expect(page.getByText(/plant one seed in that tilled plot/i)).toBeVisible({ timeout: 5_000 });
-
-  await page.keyboard.press('Digit2');
-  await page.keyboard.press('Enter');
-  await page.waitForTimeout(350);
-  await expect(page.getByRole('button', { name: /Help/ })).toBeVisible();
 
   await expectNoBrowserErrors(page, errors);
 });
