@@ -26,7 +26,8 @@ exposes the runtime for browser debugging.
 - Grass, plants, flowers, bushes, and rocks from the accepted Ultimate Nature set, instanced in
   `ScatterChunks.ts`.
 - Crop roster: Grass, Dandelion, Beet, Carrot, Lettuce.
-- Survival Pack shotgun, shovel, and red axe in the toolbar; bucket remains a readable glyph.
+- Survival Pack shotgun, shovel, and red axe in the toolbar; bucket uses a small authored stylized
+  held prop with fill/use posing.
 - Bear traps on `B` with open/closed models and fox capture; `Q` remains the separate boulder.
 - Weapon progression is asset-led: ranged shotgun/bow work, with axe/melee as the close option.
 - Farm building models are wired to homestead tiers and the first placeable building set.
@@ -70,7 +71,7 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the player-control phase from ACT-04 through ACT-05, after the completed ACT-01/02/03 and
+- Continue the player-control phase from ACT-05, after the completed ACT-01/02/03/04 and
   PERF-05 runtime responsibility extractions.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
@@ -242,7 +243,19 @@ The characterization baseline intentionally preserves current behavior for later
   crop, loot-marker, and ambient-mote motion without changing fixed-step timing. Six focused tests cover
   the boundaries, hysteresis, residual velocity, clip mapping, cadence, and turn cap. The deterministic
   baseline is now 160 tests across 25 files. Production-preview smoke reached fresh Day 1/daylight and
-  opened the field guide without observed console warnings or errors; ACT-04–05 remain separate.
+  opened the field guide without observed console warnings or errors; ACT-05 remains separate.
+
+- ACT-04 gives each held or placement profile a typed contact contract and routes action clips/timings
+  through that data. Shovel work now faces valid farm targets and rejects out-of-range or wrong-tool
+  targets without a false pickup/fist action. Selected-axe work classifies trees, stumps, and boulders,
+  applies a bounded facing arc, and gives boulders a distinct clang response instead of radial damage.
+  The bucket now mounts an authored low-poly prop with a fill/use tilt and retains fixed contact water
+  feedback. Shotgun/bow projectiles and release feedback occur at the fire event; placement and trap
+  interactions keep their preview/confirmation path with the existing non-melee `PickUp` clip. Three
+  pure targeting tests plus the updated equipment/selection characterization bring the deterministic
+  baseline to 163 tests across 26 files. The built preview reached Day 1/daylight with Saved status and
+  visibly mounted the bucket prop; the browser harness's stale New Adventure confirmation was not used
+  as evidence and remains a tooling limitation, not a gameplay defect. ACT-05 remains separate.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

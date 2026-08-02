@@ -37,11 +37,14 @@ describe('equipment content profiles', () => {
       expect(profile.readability.maxScreenFraction, `${key} readable screen range`).toBeGreaterThanOrEqual(profile.readability.minScreenFraction);
       expect(profile.actionClips, `${key} compatible clips`).not.toHaveLength(0);
       expect(Object.keys(profile.timings), `${key} action timing`).not.toHaveLength(0);
+      expect(profile.timings[profile.interaction.kind], `${key} interaction timing`).toBeDefined();
       expect(profile.feedback.audio, `${key} audio cue`).toBeTruthy();
       expect(profile.feedback.vfx, `${key} VFX cue`).toBeTruthy();
       expect(profile.icon.distance, `${key} icon distance`).toBeGreaterThan(0);
       expect(profile.icon.orthographicScale, `${key} icon scale`).toBeGreaterThan(0);
       expect(profile.debug.axisLength, `${key} debug axes`).toBeGreaterThan(0);
+      expect(profile.interaction.clip).toBe(profile.actionClips[0]);
+      expect(profile.interaction.facingHalfAngle).toBeGreaterThan(0);
     }
   });
 
@@ -94,6 +97,7 @@ describe('equipment content profiles', () => {
 
   it('keeps fallback records explicit for glyph tools, traps, and building previews', () => {
     expect(EQUIPMENT_PROFILES.bucket.modelKey).toBeNull();
+    expect(EQUIPMENT_PROFILES.bucket.interaction.target).toBe('water_or_crop');
     expect(EQUIPMENT_PROFILES.bucket.feedback).toEqual({ audio: 'water', vfx: 'water' });
     expect(EQUIPMENT_PROFILES.bear_trap.modelKey).toBe('bear_trap_open');
     expect(EQUIPMENT_PROFILES.bear_trap.feedback).toEqual({ audio: 'trap', vfx: 'trap' });
