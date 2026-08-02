@@ -96,8 +96,8 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   steps HUD, Saved status, Help, pause, and Settings with no browser warning/error logs. The
   product owner explicitly waived UX-05's five-person external study for this release; its protocol
   remains documented for future validation without fabricated participant findings.
-  M9 Audio/feel is now in progress: AUD-01 and AUD-02 are complete on the integration branch, while
-  FEEL-01 remains the dependency-ready follow-up.
+  M9 Audio/feel implementation is now complete in the task sequence: AUD-01, AUD-02, and FEEL-01
+  pass their task gates; the M9 milestone release remains pending.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
@@ -243,7 +243,16 @@ game is not release-ready. The active priorities are the P0 blockers and depende
   build. AUD-02 adds typed priority, voice caps, repeat intervals, music/ambience ducking, directional
   fox-threat panning, and HUD captions without changing simulation timing or save data. The
   deterministic baseline is 321 tests across 46 files; all required checks and an audio-mix
-  production-preview smoke pass. FEEL-01 remains before the M9 release.
+  production-preview smoke pass. FEEL-01 is complete; M9 release verification remains.
+
+- FEEL-01 synchronizes the existing action-state animation start/contact/fire boundary with a typed
+  renderer-only presentation timeline. Major impacts now dispatch one bounded semantic VFX/audio/
+  camera/hit-pause bundle; repeated bundles are coalesced, melee misses no longer shake or pause the
+  camera, and fox defeats no longer receive a second melee impact layer. Camera shake eases out and
+  uses a fixed renderer-only jitter stream, while reduced motion and camera-shake settings remain
+  respected. `npm run feelcheck` runs 216,000 fixed steps (one simulated hour) twice and compares the
+  bounded result. The deterministic baseline is 326 tests across 47 files; all required checks and
+  production-preview fresh-run/audio-bootstrap smoke pass. M9 release verification remains.
 
 The characterization baseline intentionally preserves current behavior for later, scoped follow-up:
 

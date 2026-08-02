@@ -622,7 +622,17 @@ simultaneous voices and minimum repeat intervals, threat/action/UI events tempor
 ambience without muting effects, and only fox threat events use a stereo pan derived from relative
 world position. Meaningful cues expose captions through the existing HUD toast/status channel.
 Audio metadata, timers, and panning live in renderer presentation only; seeded RNG, fixed-step timing,
-saves, and `src/sim/` remain unchanged. FEEL-01 remains the separate cohesive timeline pass.
+saves, and `src/sim/` remain unchanged. FEEL-01 is the separate cohesive timeline pass.
+
+## 2026-08-02 — Synchronize impact feedback at fixed action boundaries
+
+FEEL-01 treats the existing action-state machine as the animation timeline authority: one-shot
+animation begins at `start`, and the typed presentation bundle is emitted at the fixed contact or
+fire event. A renderer-only timeline now coalesces repeated semantic VFX/audio/camera/hit-pause
+bundles, retains contextual HUD toasts, and removes redundant impact layers from melee misses and fox
+defeats. Camera shake uses a decaying envelope and a dedicated renderer jitter stream, never the
+seeded simulation RNG. Reduced motion still suppresses transient particles and shake, and no save,
+economy, input, or fixed-step simulation rule changed.
 
 ## 2026-08-01 — Keep the first ten minutes derived and non-modal
 
