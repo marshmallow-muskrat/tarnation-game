@@ -70,11 +70,12 @@ that the vendor/deed foundation exists, but the
 game is not release-ready. The active priorities are the P0 blockers and dependency order in
 [`masterplan-v2.md`](masterplan-v2.md):
 
-- Continue the remaining runtime-responsibility work (PERF-05).
+- Continue the player-control phase from ACT-01 through ACT-05, after the completed PERF-05 runtime
+  responsibility extraction.
 - Add unit, migration, browser E2E, visual, performance, and CI release gates.
 - Finish the visible genetics, seed, irrigation, building, fox, onboarding, accessibility, audio,
   and ending loops before expanding content.
-- BASE-02 characterization is now integrated with Vitest: the current baseline has 109 deterministic
+- BASE-02 characterization is integrated with Vitest: the original baseline had 109 deterministic
   tests across 16 files, compact fixed-seed fresh/midgame/dense-farm/corrupt-save fixtures, and
   migration fixtures for released save versions 3 through 7. PR #3 merged into the integration
   branch as `5ff922b`.
@@ -212,6 +213,15 @@ The characterization baseline intentionally preserves current behavior for later
   exactly the same position, the existing separation fallback treats them as one unit apart before
   calculating the push, producing only a small deterministic nudge (0.052 units at the current 1.05
   unit nominal gap) rather than fully separating them. No gameplay rule was changed in PERF-05.
+
+- ACT-01 adds the renderer-independent `ActionStateMachine` with explicit idle/move, tool windup/contact/
+  recovery, ranged aim/fire, interaction, menu, and disabled states. Eight focused tests cover delayed
+  contact/fire events, recovery, one-slot same-kind buffering, cross-kind rejection, movement scales,
+  interaction completion, menu cancellation, and focus restoration. Farming, melee, projectiles,
+  construction, bucket work, and bear traps now apply their effects from fixed-step action callbacks;
+  the current deterministic baseline is 146 tests across 23 files. The local production preview reached
+  Day 1/daylight with Saved status, field-guide and inventory modal checks, and no observed console
+  warnings or errors. ACT-02–05 remain separate control/animation follow-up tasks.
 
 - Use measured session actions, sales, crop throughput, upgrades, buildings, tree work, foxes, and
   day progression to calibrate the first-session economy.

@@ -200,3 +200,15 @@ inventory/market/vendor/build mapping, HUD JSON deduplication, and transient-arr
 renders the same typed snapshot, while `GameRuntime` supplies live world bearings, save feedback,
 placement status, economy capability, and interaction hints as callbacks. The presenter has no DOM,
 Three.js, save mutation, or simulation-rule authority; its deterministic tests use fixed game state.
+
+## 2026-08-01 — Apply player effects from fixed-step action phases
+
+`ActionStateMachine` is the renderer-independent authority for player action transitions. Tool actions use
+0.12 seconds of windup, a 0.05-second contact phase, and 0.18 seconds of recovery; ranged actions expose
+0.08 seconds of aim before the fire event; interaction actions expose an explicit contact event. Tool input
+can buffer one same-kind follow-up during contact/recovery, while cross-kind, menu, and disabled input is
+rejected. Gameplay effects for farming, melee, projectiles, construction, bucket work, and bear traps now
+run from fixed-step contact/fire callbacks. Movement remains available with authored phase scales of 0.75
+for tool windup/recovery, 0.45 at tool contact, 0.85 while aiming, and 0.65 at ranged fire; menus and lost
+focus stop movement. Focus loss cancels pending effects and focus restoration returns to a valid idle/move
+state. Animation clips remain renderer-facing and are started from the state-machine start event.
