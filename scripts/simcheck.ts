@@ -310,7 +310,7 @@ if (gsOld) {
   ok2('chopped trees survive', Object.keys(gsOld.choppedTrees).length === 1);
   ok2('stump ledger starts empty', Object.keys(gsOld.clearedStumps).length === 0);
   ok2('pity ledger starts empty', Object.keys(gsOld.dropPity).length === 0);
-  ok2('inventory is open by default', gsOld.inventoryOpen === true);
+  ok2('legacy saves without panel state retain an open inventory', gsOld.inventoryOpen === true);
 }
 const future = { ...(JSON.parse(legacy) as Record<string, unknown>), version: SAVE_VERSION + 1 };
 ok2('future save versions refuse cleanly', deserialize(JSON.stringify(future)) === null);
@@ -345,4 +345,7 @@ if (all.some((r) => r.startsWith('FAIL'))) process.exitCode = 1;
   const label = fresh.toolbarSlot === 0 && !fresh.toolSlotActive ? 'PASS' : 'FAIL';
   console.log(`${label}  a new game starts on the shotgun — slot ${fresh.toolbarSlot}`);
   if (label === 'FAIL') process.exitCode = 1;
+  const inventoryLabel = fresh.inventoryOpen === false ? 'PASS' : 'FAIL';
+  console.log(`${inventoryLabel}  a new game starts with inventory closed`);
+  if (inventoryLabel === 'FAIL') process.exitCode = 1;
 }

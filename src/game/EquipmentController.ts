@@ -6,7 +6,7 @@ import {
   type EquipmentKey,
 } from '../content/equipment';
 import { cloneModel } from './Assets';
-import { disposeModelClone, disposeObjectResources } from './ResourceDisposal';
+import { disposeModelClone } from './ResourceDisposal';
 import { buildAuthoredVisual } from './PresentationProps';
 import type {
   CarryAnimationProfile,
@@ -48,9 +48,6 @@ export class EquipmentController {
   private equippedToolRoot: THREE.Object3D | null = null;
   private equippedToolKey: EquippedToolKey | null = null;
   private activeProfileKey: EquipmentKey | null = null;
-  private debugVisible = false;
-  private debugVisuals: THREE.Group | null = null;
-  private debugSupportMarker: THREE.Mesh | null = null;
   private disposed = false;
 
   private readonly supportTarget = new THREE.Vector3();
@@ -86,12 +83,6 @@ export class EquipmentController {
   actionTimingFor(action: EquipmentActionKind): EquipmentActionTiming | null {
     if (!this.activeProfileKey) return null;
     return EQUIPMENT_PROFILES[this.activeProfileKey].timings[action] ?? null;
-  }
-
-  setDebugVisible(enabled: boolean): void {
-    this.debugVisible = enabled;
-    if (enabled) this.attachDebugVisuals();
-    else this.clearDebugVisuals();
   }
 
   refresh(selection: EquipmentSelection): void {
@@ -137,7 +128,6 @@ export class EquipmentController {
     this.equippedToolSocket = socket;
     this.equippedToolRoot = root;
     this.equippedToolKey = desired;
-    this.attachDebugVisuals();
   }
 
   update(dt: number): void {
@@ -153,7 +143,6 @@ export class EquipmentController {
   }
 
   private clearEquippedTool(): void {
-    this.clearDebugVisuals();
     this.equippedToolSocket?.removeFromParent();
     if (this.equippedToolRoot) disposeModelClone(this.equippedToolRoot);
     this.equippedToolSocket = null;
@@ -227,53 +216,6 @@ export class EquipmentController {
       this.toolTargetQuaternion,
       1 - Math.exp(-dt * 20),
     );
-    this.updateDebugSupportMarker(actionActive, profile);
-  }
-
-  private attachDebugVisuals(): void {
-    if (!this.debugVisible || !this.equippedToolRoot || !this.equippedToolKey || this.debugVisuals) return;
-    const profile = EQUIPMENT_PROFILES[this.equippedToolKey];
-    const visuals = new THREE.Group();
-    visuals.name = `equipment_debug_${this.equippedToolKey}`;
-
-    const forward = new THREE.Vector3(...profile.modelForwardAxis).normalize();
-    const up = new THREE.Vector3(...profile.modelUpAxis).normalize();
-    const right = new THREE.Vector3().crossVectors(up, forward).normalize();
-    const basis = new THREE.Group();
-    basis.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(right, up, forward));
-    basis.add(new THREE.AxesHelper(profile.debug.axisLength));
-    visuals.add(basis);
-
-    const marker = new THREE.Mesh(
-      new THREE.SphereGeometry(0.035, 8, 6),
-      new THREE.MeshBasicMaterial({ color: profile.debug.supportColor }),
-    );
-    marker.name = 'equipment_debug_support';
-    visuals.add(marker);
-    this.equippedToolRoot.add(visuals);
-    this.debugVisuals = visuals;
-    this.debugSupportMarker = marker;
-    this.updateDebugSupportMarker(false, profile);
-  }
-
-  private updateDebugSupportMarker(
-    actionActive: boolean,
-    profile: (typeof EQUIPMENT_PROFILES)[EquippedToolKey],
-  ): void {
-    if (!this.debugSupportMarker) return;
-    const grip = actionActive
-      ? profile.actionLeftHandSupportGrip ?? profile.leftHandSupportGrip
-      : profile.leftHandSupportGrip;
-    this.debugSupportMarker.visible = grip !== undefined;
-    if (grip) this.debugSupportMarker.position.set(...grip);
-  }
-
-  private clearDebugVisuals(): void {
-    if (!this.debugVisuals) return;
-    this.debugVisuals.removeFromParent();
-    disposeObjectResources(this.debugVisuals, { geometries: true, materials: true });
-    this.debugVisuals = null;
-    this.debugSupportMarker = null;
   }
 
   private rotateArmJointToward(joint: THREE.Object3D, blend: number): void {

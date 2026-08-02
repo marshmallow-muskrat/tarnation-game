@@ -122,11 +122,6 @@ export class InputController {
     return bindingCodes(this.bindings, action).some((code) => this.pressed.has(code));
   }
 
-  /** Developer-only checks stay outside the player-remappable action contract. */
-  justPressedCode(code: string): boolean {
-    return this.pressed.has(code);
-  }
-
   isDown(actionOrCode: InputAction | string): boolean {
     return isInputAction(actionOrCode)
       ? actionIsDown(this.held, this.bindings, actionOrCode)

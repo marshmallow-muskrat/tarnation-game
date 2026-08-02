@@ -668,6 +668,16 @@ after the final label synchronization.
 - Remove empty slots, debug keys, scaffolding copy, and implementation terminology.
 - Show cost, benefit, lock reason, capacity, and result before commitment.
 
+Status: Complete on `agent/ux-02-information-hierarchy`. New games and new saves start with
+inventory closed while legacy v3/v4 saves missing panel state retain their existing open-panel
+behavior for compatibility. The persistent HUD reports time, objective/status, Duckettes, wood,
+seed capacity, selected tool, and concise contextual prompts. Inventory renders occupied stacks only;
+focused-panel priority prevents simultaneous inventory, merchant, build, Help, Codex, context, and
+market overlays. Build and merchant detail shows authored result/benefit, cost, footprint,
+capacity/ownership, and lock reason. Visible debug/scaffolding paths and implementation terms were
+removed. The deterministic baseline is 294 tests across 42 files; required checks and
+production-preview smoke pass. UX-03–05 remain pending.
+
 ### UX-03 — Make overlays real modals
 
 - Use appropriate dialog/menu semantics, labeled controls, focus trap, Escape behavior, and focus
@@ -949,7 +959,7 @@ could lose data, a license/source is unknown, or the change requires a wider tas
 | M5 Complete core loop | CORE-01–08 | M1–M4 decisions | Complete: PR #39 merged as `7ae1417`; workflow `30735477015` passed verification/deployment and live smoke passed |
 | M6 Defense | FOX-01–04 | M3–M5 | Complete: PR #44 merged as `2cce059`; workflow `30737391871` passed verification/deployment and live smoke passed |
 | M7 Presentation | ART-01–05 | M3–M6 | Complete: PR #50 merged as `76b9efd`; workflow `30741246426` passed verification/deployment and live smoke passed |
-| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01 complete on its task branch; UX-02–05 pending |
+| M8 UX/accessibility | UX-01–05 | M1–M7 | In progress: UX-01–02 complete on their task branches; UX-03–05 pending |
 | M9 Audio/feel | AUD-01–02, FEEL-01 | M4–M8 | Not started |
 | M10 Release hardening | QA-01–03, REL-01–02 | All core phases | Not started |
 | Expansion decision | EXP-01, EXP-02, or EXP-03 prototype | Core Release Gate | Blocked by gate |
